@@ -14,8 +14,9 @@ review uman → standardizare → arhivare → dashboard/audit.
 | Ecrane: panou principal, clienți, documente, verificare, perioade, sarcini, rapoarte, administrare | ✅ pe date sintetice |
 | Backend simulat în browser (`api/mock`), cu aceleași rute ca API-ul real | ✅ |
 | Backend M2: FastAPI, settings, logging structurat, erori, health, Alembic | ✅ `backend/` |
+| Backend M3: auth JWT + refresh rotativ, Argon2id, RBAC, audit log | ✅ `backend/app/services/auth.py` |
 | Infrastructură dev: PostgreSQL + Redis + API prin Docker | ✅ `docker-compose.yml` |
-| Auth real, CRM, documente, procesare (M3–M6) | ⏳ urmează |
+| CRM, documente, procesare (M4–M6) | ⏳ urmează |
 
 ## Rulare
 
@@ -33,11 +34,15 @@ Pornește pe http://localhost:5173. Implicit rulează pe backend-ul simulat
 Necesită Docker Desktop pornit.
 
 ```bash
-docker compose up -d                      # postgres + redis
+docker compose up -d                        # postgres + redis
 cd backend && uv sync
 uv run alembic upgrade head
-uv run uvicorn app.main:app --reload      # http://localhost:8000
+uv run python -m app.cli seed-dev           # organizație + conturi de development
+uv run uvicorn app.main:app --reload        # http://localhost:8000
 ```
+
+Conturile de development au parola `contacrm-dev` (`admin@contacrm.test`,
+`contabil@`, `operator@`, `verificator@`).
 
 Sau totul în containere:
 

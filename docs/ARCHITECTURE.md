@@ -2,9 +2,9 @@
 
 CRM + ERP de document management pentru firme de contabilitate.
 
-> Status: **M1 (frontend) și M2 (schelet backend) implementate.** Straturile de
-> business din backend (auth, CRM, documente, procesare) sunt proiectate aici, dar
-> încă neimplementate. Vezi [Roadmap](#roadmap--milestones).
+> Status: **M1 (frontend), M2 (schelet backend) și M3 (autentificare) implementate.**
+> CRM, documente și procesare sunt proiectate aici, dar încă neimplementate.
+> Vezi [Roadmap](#roadmap--milestones).
 
 ---
 
@@ -32,7 +32,7 @@ Ordinea de prioritate în decizii (§104):
 | Queue | Celery + Redis | fără Kafka/RabbitMQ în MVP (ADR-003) |
 | Frontend | React 19, TypeScript strict, Vite 8, Tailwind v4, shadcn/ui | ✅ implementat |
 | Dependențe Python | `uv` | Python-ul nu trebuie instalat în sistem |
-| Auth | JWT access + refresh rotativ, Argon2id | RBAC granular |
+| Auth | JWT access + refresh rotativ, Argon2id | ✅ RBAC granular, cookie-uri httpOnly |
 | Storage | `StorageProvider` abstract | Local FS în MVP → S3/OneDrive/Azure ulterior |
 | OCR/AI | `DocumentExtractionService` abstract | `MockOCRProvider` în dev (ADR-005) |
 
@@ -50,11 +50,11 @@ CONTACRM/
 │   ├── app/
 │   │   ├── api/v1/            # ✅ routere subțiri, fără business logic + router.py
 │   │   ├── core/              # ✅ config, logging, errors, db, middleware
-│   │   ├── models/            # ✅ base.py (mixin-uri) + organization.py
+│   │   ├── models/            # ✅ organization, user/role/permission, refresh_token, audit_log
 │   │   ├── schemas/           # ✅ ApiModel, Paginated, PageParams
-│   │   ├── repositories/      # ⏳ acces la date, izolat de servicii        (M3+)
-│   │   ├── services/          # ⏳ business logic (filename, storage, review) (M3+)
-│   │   ├── domain/            # ⏳ enums, value objects, reguli de validare  (M3+)
+│   │   ├── repositories/      # ✅ user.py — filtrarea pe organization_id trăiește aici
+│   │   ├── services/          # ✅ auth.py, audit.py                        (M4+ restul)
+│   │   ├── domain/            # ✅ permissions.py — harta rol → permisiuni
 │   │   ├── integrations/      # ⏳ graph/, whatsapp/, ocr/, storage/     (M5, Faza 2)
 │   │   └── workers/           # ⏳ taskuri Celery                            (M6)
 │   ├── alembic/versions/      # ✅
@@ -210,8 +210,8 @@ Praguri (configurabile în `system_settings`, valori inițiale propuse):
 | **M1** | Frontend scaffold (Vite+TS strict+Tailwind v4+shadcn) + shell dashboard cu sidebar colapsabil | ✅ |
 | **M1.5** | Ecrane complete pe backend simulat (`api/mock`), cu aceleași rute ca API-ul real | ✅ |
 | **M2** | Backend skeleton: FastAPI, settings, Postgres, Alembic, health, error handling, logging structurat | ✅ |
-| **M3** | Auth: users/roles/permissions, JWT + refresh, Argon2id, RBAC, audit log | ⏳ urmează |
-| **M4** | CRM: clients, contacts, tags, note + UI listă/detaliu |  |
+| **M3** | Auth: users/roles/permissions, JWT + refresh rotativ, Argon2id, RBAC, audit log | ✅ |
+| **M4** | CRM: clients, contacts, tags, note + UI listă/detaliu | ⏳ urmează |
 | **M5** | Documents: upload, StorageProvider, SHA-256, duplicate detection, FilenameGenerator, StoragePathService, preview securizat |  |
 | **M6** | Processing: Celery+Redis, MockOCRProvider, clasificare, schema de extracție Pydantic, confidence, review UI |  |
 | **M7** | Accounting periods + checklist + dashboard KPI + audit UI |  |
