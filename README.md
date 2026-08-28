@@ -4,6 +4,9 @@ CRM + ERP de document management pentru firme de contabilitate.
 Clienți → Email/WhatsApp → intake → identificare client → OCR/AI → validare →
 review uman → standardizare → arhivare → dashboard/audit.
 
+> **Pornești pe o mașină nouă sau vrei starea completă a proiectului?**
+> [`docs/STATUS.md`](docs/STATUS.md) — ce e construit, ce urmează, cum pornești de la zero.
+
 ## Stare curentă
 
 | Componentă | Stare |
