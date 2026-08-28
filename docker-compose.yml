@@ -1,0 +1,91 @@
+name: contacrm
+
+# Development stack.
+#
+#   docker compose up -d              # doar infrastructura (postgres + redis)
+#   docker compose --profile api up -d  # infrastructura + API
+#
+# Serviciul `worker` (Celery) se adaugă la M6, când există taskuri de rulat.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-contacrm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-contacrm_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-contacrm}
+      # Colație stabilă pentru sortarea corectă a diacriticelor.
+      LANG: ro_RO.utf8
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-contacrm} -d ${POSTGRES_DB:-contacrm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # AOF pornit: coada de joburi nu trebuie pierdută la restart (ADR-003).
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Migrările rulează într-un container separat, care iese după ce termină.
+  # API-ul nu pornește până când schema nu este la zi.
+  migrate:
+    profiles: ["api"]
+    build:
+      context: ./backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-contacrm}:${POSTGRES_PASSWORD:-contacrm_dev_password}@postgres:5432/${POSTGRES_DB:-contacrm}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    profiles: ["api"]
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-contacrm}:${POSTGRES_PASSWORD:-contacrm_dev_password}@postgres:5432/${POSTGRES_DB:-contacrm}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      # Implicit `mock`: niciun document nu părăsește mașina în development (R2).
+      OCR_PROVIDER: ${OCR_PROVIDER:-mock}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      STORAGE_PATH: /var/lib/contacrm/storage
+      ARCHIVE_ROOT: /var/lib/contacrm/storage/ARHIVA
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      # Documentele stau într-un volum, nu în imagine — nu se pierd la rebuild.
+      - storage_data:/var/lib/contacrm/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:

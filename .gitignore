@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Build output
+dist/
+build/
+*.egg-info/
+.vite/
+
+# Environment / secrets — NEVER commit real credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local storage (uploaded + archived documents)
+storage/
+ARHIVA/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+.coverage
+htmlcov/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json

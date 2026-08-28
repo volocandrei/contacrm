@@ -1,0 +1,141 @@
+import { useState } from "react";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { CircleAlert, LoaderCircle, LogIn } from "lucide-react";
+import { ApiError } from "@/api/types";
+import { useAuth } from "@/features/auth/use-auth";
+
+/** Conturi din setul sintetic, afișate ca să poți intra rapid în development. */
+const DEMO_ACCOUNTS = [
+  { email: "admin@contacrm.test", label: "Administrator" },
+  { email: "contabil@contacrm.test", label: "Contabil" },
+  { email: "operator@contacrm.test", label: "Operator" },
+  { email: "verificator@contacrm.test", label: "Verificator" },
+];
+
+export function LoginPage() {
+  const { user, login, isLoading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [email, setEmail] = useState("admin@contacrm.test");
+  const [password, setPassword] = useState("demo");
+  const [error, setError] = useState<string | null>(null);
+
+  if (user) {
+    const from = (location.state as { from?: string } | null)?.from ?? "/";
+    return <Navigate to={from} replace />;
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    try {
+      await login(email, password);
+      navigate("/", { replace: true });
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError ? caught.message : "Autentificarea nu a putut fi finalizată.",
+      );
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6 dark:bg-gray-950">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="grid size-11 place-content-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 shadow-sm">
+            <svg width="22" viewBox="0 0 50 39" fill="none" className="fill-white" aria-hidden="true">
+              <path d="M16.4992 2H37.5808L22.0816 24.9729H1L16.4992 2Z" />
+              <path d="M17.4224 27.102L11.4192 36H33.5008L49 13.0271H32.7024L23.2064 27.102H17.4224Z" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">ContaCRM</h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Autentificare</p>
+          </div>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+        >
+          <div>
+            <label
+              htmlFor="email"
+              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="password"
+              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              Parolă
+            </label>
+            <input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+            />
+          </div>
+
+          {error && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300"
+            >
+              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isLoading ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <LogIn className="h-4 w-4" aria-hidden="true" />
+            )}
+            Intră în cont
+          </button>
+        </form>
+
+        <div className="mt-4 rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+          <p className="mb-2 font-medium">
+            Mod development — autentificare simulată, parola nu este verificată.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {DEMO_ACCOUNTS.map((account) => (
+              <button
+                key={account.email}
+                type="button"
+                onClick={() => setEmail(account.email)}
+                className="rounded-md bg-white px-2 py-1 font-medium text-amber-900 ring-1 ring-amber-200 transition-colors hover:bg-amber-100 dark:bg-gray-900 dark:text-amber-200 dark:ring-amber-800"
+              >
+                {account.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
