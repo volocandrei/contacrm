@@ -169,7 +169,15 @@ export type AccountingPeriod = {
   /** "YYYY-MM" */
   referenceMonth: string;
   status: PeriodStatus;
+  /** Toate documentele primite pentru client în luna respectivă, de orice tip. */
   receivedCount: number;
+  /**
+   * Câte dintre documentele *așteptate* au sosit — suma pe checklist a lui
+   * min(primite, minim cerut). Ăsta este numărul care măsoară progresul; o factură
+   * în plus nu compensează un extras de cont lipsă.
+   */
+  satisfiedCount: number;
+  /** Suma minimelor din checklist. */
   expectedCount: number;
   checklist: ChecklistItem[];
   openedAt: string | null;

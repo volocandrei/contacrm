@@ -142,7 +142,7 @@ function GeneralTab({ clientId }: { clientId: string }) {
               <PeriodStatusBadge status={currentPeriod.status} />
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              {currentPeriod.receivedCount} din {currentPeriod.expectedCount} documente așteptate
+              {currentPeriod.satisfiedCount} din {currentPeriod.expectedCount} documente așteptate
             </p>
             <ul className="space-y-1 text-xs">
               {currentPeriod.checklist.map((item) => (
@@ -230,7 +230,7 @@ function AccountingTab({ clientId }: { clientId: string }) {
           action={<PeriodStatusBadge status={period.status} />}
         >
           <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">
-            {period.receivedCount} documente primite · {period.expectedCount} așteptate
+            {period.receivedCount} documente primite · {period.satisfiedCount}/{period.expectedCount} așteptate
           </p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {period.checklist.map((item) => (

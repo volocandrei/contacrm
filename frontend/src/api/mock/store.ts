@@ -19,6 +19,8 @@ import {
   PERIODS,
   TASKS,
   USERS,
+  derivePeriodStatus,
+  periodProgress,
 } from "@/api/mock/seed";
 import { buildArchivePath, buildDocumentFilename, type FilenameInput } from "@/lib/filename";
 import type {
@@ -54,6 +56,9 @@ const state = {
 };
 
 let auditCounter = state.audit.length;
+
+/** Luna de referinta a setului sintetic; perioadele anterioare sunt inchise. */
+const CURRENT_MONTH = "2026-08";
 
 /* ─── Permisiuni per rol (§32) ─────────────────────────────────────────────── */
 
@@ -155,7 +160,11 @@ function recordAudit(action: string, entityType: string, entityId: string, detai
   });
 }
 
-/** Recalculează contoarele perioadei după ce un document își schimbă apartenența. */
+/**
+ * Recalculează perioada după ce un document își schimbă apartenența sau statusul.
+ * Statusul se re-derivă odată cu contoarele — altfel badge-ul rămâne cel inițial
+ * și ajunge să contrazică propriul checklist.
+ */
 function refreshPeriods() {
   for (const period of state.periods) {
     const docs = state.documents.filter(
@@ -166,6 +175,12 @@ function refreshPeriods() {
       item.receivedCount = docs.filter((d) => d.documentTypeCode === item.documentType).length;
       item.isSatisfied = item.receivedCount >= item.expectedMinCount;
     }
+    period.satisfiedCount = periodProgress(period.checklist).satisfied;
+    period.status = derivePeriodStatus(
+      period.checklist,
+      period.receivedCount,
+      period.referenceMonth < CURRENT_MONTH,
+    );
   }
 }
 
@@ -633,8 +648,6 @@ export function listDocumentTypes() {
 }
 
 /* ─── Dashboard ────────────────────────────────────────────────────────────── */
-
-const CURRENT_MONTH = "2026-08";
 
 export function getDashboard(): DashboardData {
   const docs = state.documents;

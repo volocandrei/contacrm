@@ -313,7 +313,8 @@ function statusFor(monthIndex: number): DocumentStatus {
   if (roll < 0.84) return "PROCESSING";
   if (roll < 0.89) return "DUPLICATE";
   if (roll < 0.94) return "ERROR";
-  if (roll < 0.97) return "UNMATCHED";
+  // UNMATCHED nu se generează aici: statusul înseamnă „expeditorul nu a putut fi
+  // mapat la un client" și îl decide exclusiv apelantul, când clientul este null.
   return "RECEIVED";
 }
 
@@ -544,13 +545,47 @@ const CHECKLIST_TEMPLATE: Array<{ code: string; min: number }> = [
   { code: "BON_FISCAL", min: 3 },
 ];
 
-function periodStatus(received: number, expected: number, monthIndex: number): AccountingPeriod["status"] {
-  if (monthIndex < 2) return "FINALIZED";
-  if (received === 0) return "NOT_STARTED";
-  const ratio = received / expected;
-  if (ratio >= 1) return "COMPLETE";
-  if (ratio >= 0.6) return "PARTIAL";
-  return "COLLECTING";
+/**
+ * Statusul unei perioade contabile.
+ *
+ * O perioadă este completă doar când **fiecare** document așteptat a sosit — nu
+ * când s-a atins un total. Un total poate fi atins cu documente de alt tip, iar
+ * „Documente complete" este semnalul după care se închide luna: dacă minte, se
+ * închide o lună cu documente obligatorii lipsă.
+ *
+ * Pragul de 60% care separă PARTIAL de COLLECTING este doar ergonomie de interfață.
+ * TODO — BUSINESS RULE REQUIRES ACCOUNTING VALIDATION: cine confirmă că „completă"
+ * înseamnă exact „toate tipurile din checklist au atins minimul"?
+ */
+/**
+ * Progresul unei perioade: cât din ce se aștepta a sosit efectiv.
+ * Fiecare item contribuie cel mult cu minimul cerut, deci surplusul de un tip nu
+ * maschează lipsa altuia.
+ */
+export function periodProgress(checklist: ChecklistItem[]): {
+  satisfied: number;
+  expected: number;
+} {
+  let satisfied = 0;
+  let expected = 0;
+  for (const item of checklist) {
+    satisfied += Math.min(item.receivedCount, item.expectedMinCount);
+    expected += item.expectedMinCount;
+  }
+  return { satisfied, expected };
+}
+
+export function derivePeriodStatus(
+  checklist: ChecklistItem[],
+  receivedCount: number,
+  isClosedMonth: boolean,
+): AccountingPeriod["status"] {
+  if (isClosedMonth) return "FINALIZED";
+  if (receivedCount === 0) return "NOT_STARTED";
+  if (checklist.length === 0) return "COLLECTING";
+  if (checklist.every((item) => item.isSatisfied)) return "COMPLETE";
+  const { satisfied, expected } = periodProgress(checklist);
+  return expected > 0 && satisfied / expected >= 0.6 ? "PARTIAL" : "COLLECTING";
 }
 
 export const PERIODS: AccountingPeriod[] = CLIENTS.flatMap((client) =>
@@ -569,7 +604,7 @@ export const PERIODS: AccountingPeriod[] = CLIENTS.flatMap((client) =>
         isSatisfied: receivedCount >= item.min,
       };
     });
-    const expectedCount = checklist.reduce((sum, item) => sum + item.expectedMinCount, 0);
+    const { satisfied: satisfiedCount, expected: expectedCount } = periodProgress(checklist);
     const receivedCount = clientDocs.length;
     return {
       id: `per-${client.id}-${referenceMonth}`,
@@ -578,8 +613,9 @@ export const PERIODS: AccountingPeriod[] = CLIENTS.flatMap((client) =>
       year,
       month,
       referenceMonth,
-      status: periodStatus(receivedCount, expectedCount, monthIndex),
+      status: derivePeriodStatus(checklist, receivedCount, monthIndex < 2),
       receivedCount,
+      satisfiedCount,
       expectedCount,
       checklist,
       openedAt: `${referenceMonth}-01T00:00:00+03:00`,

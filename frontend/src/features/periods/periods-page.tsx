@@ -68,7 +68,7 @@ export function PeriodsPage() {
             const ratio =
               period.expectedCount === 0
                 ? 0
-                : Math.min(period.receivedCount / period.expectedCount, 1);
+                : Math.min(period.satisfiedCount / period.expectedCount, 1);
             return (
               <Panel
                 key={period.id}
@@ -80,7 +80,7 @@ export function PeriodsPage() {
                     {formatReferenceMonth(period.referenceMonth)}
                   </span>
                   <span className="font-medium text-gray-900 dark:text-gray-100">
-                    {period.receivedCount}/{period.expectedCount} documente
+                    {period.satisfiedCount}/{period.expectedCount} documente așteptate
                   </span>
                 </div>
 
@@ -209,7 +209,7 @@ export function MissingDocumentsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-400">
-                      {period.receivedCount}/{period.expectedCount}
+                      {period.satisfiedCount}/{period.expectedCount}
                     </td>
                   </tr>
                 ))}

@@ -256,7 +256,7 @@ export function DashboardPage() {
                 const ratio =
                   period.expectedCount === 0
                     ? 0
-                    : Math.min(period.receivedCount / period.expectedCount, 1);
+                    : Math.min(period.satisfiedCount / period.expectedCount, 1);
                 return (
                   <li key={period.id}>
                     <div className="mb-1.5 flex items-center justify-between gap-3">
@@ -268,7 +268,7 @@ export function DashboardPage() {
                       </Link>
                       <div className="flex shrink-0 items-center gap-3">
                         <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {period.receivedCount}/{period.expectedCount} documente
+                          {period.satisfiedCount}/{period.expectedCount} așteptate
                         </span>
                         <PeriodStatusBadge status={period.status} />
                       </div>
