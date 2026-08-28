@@ -171,8 +171,10 @@ class TestLogin:
     def test_updates_last_login(self, api: TestClient, db: Session, admin: User) -> None:
         assert admin.last_login_at is None
         login(api, admin.email)
-        db.refresh(admin)
+        db.flush()
         assert admin.last_login_at is not None
+        # Convenția §71: timpul are întotdeauna fus orar, niciodată naiv.
+        assert admin.last_login_at.tzinfo is not None
 
     def test_rejects_a_malformed_email(self, api: TestClient) -> None:
         response = api.post("/api/v1/auth/login", json={"email": "nu-e-email", "password": "x"})

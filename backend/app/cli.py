@@ -80,7 +80,7 @@ def seed_dev() -> None:
                 continue
             user = User(
                 organization_id=organization.id,
-                email=email,
+                email=email.strip().lower(),
                 full_name=full_name,
                 password_hash=hash_password(DEV_PASSWORD),
                 # Oglindește setul sintetic din frontend: vizitatorul e dezactivat,
@@ -99,6 +99,13 @@ COMMANDS = {"sync-roles": sync_roles, "seed-dev": seed_dev}
 
 
 def main() -> None:
+    # Consola Windows este cp1252 implicit; textul aplicatiei este in romana, cu
+    # diacritice. Fara reconfigurare, un simplu print() arunca UnicodeEncodeError
+    # si — daca se intampla in interiorul unei tranzactii — o da inapoi.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     if len(sys.argv) != 2 or sys.argv[1] not in COMMANDS:
         sys.exit(f"utilizare: python -m app.cli [{' | '.join(COMMANDS)}]")
     COMMANDS[sys.argv[1]]()

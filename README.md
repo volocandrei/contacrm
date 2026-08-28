@@ -31,7 +31,7 @@ Pornește pe http://localhost:5173. Implicit rulează pe backend-ul simulat
 
 ### Backend
 
-Necesită Docker Desktop pornit.
+Are nevoie de un PostgreSQL 17. Prin Docker:
 
 ```bash
 docker compose up -d                        # postgres + redis
@@ -43,6 +43,16 @@ uv run uvicorn app.main:app --reload        # http://localhost:8000
 
 Conturile de development au parola `contacrm-dev` (`admin@contacrm.test`,
 `contabil@`, `operator@`, `verificator@`).
+
+Dacă Docker nu pornește — pe Windows ARM64 nu ridică engine-ul — un PostgreSQL
+nativ merge la fel de bine:
+
+```bash
+winget install --id PostgreSQL.PostgreSQL.17 --silent \
+  --custom "--superpassword contacrm_dev_password --serverport 5432"
+psql -U postgres -c "CREATE ROLE contacrm LOGIN PASSWORD 'contacrm_dev_password' CREATEDB;"
+psql -U postgres -c "CREATE DATABASE contacrm OWNER contacrm;"
+```
 
 Sau totul în containere:
 

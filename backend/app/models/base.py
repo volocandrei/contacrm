@@ -19,7 +19,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any, ClassVar
 
-from sqlalchemy import ForeignKey, MetaData, Numeric, func
+from sqlalchemy import DateTime, ForeignKey, MetaData, Numeric, func
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -44,6 +44,10 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
     type_annotation_map: ClassVar[dict[Any, Any]] = {
+        # Fără maparea asta `Mapped[datetime]` devine `DateTime` FĂRĂ fus orar, deși
+        # migrările creează `timestamptz`: ORM-ul ar citi datetime-uri naive, iar orice
+        # comparație cu `datetime.now(UTC)` ar arunca TypeError abia la runtime.
+        datetime: DateTime(timezone=True),
         uuid.UUID: postgresql.UUID(as_uuid=True),
         Decimal: Numeric(18, 2),
     }

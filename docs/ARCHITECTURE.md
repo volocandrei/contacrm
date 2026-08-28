@@ -28,7 +28,7 @@ Ordinea de prioritate în decizii (§104):
 | Strat | Tehnologie | Note |
 |---|---|---|
 | Backend | Python 3.13, FastAPI, Pydantic v2, SQLAlchemy 2.x, Alembic | ✅ schelet — endpoint subțire → service → repository |
-| DB | PostgreSQL 16 | `NUMERIC` pentru bani, `timestamptz` peste tot |
+| DB | PostgreSQL 17 | `NUMERIC` pentru bani, `timestamptz` peste tot |
 | Queue | Celery + Redis | fără Kafka/RabbitMQ în MVP (ADR-003) |
 | Frontend | React 19, TypeScript strict, Vite 8, Tailwind v4, shadcn/ui | ✅ implementat |
 | Dependențe Python | `uv` | Python-ul nu trebuie instalat în sistem |
