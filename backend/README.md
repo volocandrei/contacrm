@@ -88,6 +88,28 @@ când parametrii se întăresc. Un email inexistent și o parolă greșită prod
 mesaj și consumă aproximativ același timp — altfel formularul devine un instrument
 de enumerare a conturilor.
 
+## CRM (M4)
+
+| Rută | Ce face |
+|---|---|
+| `GET /clients` | listă paginată; filtre `q`, `status`, `accountantId` |
+| `GET /clients/{id}` | detaliu |
+| `GET /clients/{id}/contacts` | contactele, cel principal primul |
+| `GET /clients/{id}/notes` | notele, cea mai recentă prima |
+| `GET /tasks` | sarcinile, ordonate de făcut → gata |
+| `PATCH /tasks/{id}` | mută o sarcină; cere `tasks:write` |
+
+**Căutarea ignoră diacriticele.** „Serban" găsește „Șerbănescu", iar sortarea
+așază „Șerbănescu" la S, nu la coada alfabetului. Mecanismul: extensia `unaccent`,
+un wrapper `app_unaccent` marcat IMMUTABLE (`unaccent` însuși este STABLE, deci nu
+poate fi indexat) și un index GIN trigram peste forma normalizată a numelui, ca
+`LIKE '%...%'` să nu devină scanare secvențială. Metacaracterele `%` și `_` din
+textul căutat sunt escapate: comportamentul de referință este `includes()` din
+backendul simulat, unde ambele sunt caractere obișnuite.
+
+**Un client din altă organizație întoarce 404, nu 403** — altfel răspunsul confirmă
+că id-ul există undeva.
+
 ## Health
 
 | Rută | Întrebarea la care răspunde |

@@ -2,9 +2,9 @@
 
 CRM + ERP de document management pentru firme de contabilitate.
 
-> Status: **M1 (frontend), M2 (schelet backend) și M3 (autentificare) implementate.**
-> CRM, documente și procesare sunt proiectate aici, dar încă neimplementate.
-> Vezi [Roadmap](#roadmap--milestones).
+> Status: **M1 (frontend), M2 (schelet backend), M3 (autentificare) și M4 (CRM)
+> implementate.** Documentele și procesarea sunt proiectate aici, dar încă
+> neimplementate. Vezi [Roadmap](#roadmap--milestones).
 
 ---
 
@@ -50,11 +50,11 @@ CONTACRM/
 │   ├── app/
 │   │   ├── api/v1/            # ✅ routere subțiri, fără business logic + router.py
 │   │   ├── core/              # ✅ config, logging, errors, db, middleware
-│   │   ├── models/            # ✅ organization, user/role/permission, refresh_token, audit_log
+│   │   ├── models/            # ✅ organization, user, audit, client/contact/note/tag, task
 │   │   ├── schemas/           # ✅ ApiModel, Paginated, PageParams
-│   │   ├── repositories/      # ✅ user.py — filtrarea pe organization_id trăiește aici
-│   │   ├── services/          # ✅ auth.py, audit.py                        (M4+ restul)
-│   │   ├── domain/            # ✅ permissions.py — harta rol → permisiuni
+│   │   ├── repositories/      # ✅ user, client, task — filtrarea pe organization_id
+│   │   ├── services/          # ✅ auth.py, audit.py                        (M5+ restul)
+│   │   ├── domain/            # ✅ permissions.py, enums.py
 │   │   ├── integrations/      # ⏳ graph/, whatsapp/, ocr/, storage/     (M5, Faza 2)
 │   │   └── workers/           # ⏳ taskuri Celery                            (M6)
 │   ├── alembic/versions/      # ✅
@@ -211,7 +211,7 @@ Praguri (configurabile în `system_settings`, valori inițiale propuse):
 | **M1.5** | Ecrane complete pe backend simulat (`api/mock`), cu aceleași rute ca API-ul real | ✅ |
 | **M2** | Backend skeleton: FastAPI, settings, Postgres, Alembic, health, error handling, logging structurat | ✅ |
 | **M3** | Auth: users/roles/permissions, JWT + refresh rotativ, Argon2id, RBAC, audit log | ✅ |
-| **M4** | CRM: clients, contacts, tags, note + UI listă/detaliu | ⏳ urmează |
+| **M4** | CRM: clients, contacts, tags, note, tasks | ✅ |
 | **M5** | Documents: upload, StorageProvider, SHA-256, duplicate detection, FilenameGenerator, StoragePathService, preview securizat |  |
 | **M6** | Processing: Celery+Redis, MockOCRProvider, clasificare, schema de extracție Pydantic, confidence, review UI |  |
 | **M7** | Accounting periods + checklist + dashboard KPI + audit UI |  |

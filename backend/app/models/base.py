@@ -17,14 +17,40 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Annotated, Any, ClassVar
 
-from sqlalchemy import DateTime, ForeignKey, MetaData, Numeric, func
+from sqlalchemy import DateTime, Dialect, ForeignKey, MetaData, Numeric, String, TypeDecorator, func
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+
 # Convenție de denumire explicită: fără ea, Alembic generează nume de constrângeri
 # diferite de la o rulare la alta și migrările devin imposibil de dat înapoi.
+class EnumString(TypeDecorator[Any]):
+    """Stochează un `StrEnum` ca text și îl întoarce tot ca membru al enum-ului.
+
+    Fără asta, `Mapped[TaskStatus]` peste o coloană `String` este doar o adnotare:
+    la citirea din baza de date atributul e un `str` obișnuit, deci
+    `task.status is TaskStatus.DONE` e tăcut fals și `.value` aruncă AttributeError.
+    Coloana rămâne VARCHAR — nu folosim un tip ENUM nativ, care ar cere o migrare
+    pentru fiecare valoare nouă.
+    """
+
+    impl = String
+    cache_ok = True
+
+    def __init__(self, enum_cls: type[StrEnum], length: int = 32) -> None:
+        self.enum_cls = enum_cls
+        super().__init__(length)
+
+    def process_bind_param(self, value: Any, dialect: Dialect) -> str | None:
+        return None if value is None else str(value)
+
+    def process_result_value(self, value: Any, dialect: Dialect) -> Any:
+        return None if value is None else self.enum_cls(value)
+
+
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_N_label)s",
     "uq": "uq_%(table_name)s_%(column_0_N_name)s",

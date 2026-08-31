@@ -21,7 +21,9 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     id: Mapped[uuid_pk]
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # CUI-ul firmei de contabilitate. Unic doar când există.
-    tax_id: Mapped[str | None] = mapped_column(String(32), unique=True, default=None)
+    # Unicitatea este un index parțial (vezi migrarea): se aplică doar rândurilor
+    # neșterse, ca o organizație ștearsă să nu blocheze reînregistrarea aceluiași CUI.
+    tax_id: Mapped[str | None] = mapped_column(String(32), default=None)
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     def __repr__(self) -> str:

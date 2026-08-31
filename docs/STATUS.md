@@ -1,6 +1,6 @@
 # STATUS — ContaCRM
 
-Starea proiectului la **28.08.2026**. Documentul acesta răspunde la trei întrebări:
+Starea proiectului la **31.08.2026**. Documentul acesta răspunde la trei întrebări:
 cum pornești pe o mașină nouă, ce este construit și ce urmează.
 
 Pentru arhitectură, schema de bază de date și registrul de riscuri, vezi
@@ -69,8 +69,9 @@ VITE_API_MODE=http
 VITE_API_BASE_URL=http://localhost:8000/api/v1
 ```
 
-> Atenție: în modul `http`, doar autentificarea și `/users` există în backend.
-> Restul ecranelor vor da 404 până la M4–M8.
+> Atenție: în modul `http` funcționează autentificarea, administrarea
+> utilizatorilor și CRM-ul (clienți, contacte, note, sarcini). Ecranele de
+> documente, perioade și rapoarte vor da 404 până la M5–M7.
 
 ### Verificări
 
@@ -96,13 +97,12 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  7.909 linii sursă +   411 linii teste   → 38 teste
-backend   2.180 linii sursă +   925 linii teste   → 67 teste
-migrări     342 linii
-docs        653 linii
+frontend  7.909 linii sursă +   411 linii teste   →  38 teste
+backend   3.140 linii sursă + 1.722 linii teste   → 123 teste
+migrări     548 linii
 ```
 
-Toate verificările trec: **105 teste**, lint curat, `mypy --strict` curat, build curat.
+Toate verificările trec: **161 teste**, lint curat, `mypy --strict` curat, build curat.
 
 ### Frontend — complet, pe backend simulat ✅
 
@@ -130,7 +130,7 @@ Alte lucruri gata: temă light/dark persistată, filtre în URL (o listă filtra
 poate trimite unui coleg), sidebar colapsabil cu contoare live, accesibilitate
 consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 
-### Backend — M2 + M3 ✅
+### Backend — M2 + M3 + M4 ✅
 
 **M2 — schelet**
 - FastAPI cu fabrică `create_app()`, fără efecte secundare la import
@@ -161,12 +161,27 @@ consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 - `audit_logs` append-only prin convenție; ștergerea unui utilizator nu șterge
   urma acțiunilor lui (FK `SET NULL`).
 
-Rute reale existente: `POST /auth/login`, `/auth/refresh`, `/auth/logout`,
-`GET /me`, `GET /users`, plus `/health/{live,ready,info}`.
+**M4 — CRM**
+- `GET /clients` (paginat, filtre `q`/`status`/`accountantId`), `/clients/{id}`,
+  `/clients/{id}/contacts`, `/clients/{id}/notes`, `GET /tasks`, `PATCH /tasks/{id}`
+- Căutare și sortare insensibile la diacritice, prin `unaccent` + un wrapper
+  IMMUTABLE și un index GIN trigram. Metacaracterele LIKE din input sunt escapate.
+- Ștergere logică peste tot; unicitatea CUI-ului este un index **parțial**, ca un
+  client șters să nu blocheze reînregistrarea aceleiași firme.
+- Invariant în baza de date: o sarcină este `DONE` dacă și numai dacă are
+  `completed_at`.
+
+**Testele rulează acum pe migrări, nu pe `create_all`.** Baza de test se
+construiește cu `alembic upgrade head`, deci extensiile, funcțiile, constrângerile
+`CHECK` și indexurile parțiale — care există doar în migrări — sunt prezente și
+exercitate. Un test compară modelele cu schema migrată și cade la primul derapaj.
+
+Rute reale existente: 14 endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
+health ×3).
 
 ### Verificat pe date reale, nu doar în teste
 
-- Ambele migrări se aplică **și se dau înapoi** curat (`downgrade base` → `upgrade head`)
+- Toate cele trei migrări se aplică **și se dau înapoi** curat
 - Flux HTTP complet: parolă greșită → 401, login → `CurrentUser`, cookie-uri
   `HttpOnly`, `/me`, `/users` ca ADMIN, refresh, logout, `/me` după logout → 401
 - În baza de date: audit cu `ip` și `request_id`, `timestamptz` cu offset,
@@ -186,6 +201,9 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 | `EmailStr` respingea toate conturile `.test` + făcea DNS la fiecare login | **rulând testele pe DB reală** |
 | `Mapped[datetime]` se mapa fără fus orar, deși coloanele sunt `timestamptz` | **rulând testele pe DB reală** |
 | CLI-ul crăpa pe consolă cp1252 și dădea înapoi tranzacția | **rulând CLI-ul** |
+| `%` din căutare era tratat ca joker LIKE, nu ca text | test scris din contractul mock-ului |
+| Constrângerile `CHECK` existau doar în migrări, nu în modele | testul de derapaj modele↔migrări |
+| `Mapped[TaskStatus]` întorcea `str` din baza de date, nu enum-ul | **rulând serverul real** |
 
 ---
 
@@ -193,18 +211,20 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 
 ### Golul concret
 
-Frontend-ul consumă **29 de rute**. Backendul real implementează **4** dintre ele
-(plus `/auth/refresh` și health). **Rămân 25.**
+Frontend-ul consumă **29 de rute**. Backendul real implementează **10** dintre ele
+(plus `/auth/refresh` și health). **Rămân 19.**
 
 | Rută | Milestone |
 |---|---|
 | `GET /dashboard`, `GET /dashboard/counts` | M7 |
-| `GET /clients`, `/clients/:id`, `/clients/:id/{contacts,notes,periods,messages}` | **M4** |
+| ~~`GET /clients`, `/clients/:id`, `/clients/:id/{contacts,notes}`~~ | ✅ M4 |
+| `GET /clients/:id/periods` | M7 |
+| `GET /clients/:id/messages` | Faza 2 |
 | `GET /documents`, `/documents/:id`, `PATCH /documents/:id` | M5 |
 | `GET /documents/next-review`, `POST /documents/:id/{assign-client,approve,reject,duplicate,reprocess}`, `POST /documents/bulk` | M6 |
 | `GET /document-types` | M5 |
 | `GET /periods`, `GET /periods/missing` | M7 |
-| `GET /tasks`, `PATCH /tasks/:id` | M4 |
+| ~~`GET /tasks`, `PATCH /tasks/:id`~~ | ✅ M4 |
 | `GET /messages` | Faza 2 |
 | `GET /audit-logs` | M3 (ecran) / M7 |
 
@@ -222,8 +242,8 @@ ci portat.**
 | M1.5 | Toate ecranele pe backend simulat | ✅ |
 | M2 | Schelet backend | ✅ |
 | M3 | Auth, RBAC, audit | ✅ |
-| **M4** | **CRM: clients, contacts, notes, tags, tasks** | ⏳ **urmează** |
-| M5 | Documents: upload, StorageProvider, SHA-256, duplicate, FilenameGenerator, preview securizat | |
+| M4 | CRM: clients, contacts, notes, tags, tasks | ✅ |
+| **M5** | **Documents: upload, StorageProvider, SHA-256, duplicate, FilenameGenerator, preview securizat** | ⏳ **urmează** |
 | M6 | Processing: Celery + Redis, MockOCRProvider, clasificare, extracție, confidence, review | |
 | M7 | Perioade + checklist + dashboard KPI + ecran audit | |
 | M8 | Notificări, teste E2E, CI | |
@@ -232,20 +252,24 @@ ci portat.**
 
 **MVP = M1–M8.**
 
-### De ce M4 este următorul și e ușor
+### De ce M5 este următorul
 
-Ecranele de clienți sunt complete și funcționale pe date sintetice. De portat:
+Ecranul de verificare — piesa centrală a produsului — este complet pe date
+sintetice, deci contractul e definit până la ultimul câmp. De construit:
 
-1. Modele `Client`, `Contact`, `ClientNote`, `Tag`, `Task` — schema e deja în
-   [ARCHITECTURE.md §4](ARCHITECTURE.md)
-2. `ClientRepository` cu filtrare pe `organization_id` (tiparul există în
-   `repositories/user.py`)
-3. Rutele de mai sus, cu `Paginated` și `require_permission` — ambele există
-4. Migrare + teste, după tiparul din `tests/test_auth_api.py`
+1. `Document` + `DocumentField` cu proveniență (`AI`/`OCR`/`MANUAL`/`EMPTY`) și
+   scor de încredere per câmp
+2. Upload cu limită de dimensiune și listă albă de MIME, hash SHA-256 pentru
+   detecția duplicatelor (§13)
+3. `StorageProvider` (ADR-004) cu implementare locală, plus
+   `FilenameGeneratorService` — regulile există deja testate în
+   `frontend/src/lib/filename.ts`, care trebuie **portat identic** în Python
+4. Preview autorizat: `<img>`/`<object>` nu trimit antetul `Authorization`, deci
+   endpointul trebuie să accepte cookie de sesiune. Decizia se ia aici.
 
-Un lucru de dus mai departe din `store.ts`: căutarea normalizează diacriticele
-(`normalize("NFD")`), deci „Serban" găsește „Șerban". În Postgres asta înseamnă
-`unaccent` sau o coloană generată — merită decis la M4.
+Cea mai mare capcană: numele venit de la expeditor nu are voie să ajungă
+nemodificat într-o cale de filesystem (R3, R7). Testele din `filename.test.ts`
+sunt specificația executabilă — aceleași cazuri trebuie să treacă în Python.
 
 ---
 

@@ -16,13 +16,16 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
+from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
+from alembic import command
 from app.core.config import settings
 from app.main import create_app
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 CONNECT_TIMEOUT = 3
@@ -31,6 +34,14 @@ CONNECT_TIMEOUT = 3
 def _test_database_url() -> URL:
     url = make_url(settings.database_url)
     return url.set(database=f"{url.database}_test")
+
+
+def run_migrations(url: URL) -> None:
+    """`alembic upgrade head` pe baza dată."""
+    config = Config(str(BACKEND_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
+    config.set_main_option("sqlalchemy.url", url.render_as_string(hide_password=False))
+    command.upgrade(config, "head")
 
 
 def _server_reachable() -> bool:
@@ -58,8 +69,6 @@ def db_engine() -> Iterator[sa.Engine]:
     if not DB_AVAILABLE:  # pragma: no cover — sărit prin marker
         pytest.skip("PostgreSQL indisponibil")
 
-    from app.models import Base  # importul înregistrează toate tabelele
-
     target = _test_database_url()
     admin = sa.create_engine(
         make_url(settings.database_url).set(database="postgres"),
@@ -71,11 +80,12 @@ def db_engine() -> Iterator[sa.Engine]:
         connection.execute(sa.text(f'CREATE DATABASE "{target.database}"'))
     admin.dispose()
 
-    engine = sa.create_engine(target, poolclass=sa.pool.NullPool)
-    with engine.begin() as connection:
-        connection.execute(sa.text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
-    Base.metadata.create_all(engine)
+    # Schema se construiește **rulând migrările**, nu din metadata ORM: altfel
+    # extensiile, funcțiile, constrângerile CHECK și indexurile parțiale definite
+    # doar în migrări ar lipsi din teste, iar migrările n-ar fi exercitate niciodată.
+    run_migrations(target)
 
+    engine = sa.create_engine(target, poolclass=sa.pool.NullPool)
     yield engine
 
     engine.dispose()

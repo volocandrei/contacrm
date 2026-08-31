@@ -8,20 +8,40 @@ from __future__ import annotations
 
 from app.models.audit import AuditLog
 from app.models.base import Base
+from app.models.client import Client, ClientNote, Contact, Tag, client_tags
 from app.models.organization import Organization
+from app.models.task import Task
 from app.models.user import Permission, RefreshToken, Role, User, role_permissions, user_roles
 
-ALL_MODELS = (Organization, User, Role, Permission, RefreshToken, AuditLog)
+ALL_MODELS = (
+    Organization,
+    User,
+    Role,
+    Permission,
+    RefreshToken,
+    AuditLog,
+    Client,
+    Contact,
+    ClientNote,
+    Tag,
+    Task,
+)
 
 __all__ = [
     "ALL_MODELS",
     "AuditLog",
     "Base",
+    "Client",
+    "ClientNote",
+    "Contact",
     "Organization",
     "Permission",
     "RefreshToken",
     "Role",
+    "Tag",
+    "Task",
     "User",
+    "client_tags",
     "role_permissions",
     "user_roles",
 ]

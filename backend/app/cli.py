@@ -13,18 +13,34 @@ dar pornesc de la harta din cod.
 from __future__ import annotations
 
 import sys
+from datetime import date
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.db import session_scope
 from app.core.security import hash_password
+from app.domain.enums import ClientStatus, TaskPriority, TaskStatus
 from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS
 from app.domain.permissions import Permission as PermissionCode
+from app.models.client import Client, ClientNote, Contact, Tag
 from app.models.organization import Organization
+from app.models.task import Task
 from app.models.user import Permission, Role, User
 
 DEV_PASSWORD = "contacrm-dev"
+
+# Toate denumirile, CUI-urile și adresele sunt inventate. „Șerbănescu" există
+# intenționat: verifică vizual că sortarea și căutarea ignoră diacriticele.
+DEV_CLIENTS = [
+    ("Alfa Conta SRL", "RO10000101", ClientStatus.ACTIVE, "prioritar"),
+    ("Beta Service SRL", "RO10000102", ClientStatus.ACTIVE, None),
+    ("Șerbănescu Impex SRL", "RO10000103", ClientStatus.ACTIVE, "prioritar"),
+    ("Delta Prod SRL", "RO10000104", ClientStatus.ACTIVE, None),
+    ("Gama Distribuție SRL", "RO10000105", ClientStatus.PROSPECT, None),
+    ("Epsilon Trans SRL", "RO10000106", ClientStatus.INACTIVE, None),
+]
 
 DEV_USERS = [
     ("Ioana Marinescu", "admin@contacrm.test", "ADMIN"),
@@ -91,8 +107,94 @@ def seed_dev() -> None:
             session.add(user)
             created += 1
 
+        session.flush()
+        clients_created = _seed_crm(session, organization)
+
         print(f"organizație: {organization.name}")
         print(f"utilizatori creați: {created} (parolă: {DEV_PASSWORD})")
+        print(f"clienți creați: {clients_created}")
+
+
+def _seed_crm(session: Session, organization: Organization) -> int:
+    """Clienți, contacte, note și sarcini, ca ecranele să aibă ce afișa.
+
+    Idempotentă: rulată de două ori nu dublează nimic.
+    """
+    if session.scalars(select(Client).where(Client.organization_id == organization.id)).first():
+        return 0
+
+    accountant = session.scalars(select(User).where(User.email == "contabil@contacrm.test")).first()
+
+    tags: dict[str, Tag] = {}
+    for _, _, _, tag_name in DEV_CLIENTS:
+        if tag_name and tag_name not in tags:
+            tag = Tag(organization_id=organization.id, name=tag_name)
+            session.add(tag)
+            tags[tag_name] = tag
+    session.flush()
+
+    created = 0
+    for index, (name, tax_id, status, tag_name) in enumerate(DEV_CLIENTS):
+        client = Client(
+            organization_id=organization.id,
+            name=name,
+            tax_id=tax_id,
+            registration_number=f"J40/{1000 + index}/2020",
+            address=f"Str. Sintetică {index + 1}, București",
+            status=status,
+            assigned_accountant_id=accountant.id if accountant else None,
+            tags=[tags[tag_name]] if tag_name else [],
+        )
+        session.add(client)
+        session.flush()
+        created += 1
+
+        session.add(
+            Contact(
+                client_id=client.id,
+                full_name=f"Persoană Contact {index + 1}",
+                role="Administrator",
+                email=f"contact{index + 1}@exemplu.test",
+                phone=f"+40700000{index:03d}",
+                is_primary=True,
+            )
+        )
+        session.add(
+            ClientNote(
+                client_id=client.id,
+                author_name=accountant.full_name if accountant else "Sistem",
+                author_id=accountant.id if accountant else None,
+                body=f"Notă inițială pentru {name}. Date sintetice, fără valoare reală.",
+            )
+        )
+
+    session.add_all(
+        [
+            Task(
+                organization_id=organization.id,
+                title="Verifică documentele lipsă pentru august",
+                description="Extras de cont și bonuri fiscale.",
+                priority=TaskPriority.HIGH,
+                status=TaskStatus.TODO,
+                due_date=date(2026, 9, 15),
+                assigned_to_id=accountant.id if accountant else None,
+            ),
+            Task(
+                organization_id=organization.id,
+                title="Actualizează șabloanele de reminder",
+                priority=TaskPriority.NORMAL,
+                status=TaskStatus.IN_PROGRESS,
+            ),
+            Task(
+                organization_id=organization.id,
+                title="Confirmă regula de perioadă de referință",
+                description="TODO — BUSINESS RULE REQUIRES ACCOUNTING VALIDATION.",
+                priority=TaskPriority.URGENT,
+                status=TaskStatus.BLOCKED,
+            ),
+        ]
+    )
+    return created
 
 
 COMMANDS = {"sync-roles": sync_roles, "seed-dev": seed_dev}

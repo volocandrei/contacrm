@@ -18,8 +18,9 @@ review uman → standardizare → arhivare → dashboard/audit.
 | Backend simulat în browser (`api/mock`), cu aceleași rute ca API-ul real | ✅ |
 | Backend M2: FastAPI, settings, logging structurat, erori, health, Alembic | ✅ `backend/` |
 | Backend M3: auth JWT + refresh rotativ, Argon2id, RBAC, audit log | ✅ `backend/app/services/auth.py` |
+| Backend M4: CRM — clienți, contacte, note, etichete, sarcini | ✅ `backend/app/api/v1/clients.py` |
 | Infrastructură dev: PostgreSQL + Redis + API prin Docker | ✅ `docker-compose.yml` |
-| CRM, documente, procesare (M4–M6) | ⏳ urmează |
+| Documente, procesare (M5–M6) | ⏳ urmează |
 
 ## Rulare
 

@@ -14,7 +14,14 @@ from sqlalchemy import Boolean, Column, ForeignKey, Index, String, Table, Unique
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.permissions import RoleCode
-from app.models.base import Base, OrganizationMixin, SoftDeleteMixin, TimestampMixin, uuid_pk
+from app.models.base import (
+    Base,
+    EnumString,
+    OrganizationMixin,
+    SoftDeleteMixin,
+    TimestampMixin,
+    uuid_pk,
+)
 
 role_permissions = Table(
     "role_permissions",
@@ -46,7 +53,7 @@ class Role(Base, TimestampMixin):
     __tablename__ = "roles"
 
     id: Mapped[uuid_pk]
-    code: Mapped[RoleCode] = mapped_column(String(32), unique=True, nullable=False)
+    code: Mapped[RoleCode] = mapped_column(EnumString(RoleCode, 32), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
 
     permissions: Mapped[list[Permission]] = relationship(

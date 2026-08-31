@@ -16,7 +16,11 @@ from app.models import ALL_MODELS  # noqa: F401 — importul înregistrează tab
 from app.models.base import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+
+# Un URL setat programatic (testele, care rulează pe baza lor) are prioritate;
+# altfel folosim configurarea aplicației. `alembic.ini` îl lasă gol intenționat.
+DATABASE_URL = config.get_main_option("sqlalchemy.url", "") or settings.database_url
+config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -26,7 +30,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=settings.database_url,
+        url=DATABASE_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
