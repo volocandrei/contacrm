@@ -9,6 +9,7 @@ Nimic din răspunsuri nu conține `storage_key` sau vreo cale de filesystem (§7
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import (
@@ -60,6 +61,7 @@ from app.services.document_processing import DocumentProcessingService
 from app.services.document_service import ActorContext, DocumentService, approval_blockers
 from app.services.document_upload import DocumentUploadService
 from app.services.files import FileValidationError
+from app.services.processing_queue import enqueue as enqueue_processing
 from app.services.processing_runner import build_extractor, run_processing
 from app.services.storage import ObjectNotFoundError
 
@@ -74,6 +76,10 @@ DocumentApprover = Annotated[User, require_permission(Permission.DOCUMENTS_APPRO
 # Câte caractere din textul OCR ajung în ecranul de verificare. Textul complet nu
 # se trimite niciodată la deschiderea unui document (§64).
 OCR_PREVIEW_CHARS = 600
+
+# Peste acest prag, un job rămas `RUNNING` aparține unui proces care a murit;
+# o cerere nouă de reprocesare îl readuce în coadă.
+STALE_AFTER = timedelta(minutes=settings.processing_stale_after_minutes)
 
 
 # ── Corpuri de cerere ────────────────────────────────────────────────────────
@@ -331,13 +337,21 @@ def upload_document(
     # OCR-ul nu se face în cerere (§38): pornește după ce răspunsul a plecat.
     # Un duplicat nu se procesează — conținutul lui este deja cunoscut.
     if not result.is_duplicate:
-        # Commit **înainte** de a programa procesarea. Altfel workerul pornește pe o
-        # tranzacție încă necomisă și nu găsește documentul — cursa clasică
-        # „enqueue înainte de commit". Varianta complet corectă este un outbox
-        # tranzacțional; până la coada persistentă (M6), commit-ul explicit aici
-        # este suficient și onest: în acest punct upload-ul chiar s-a terminat.
+        # Cererea de procesare se scrie în aceeași tranzacție cu documentul (§38):
+        # ori se comit amândouă, ori niciunul. Fără outbox, un proces care cade
+        # între commit și pornirea taskului ar lăsa documentul tăcut în `RECEIVED`.
+        job = enqueue_processing(session, document, stale_after=STALE_AFTER)
+        # Commit înainte de a porni taskul: acesta lucrează pe propria sesiune și
+        # trebuie să vadă rândurile. Dacă moare oricum, jobul rămâne `PENDING` și
+        # `app.cli recover-processing` îl reia.
         session.commit()
-        background.add_task(run_processing, user.organization_id, document.id, storage)
+        background.add_task(
+            run_processing,
+            user.organization_id,
+            document.id,
+            storage,
+            idempotency_key=job.idempotency_key,
+        )
     return detail
 
 
@@ -562,8 +576,9 @@ def reprocess_document(
     DocumentService(session).begin_reprocessing(
         user.organization_id, document_id, _actor(user, request)
     )
+    job = enqueue_processing(session, document, stale_after=STALE_AFTER)
 
-    # Ca la upload: starea și intrarea de audit trebuie să fie vizibile workerului.
+    # Ca la upload: starea și jobul trebuie să fie vizibile workerului.
     session.commit()
 
     background.add_task(
@@ -571,6 +586,7 @@ def reprocess_document(
         user.organization_id,
         document_id,
         storage,
+        idempotency_key=job.idempotency_key,
         triggered_by=user.id,
     )
     return _detail(session, user, document_id)

@@ -229,7 +229,30 @@ def _seed_crm(session: Session, organization: Organization) -> int:
     return created
 
 
-COMMANDS = {"sync-roles": sync_roles, "seed-dev": seed_dev}
+def recover_processing() -> None:
+    """Reia cererile de procesare rămase pe drum (§43).
+
+    Outbox-ul garantează că o cerere nu se pierde; comanda asta este partea a doua:
+    dacă procesul care trebuia s-o execute a murit, cererea se repune în coadă.
+
+    De rulat după o cădere sau o repornire. Când vine coada persistentă (M6),
+    aceeași funcție rulează periodic în worker, fără să mai fie chemată de mână.
+    """
+    from app.services.processing_recovery import recover
+    from app.services.storage.local import build_storage_provider
+
+    report = recover(build_storage_provider(settings.storage_path))
+    if report.nothing_to_do:
+        print("Nicio cerere de procesare abandonată.")
+    else:
+        print(f"Repuse în coadă: {report.requeued}. Rulate acum: {report.ran}.")
+
+
+COMMANDS = {
+    "sync-roles": sync_roles,
+    "seed-dev": seed_dev,
+    "recover-processing": recover_processing,
+}
 
 
 def main() -> None:

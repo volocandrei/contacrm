@@ -170,12 +170,20 @@ function reachable(from: DocumentStatus, to: DocumentStatus): boolean {
   return from !== to && ALLOWED_TRANSITIONS[from].includes(to);
 }
 
+/**
+ * Un document arhivat nu se mai corectează pe loc: numele din arhivă codifică data,
+ * tipul, clientul, seria și numărul (§10). Oglinda lui `is_editable`.
+ */
+function isEditable(status: DocumentStatus): boolean {
+  return status !== "ARCHIVED";
+}
+
 /** Oglinda lui `app/domain/document_actions.py`. */
 function availableActionsFor(doc: StoredDocument): DocumentAction[] {
   const has = (permission: Permission) => currentUser.permissions.includes(permission);
   const actions: DocumentAction[] = [];
 
-  if (has("documents:write")) actions.push("edit", "assignClient");
+  if (has("documents:write") && isEditable(doc.status)) actions.push("edit", "assignClient");
   if (has("documents:approve") && reachable(doc.status, "APPROVED")) actions.push("approve");
   if (has("documents:approve") && reachable(doc.status, "REJECTED")) actions.push("reject");
   if (has("documents:write") && reachable(doc.status, "DUPLICATE")) actions.push("markDuplicate");
@@ -439,9 +447,22 @@ export function nextReviewDocument(afterId?: string): DocumentDetail | null {
 
 export type FieldUpdate = { field: DocumentFieldName; value: string | null };
 
+/** Oglinda lui `DocumentService._assert_editable`. */
+function requireEditable(doc: StoredDocument) {
+  if (!isEditable(doc.status)) {
+    throw new ApiError(
+      "CONFLICT",
+      `Documentul este ${doc.status} și nu mai poate fi modificat direct. ` +
+        "Cere o reprocesare dacă datele trebuie corectate.",
+      409,
+    );
+  }
+}
+
 export function updateDocumentFields(id: string, updates: FieldUpdate[]): StoredDocument {
   requirePermission("documents:write");
   const doc = getDocument(id);
+  requireEditable(doc);
   for (const { field, value } of updates) {
     const previous = doc.fields[field];
     if (previous.value === value) continue;
@@ -477,6 +498,7 @@ function syncDocumentSummary(doc: StoredDocument) {
 export function assignClient(id: string, clientId: string): StoredDocument {
   requirePermission("documents:write");
   const doc = getDocument(id);
+  requireEditable(doc);
   const client = getClient(clientId);
   doc.clientId = client.id;
   doc.clientName = client.name;
@@ -808,16 +830,22 @@ export function getDashboard(): DashboardData {
     attention: attention.slice(0, 8),
     recentDocuments: docs.slice(0, 8).map(toListItem),
     periods: currentPeriods.slice(0, 6),
-    timeline: state.audit.slice(0, 6).map((entry) => ({
-      id: entry.id,
-      occurredAt: entry.at,
-      kind: entry.action.startsWith("EMAIL") || entry.action.startsWith("WHATSAPP")
-        ? ("NOTIFICATION_SENT" as const)
-        : entry.action.includes("APPROVED")
-          ? ("PROCESSED" as const)
-          : ("MESSAGE" as const),
-      description: `${entry.userName}: ${entry.action}${entry.detail ? ` — ${entry.detail}` : ""}`,
-    })),
+    // Doar ce s-a întâmplat cu documentele: panoul principal este despre fluxul
+    // de documente, nu despre autentificări.
+    timeline: state.audit
+      .filter((entry) => entry.entityType === "Document")
+      .slice(0, 6)
+      .map((entry) => ({
+        id: entry.id,
+        occurredAt: entry.at,
+        kind:
+          entry.action.startsWith("EMAIL") || entry.action.startsWith("WHATSAPP")
+            ? ("NOTIFICATION_SENT" as const)
+            : entry.action.includes("APPROVED") || entry.action.includes("ARCHIVED")
+              ? ("PROCESSED" as const)
+              : ("MESSAGE" as const),
+        description: `${entry.userName}: ${entry.action}${entry.detail ? ` — ${entry.detail}` : ""}`,
+      })),
   };
 }
 

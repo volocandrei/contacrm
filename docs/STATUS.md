@@ -105,12 +105,12 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  8.549 linii sursă +   653 linii teste   →  55 teste
-backend   7.959 linii sursă + 6.133 linii teste   → 505 teste
-migrări   1.144 linii
+frontend  8.577 linii sursă +   653 linii teste   →  55 teste
+backend   8.742 linii sursă + 6.834 linii teste   → 536 teste
+migrări   1.229 linii
 ```
 
-Toate verificările trec: **560 de teste**, lint curat, `mypy --strict` curat, build curat.
+Toate verificările trec: **591 de teste**, lint curat, `mypy --strict` curat, build curat.
 
 ### Frontend — complet, pe backend simulat ✅
 
@@ -138,7 +138,7 @@ Alte lucruri gata: temă light/dark persistată, filtre în URL (o listă filtra
 poate trimite unui coleg), sidebar colapsabil cu contoare live, accesibilitate
 consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 
-### Backend — M2 + M3 + M4 + M5.1–M5.7 ✅
+### Backend — M2 + M3 + M4 + M5.1–M5.7 ✅ (plus întărirea din M5.8)
 
 **M2 — schelet**
 - FastAPI cu fabrică `create_app()`, fără efecte secundare la import
@@ -239,12 +239,39 @@ exercitate. Un test compară modelele cu schema migrată și cade la primul dera
   `archived_has_filename` cere acum tot ce înseamnă „arhivat": moment, nume, cale
   și cheie.
 
-Rute reale existente: 27 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
-documente ×12, `/dashboard/counts`, health ×3).
+**Întărire (prima parte din M5.8)** — cele trei probleme rămase la M5.7, rezolvate:
+
+- **Cererea de procesare nu se mai poate pierde.** `document_processing_jobs` este
+  acum un **outbox tranzacțional**: rândul `PENDING` se scrie în aceeași tranzacție
+  cu documentul, deci ori se comit amândouă, ori niciunul. Cine execută doar
+  revendică rândul (`PENDING → RUNNING` sub `FOR UPDATE`), deci doi executanți nu
+  pot lua aceeași cerere. Ce rămâne pe drum se reia cu
+  `python -m app.cli recover-processing`, iar documentele înțepenite apar pe panoul
+  principal ca „Procesare întreruptă" — singurul mod în care o cădere de proces
+  devine vizibilă cuiva. O cerere nouă de reprocesare readuce în coadă un job
+  `RUNNING` rămas de la un proces mort, deci butonul deblochează și el.
+- **Un document arhivat nu se mai editează pe loc.** Numele din arhivă codifică
+  data, tipul, clientul, seria și numărul (§10): o corectură făcută direct l-ar
+  lăsa să mintă despre conținut. Garda stă **în serviciu**, nu doar în lista de
+  acțiuni. Drumul corect rămâne deschis și lasă urmă: reprocesare, corectură,
+  aprobare din nou.
+- **`GET /dashboard`** răspunde cu tot ce poate ști M5: indicatori pe documente și
+  clienți, „necesită atenție", documente recente și cronologia din jurnalul de
+  audit. `periods` este listă goală pentru că sistemul chiar nu are perioade — M6
+  le umple.
+
+Un al patrulea defect, găsit scriind testele de mai sus: **jurnalul de audit nu se
+putea ordona**. `now()` întoarce în Postgres momentul de început al *tranzacției*,
+deci toate intrările scrise într-o cerere aveau exact aceeași valoare, iar
+istoricul unui document putea arăta arhivarea înaintea încărcării.
+`clock_timestamp()` este ceasul real, evaluat la fiecare rând.
+
+Rute reale existente: 28 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
+documente ×12, `/dashboard` ×2, health ×3).
 
 ### Verificat pe date reale, nu doar în teste
 
-- Toate cele șase migrări se aplică **și se dau înapoi** curat
+- Toate cele opt migrări se aplică **și se dau înapoi** curat
 - Flux HTTP complet: parolă greșită → 401, login → `CurrentUser`, cookie-uri
   `HttpOnly`, `/me`, `/users` ca ADMIN, refresh, logout, `/me` după logout → 401
 - În baza de date: audit cu `ip` și `request_id`, `timestamptz` cu offset,
@@ -292,8 +319,8 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 
 ### Golul concret
 
-Frontend-ul consumă **31 de rute**. Backendul real implementează **24** dintre ele
-(plus `/auth/refresh` și health). **Rămân 7.**
+Frontend-ul consumă **31 de rute**. Backendul real implementează **25** dintre ele
+(plus `/auth/refresh` și health). **Rămân 6.**
 
 | Rută | Milestone |
 |---|---|
@@ -303,8 +330,8 @@ Frontend-ul consumă **31 de rute**. Backendul real implementează **24** dintre
 | ~~`/documents/:id/{preview,download}`~~ | ✅ M5.4 |
 | ~~`POST /documents/:id/{assign-client,approve,reject,duplicate,reprocess}`~~ | ✅ M5.3–M5.5 |
 | ~~`GET /documents/next-review`, `GET /dashboard/counts`~~ | ✅ M5.6 |
+| ~~`GET /dashboard`~~ | ✅ parțial — fără perioade, care vin la M6 |
 | `POST /documents/bulk` | M6 (ecranul de listă) |
-| `GET /dashboard` | M6 |
 | `GET /periods`, `GET /periods/missing`, `GET /clients/:id/periods` | M6 |
 | `GET /audit-logs` | M6 (ecran) |
 | `GET /messages`, `GET /clients/:id/messages` | Faza 2 |
@@ -374,8 +401,6 @@ Niciuna nu blochează M5.7.
 | `client_ip()` (`api/deps.py`) | ignoră `X-Forwarded-For` — corect acum, dar trebuie citit din proxy-uri de încredere când apare un reverse proxy |
 | lipsă `.gitattributes` | Git raportează conversii LF↔CRLF; un `* text=auto eol=lf` previne diff-uri false dacă intră cineva pe Linux/Mac |
 | `oxlint`: 2 warning-uri | `only-export-components` pe fișiere shadcn generate — cosmetic |
-| procesarea rulează în procesul API (`BackgroundTasks`) | dacă procesul cade între încărcare și finalul extracției, documentul rămâne în `PROCESSING` și cere reprocesare. `process(document_id)` are deja semnătura unui task de worker: trecerea la Celery e infrastructură, nu logică (M6) |
-| `session.commit()` explicit înainte de a programa procesarea | pragmatic și corect azi; varianta complet corectă este un outbox tranzacțional, care vine odată cu coada persistentă (M6) |
 | `POST /documents/bulk` | declarat în `api/endpoints.ts`, fără rută în backend și fără apelant în interfață — se leagă la M6, odată cu acțiunile în masă din ecranul de listă |
-| `update_fields` nu verifică starea | un document `ARCHIVED` poate fi editat. Starea nu este încă atinsă de nimic (arhivarea vine la M5.7), dar garda trebuie pusă **în serviciu**, nu doar în lista de acțiuni |
-| panoul principal dă 404 în modul `http` | `GET /dashboard` vine la M6; ecranul afișează starea de eroare, nu se blochează |
+| execuția procesării rulează încă în procesul API | cererea **nu se mai pierde** (outbox tranzacțional), ce rămâne pe drum se reia cu `app.cli recover-processing`, iar documentele înțepenite apar pe panou ca "Procesare întreruptă". Lipsește doar un worker separat care s-o ruleze singur, periodic — infrastructură, nu logică (M6) |
+| `periods` din `GET /dashboard` este listă goală | perioadele contabile nu există încă în backend; zero este adevărat, nu o omisiune. M6 le umple, împreună cu `clientsComplete` și `clientsMissingDocs` |

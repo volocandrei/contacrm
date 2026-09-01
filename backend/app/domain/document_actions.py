@@ -46,6 +46,17 @@ def _reachable(current: DocumentStatus, target: DocumentStatus, *, explicit: boo
     return can_transition(current, target, explicit_reprocess=explicit).allowed
 
 
+def is_editable(status: DocumentStatus) -> bool:
+    """Se mai pot corecta metadatele documentului?
+
+    Nu, dacă a fost arhivat. Numele din arhivă codifică data, tipul, clientul,
+    seria și numărul (§10): o corectură făcută pe loc ar lăsa numele să mintă
+    despre conținut. Din arhivă se iese doar printr-o reprocesare explicită, care
+    reface și numele, și lasă urmă în audit.
+    """
+    return status is not S.ARCHIVED
+
+
 def reprocess_check(
     status: DocumentStatus, processing_attempts: int, *, max_attempts: int
 ) -> tuple[bool, str | None]:
@@ -87,10 +98,9 @@ def available_actions(
 
     actions: list[DocumentAction] = []
 
-    # Editarea metadatelor nu trece prin mașina de stări: serviciul o acceptă în
-    # orice stare. Când M5.7 face arhivarea fizică, un document `ARCHIVED` va
-    # trebui blocat și aici — dar și în serviciu, nu doar aici.
-    if can_write:
+    # Editarea nu trece prin mașina de stări — dar are propria regulă, aceeași pe
+    # care o aplică și serviciul: un document arhivat nu se mai corectează pe loc.
+    if can_write and is_editable(status):
         actions.append(DocumentAction.EDIT)
         actions.append(DocumentAction.ASSIGN_CLIENT)
 
@@ -110,4 +120,4 @@ def available_actions(
     return actions
 
 
-__all__ = ["DocumentAction", "available_actions", "reprocess_check"]
+__all__ = ["DocumentAction", "available_actions", "is_editable", "reprocess_check"]

@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     auto_approve_enabled: bool = False
     # Cate reprocesari automate incearca workerul inainte sa lase documentul in ERROR.
     max_processing_attempts: int = 3
+    # Dupa cat timp un job ramas `RUNNING` se considera abandonat de un proces mort.
+    # Peste acest prag, o cerere noua de reprocesare — sau `app.cli recover-processing` —
+    # il readuce in coada. Sub el, presupunem ca cineva chiar lucreaza la el.
+    processing_stale_after_minutes: int = 15
 
     # ── Notificări ───────────────────────────────────────────────────────────
     notifications_enabled: bool = False

@@ -42,7 +42,13 @@ class AuditLog(Base, OrganizationMixin):
     user_agent: Mapped[str | None] = mapped_column(String(255), default=None)
     # Leagă intrarea de linia de log a cererii care a produs-o.
     request_id: Mapped[str | None] = mapped_column(String(64), default=None)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
+    # `clock_timestamp()`, nu `now()`: în Postgres `now()` întoarce momentul de
+    # început al **tranzacției**, deci toate intrările scrise într-o cerere ar avea
+    # exact aceeași valoare — iar ordinea lor ar deveni arbitrară. Un jurnal de
+    # audit care nu se poate ordona nu spune ce s-a întâmplat după ce.
+    created_at: Mapped[datetime] = mapped_column(
+        server_default=func.clock_timestamp(), nullable=False
+    )
 
     def __repr__(self) -> str:
         return f"<AuditLog {self.action} {self.entity_type}:{self.entity_id}>"

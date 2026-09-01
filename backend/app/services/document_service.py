@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.logging import get_logger
+from app.domain.document_actions import is_editable
 from app.domain.document_state import (
     InvalidTransitionError,
     assert_transition,
@@ -119,6 +120,23 @@ class DocumentService:
 
     # ── Modificarea metadatelor ─────────────────────────────────────────────
 
+    def _assert_editable(self, document: Document) -> None:
+        """Un document arhivat nu se mai editează pe loc.
+
+        Numele din arhivă codifică data, tipul, clientul, seria și numărul (§10).
+        A schimba oricare dintre ele fără a reface arhiva ar lăsa numele să mintă
+        despre conținut — și ar modifica în tăcere o probă contabilă deja închisă.
+
+        Drumul corect există și lasă urmă: reprocesare explicită, corectură,
+        aprobare din nou. Aceeași regulă alimentează și lista de acțiuni trimise
+        interfeței, ca butonul să nu promită ce ruta refuză.
+        """
+        if not is_editable(document.status):
+            raise ConflictError(
+                f"Documentul este {document.status.value} și nu mai poate fi modificat direct. "
+                "Cere o reprocesare dacă datele trebuie corectate."
+            )
+
     def update_fields(
         self,
         organization_id: uuid.UUID,
@@ -127,6 +145,7 @@ class DocumentService:
         actor: ActorContext,
     ) -> Document:
         document = self._get(organization_id, document_id)
+        self._assert_editable(document)
         changes = self.fields.apply(
             document,
             updates,
@@ -169,6 +188,7 @@ class DocumentService:
         actor: ActorContext,
     ) -> Document:
         document = self._get(organization_id, document_id)
+        self._assert_editable(document)
         client = self.session.get(Client, client_id)
         if client is None or client.organization_id != organization_id or client.deleted_at:
             raise NotFoundError("Client", client_id)

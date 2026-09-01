@@ -391,6 +391,15 @@ class DocumentProcessingJob(Base, TimestampMixin):
 
     `idempotency_key` este ce oprește dubla procesare: două livrări ale aceleiași
     cereri produc aceeași cheie, iar unicitatea o respinge pe a doua.
+
+    Tabelul este și **outbox-ul** cererilor de procesare (§38, §43): rândul `PENDING`
+    se scrie în aceeași tranzacție cu documentul, deci o cerere nu se poate pierde
+    între „am salvat" și „am programat". Dacă procesul cade înainte s-o ducă la
+    capăt, rândul rămâne și `app.cli recover-processing` îl reia.
+
+    Stările: `PENDING` (înregistrată, nepornită), `RUNNING` (în lucru),
+    `SUCCEEDED`, `FAILED` (a eșuat), `SKIPPED` (documentul a mers între timp în altă
+    parte — nu este o eroare, dar nici nu mai e nimic de făcut).
     """
 
     __tablename__ = "document_processing_jobs"

@@ -36,6 +36,7 @@ from app.domain.document_state import can_transition
 from app.domain.enums import DocumentErrorCode, DocumentStatus, FieldSource
 from app.models.document import Document, DocumentProcessingJob
 from app.repositories.document import DocumentRepository
+from app.services import processing_queue as queue
 from app.services.audit import AuditService
 from app.services.document_archive import DocumentArchiveService
 from app.services.document_fields import SPEC_BY_NAME, DocumentFieldWriter, FieldUpdate
@@ -49,8 +50,6 @@ from app.services.extraction.base import (
 from app.services.storage import ObjectNotFoundError, StorageProvider
 
 logger = get_logger(__name__)
-
-JOB_TYPE = "EXTRACTION"
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,8 +100,11 @@ class DocumentProcessingService:
             )
 
         # Reluarea unei cereri deja tratate nu trebuie să producă nimic (§39).
-        key = idempotency_key or f"{document_id}:{document.processing_attempts + 1}"
-        if self._already_handled(key):
+        key = idempotency_key or queue.idempotency_key(
+            document_id, document.processing_attempts + 1
+        )
+        job = self._claim(document, key)
+        if job is None:
             logger.info("processing_skipped", document_id=str(document_id), reason="idempotent")
             return ProcessingOutcome(
                 document_id=document_id,
@@ -112,6 +114,12 @@ class DocumentProcessingService:
             )
 
         if not can_transition(document.status, DocumentStatus.PROCESSING).allowed:
+            # Documentul a mers între timp în altă parte. Jobul se închide ca
+            # `SKIPPED`, nu rămâne `RUNNING`: altfel recuperarea l-ar relua la
+            # nesfârșit, pentru ceva ce nu mai are ce face.
+            reason = f"Documentul nu poate intra în procesare din {document.status.value}."
+            queue.finish(job, queue.SKIPPED, error_detail=reason)
+            self.session.flush()
             logger.info(
                 "processing_skipped",
                 document_id=str(document_id),
@@ -122,20 +130,10 @@ class DocumentProcessingService:
                 document_id=document_id,
                 status=document.status,
                 skipped=True,
-                reason=f"Documentul nu poate intra în procesare din {document.status.value}.",
+                reason=reason,
             )
 
-        document.processing_attempts += 1
-        job = DocumentProcessingJob(
-            document_id=document.id,
-            job_type=JOB_TYPE,
-            status="RUNNING",
-            attempt=document.processing_attempts,
-            idempotency_key=key,
-            provider=self.extractor.name,
-            started_at=datetime.now(UTC),
-        )
-        self.session.add(job)
+        document.processing_attempts = job.attempt
         document.status = DocumentStatus.PROCESSING
         document.error_code = None
         document.error_detail = None
@@ -155,13 +153,37 @@ class DocumentProcessingService:
 
     # ── Pași ────────────────────────────────────────────────────────────────
 
-    def _already_handled(self, key: str) -> bool:
-        return (
-            self.session.scalars(
-                select(DocumentProcessingJob).where(DocumentProcessingJob.idempotency_key == key)
-            ).first()
-            is not None
+    def _claim(self, document: Document, key: str) -> DocumentProcessingJob | None:
+        """Ia jobul din outbox, sau îl creează dacă cererea vine direct.
+
+        Ruta HTTP înregistrează cererea ca `PENDING` în aceeași tranzacție cu
+        documentul (`processing_queue.enqueue`), deci aici o revendicăm. Un apel
+        direct — CLI, test, worker care reia manual — nu a trecut pe acolo, iar
+        atunci cererea *este* acest apel: creăm jobul pe loc.
+
+        `None` înseamnă „altcineva a luat-o deja"."""
+        claimed = queue.claim(self.session, key, provider=self.extractor.name)
+        if claimed is not None:
+            return claimed
+
+        existing = self.session.scalars(
+            select(DocumentProcessingJob).where(DocumentProcessingJob.idempotency_key == key)
+        ).first()
+        if existing is not None:
+            return None
+
+        job = DocumentProcessingJob(
+            document_id=document.id,
+            job_type=queue.JOB_TYPE,
+            status=queue.RUNNING,
+            attempt=document.processing_attempts + 1,
+            idempotency_key=key,
+            provider=self.extractor.name,
+            started_at=datetime.now(UTC),
         )
+        self.session.add(job)
+        self.session.flush()
+        return job
 
     def _extract(self, document: Document) -> ExtractionResult:
         with self.storage.open(document.storage_key) as handle:
@@ -252,9 +274,7 @@ class DocumentProcessingService:
             document.approved_at = datetime.now(UTC)
             DocumentArchiveService(self.session, self.storage).archive(document)
 
-        job.status = "SUCCEEDED"
-        job.finished_at = datetime.now(UTC)
-        job.duration_ms = result.duration_ms
+        queue.finish(job, queue.SUCCEEDED, duration_ms=result.duration_ms)
 
         self.audit.record(
             organization_id=document.organization_id,
@@ -298,10 +318,7 @@ class DocumentProcessingService:
         document.review_required = True
         document.validation_issues = [detail]
 
-        job.status = "FAILED"
-        job.error_code = code.value
-        job.error_detail = detail[:512]
-        job.finished_at = datetime.now(UTC)
+        queue.finish(job, queue.FAILED, error_code=code.value, error_detail=detail)
 
         self.audit.record(
             organization_id=document.organization_id,
@@ -337,7 +354,6 @@ class DocumentProcessingService:
 
 
 __all__ = [
-    "JOB_TYPE",
     "DocumentProcessingService",
     "ProcessingOutcome",
     "ValidationLevel",

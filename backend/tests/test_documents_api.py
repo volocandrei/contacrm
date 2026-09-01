@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import io
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -26,6 +27,7 @@ from app.models.client import Client
 from app.models.document import (
     Document,
     DocumentFieldOverride,
+    DocumentProcessingJob,
     DocumentType,
     DocumentVersion,
 )
@@ -1406,7 +1408,9 @@ class TestArchiving:
 
         assert "approve" not in body["availableActions"]
         # Din arhivă se iese doar printr-o cerere explicită de reprocesare (§40).
-        assert body["availableActions"] == ["edit", "assignClient", "reprocess", "download"]
+        # Nici editarea nu se mai oferă: numele din arhivă codifică datele, deci o
+        # corectură făcută pe loc l-ar face să mintă despre conținut.
+        assert body["availableActions"] == ["reprocess", "download"]
 
     def test_a_missing_file_rolls_back_the_approval(
         self,
@@ -1456,3 +1460,367 @@ class TestArchiving:
         assert document.stored_filename is None
         assert document.archived_at is None
         assert document.error_code is DocumentErrorCode.ARCHIVE_FAILED
+
+
+class TestArchivedDocumentsAreClosed:
+    """Un document arhivat nu se mai corectează pe loc.
+
+    Numele din arhivă codifică data, tipul, clientul, seria și numărul (§10). O
+    corectură făcută direct l-ar lăsa să mintă despre conținut, și ar modifica în
+    tăcere o probă contabilă deja închisă.
+    """
+
+    def _archived(
+        self,
+        api: TestClient,
+        db: Session,
+        client_row: Client,
+    ) -> str:
+        document_id = upload(api)["id"]
+        _to_review(db, document_id)
+        api.post(
+            f"/api/v1/documents/{document_id}/assign-client",
+            json={"clientId": str(client_row.id)},
+        )
+        api.patch(
+            f"/api/v1/documents/{document_id}",
+            json={
+                "updates": [
+                    {"field": "documentType", "value": "FACTURA_INTRARE"},
+                    {"field": "documentDate", "value": "2026-08-14"},
+                    {"field": "documentNumber", "value": "F900"},
+                    {"field": "supplierName", "value": "Furnizor SRL"},
+                    {"field": "totalAmount", "value": "1190.00"},
+                ]
+            },
+        )
+        assert api.post(f"/api/v1/documents/{document_id}/approve").status_code == 200
+        return document_id
+
+    def test_fields_cannot_be_edited_after_archiving(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = self._archived(api_storage, db, client_row)
+
+        response = api_storage.patch(
+            f"/api/v1/documents/{document_id}",
+            json={"updates": [{"field": "supplierName", "value": "Altcineva SRL"}]},
+        )
+        assert response.status_code == 409
+        assert "reprocesare" in response.json()["message"]
+
+    def test_the_client_cannot_be_reassigned_after_archiving(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        org: Organization,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        other = Client(organization_id=org.id, name="Beta SRL", tax_id="RO2")
+        db.add(other)
+        db.flush()
+
+        login(api_storage, admin.email)
+        document_id = self._archived(api_storage, db, client_row)
+
+        response = api_storage.post(
+            f"/api/v1/documents/{document_id}/assign-client",
+            json={"clientId": str(other.id)},
+        )
+        assert response.status_code == 409
+
+    def test_the_stored_name_survives_the_refused_edit(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = self._archived(api_storage, db, client_row)
+        before = api_storage.get(f"/api/v1/documents/{document_id}").json()
+
+        api_storage.patch(
+            f"/api/v1/documents/{document_id}",
+            json={"updates": [{"field": "documentNumber", "value": "F999"}]},
+        )
+
+        after = api_storage.get(f"/api/v1/documents/{document_id}").json()
+        assert after["storedFilename"] == before["storedFilename"]
+        assert after["fields"]["documentNumber"]["value"] == "F900"
+
+    def test_reprocessing_reopens_the_document_for_correction(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Drumul corect: din arhivă se iese printr-o cerere explicită, cu urmă în audit."""
+        login(api_storage, admin.email)
+        document_id = self._archived(api_storage, db, client_row)
+
+        reopened = api_storage.post(f"/api/v1/documents/{document_id}/reprocess")
+        assert reopened.status_code == 202
+        assert reopened.json()["status"] == "PROCESSING"
+        assert "edit" in reopened.json()["availableActions"]
+
+        assert (
+            api_storage.patch(
+                f"/api/v1/documents/{document_id}",
+                json={"updates": [{"field": "documentNumber", "value": "F999"}]},
+            ).status_code
+            == 200
+        )
+
+
+# ── Panoul principal ─────────────────────────────────────────────────────────
+
+
+class TestDashboard:
+    def test_kpis_count_what_m5_can_actually_measure(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        waiting = upload(api_storage, name="asteapta.pdf")["id"]
+        _to_review(db, waiting)
+
+        kpis = api_storage.get("/api/v1/dashboard").json()["kpis"]
+        assert kpis["clientsTotal"] == 1
+        assert kpis["documentsNeedReview"] == 1
+        assert kpis["documentsToday"] == 1
+        # Perioadele contabile nu există încă: zero este adevărat, nu o omisiune.
+        assert kpis["clientsComplete"] == 0
+        assert kpis["clientsMissingDocs"] == 0
+
+    def test_periods_are_empty_until_m6(
+        self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
+    ) -> None:
+        login(api_storage, admin.email)
+        assert api_storage.get("/api/v1/dashboard").json()["periods"] == []
+
+    def test_a_document_without_a_client_asks_for_attention(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        document = db.get(Document, uuid.UUID(document_id))
+        assert document is not None
+        document.status = DocumentStatus.UNMATCHED
+        db.flush()
+
+        attention = api_storage.get("/api/v1/dashboard").json()["attention"]
+        assert [item["reason"] for item in attention] == ["UNMATCHED_CLIENT"]
+        assert attention[0]["documentId"] == document_id
+
+    def test_a_document_stuck_in_processing_becomes_visible(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Fără asta, o cădere de proces nu se vede nicăieri (§43)."""
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        document = db.get(Document, uuid.UUID(document_id))
+        assert document is not None
+        document.status = DocumentStatus.PROCESSING
+        db.flush()
+
+        job = db.scalars(
+            select(DocumentProcessingJob).where(
+                DocumentProcessingJob.document_id == uuid.UUID(document_id)
+            )
+        ).first()
+        assert job is not None, "upload-ul trebuie să înregistreze cererea în outbox"
+        job.status = "RUNNING"
+        job.created_at = datetime.now(UTC) - timedelta(hours=2)
+        db.flush()
+
+        reasons = [
+            item["reason"] for item in api_storage.get("/api/v1/dashboard").json()["attention"]
+        ]
+        assert "STUCK_IN_PROCESSING" in reasons
+
+    def test_a_freshly_queued_document_is_not_reported_as_stuck(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        upload(api_storage)
+
+        reasons = [
+            item["reason"] for item in api_storage.get("/api/v1/dashboard").json()["attention"]
+        ]
+        assert "STUCK_IN_PROCESSING" not in reasons
+
+    def test_recent_documents_come_newest_first(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        older = upload(api_storage, name="veche.pdf")["id"]
+        newer = upload(api_storage, content=PDF + b"noua", name="noua.pdf")["id"]
+        db.get(Document, uuid.UUID(older)).received_at = datetime(2026, 1, 1, tzinfo=UTC)  # type: ignore[union-attr]
+        db.get(Document, uuid.UUID(newer)).received_at = datetime(2026, 2, 1, tzinfo=UTC)  # type: ignore[union-attr]
+        db.flush()
+
+        recent = api_storage.get("/api/v1/dashboard").json()["recentDocuments"]
+        assert [d["id"] for d in recent] == [newer, older]
+
+    def test_the_timeline_is_the_audit_trail(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Nu există un al doilea jurnal (§33)."""
+        login(api_storage, admin.email)
+        upload(api_storage)
+
+        timeline = api_storage.get("/api/v1/dashboard").json()["timeline"]
+        assert timeline
+        assert timeline[0]["kind"] == "DOCUMENTS_RECEIVED"
+        assert admin.full_name in timeline[0]["description"]
+
+    def test_the_dashboard_stops_at_the_organization_boundary(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        roles: dict[RoleCode, Role],
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        upload(api_storage)
+
+        other_org = Organization(name="Alt birou")
+        db.add(other_org)
+        db.flush()
+        intruder = make_user(
+            db, other_org, roles, email="strain3@contacrm.test", role=RoleCode.ADMIN
+        )
+        api_storage.post("/api/v1/auth/logout")
+        login(api_storage, intruder.email)
+
+        body = api_storage.get("/api/v1/dashboard").json()
+        assert body["recentDocuments"] == []
+        assert body["attention"] == []
+        assert body["timeline"] == []
+        assert body["kpis"]["documentsToday"] == 0
+
+    def test_the_dashboard_requires_a_session(self, api_storage: TestClient) -> None:
+        assert api_storage.get("/api/v1/dashboard").status_code == 401
+
+
+class TestTodayIsALocalDay:
+    def test_a_document_from_yesterday_evening_is_not_counted_today(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """„Azi" nu înseamnă „ultimele 24 de ore" (§71)."""
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        document = db.get(Document, uuid.UUID(document_id))
+        assert document is not None
+
+        zone = ZoneInfo(settings.default_timezone)
+        yesterday_evening = (datetime.now(zone) - timedelta(days=1)).replace(hour=23, minute=30)
+        document.received_at = yesterday_evening.astimezone(UTC)
+        db.flush()
+
+        assert api_storage.get("/api/v1/dashboard").json()["kpis"]["documentsToday"] == 0
+
+    def test_a_document_from_this_morning_is_counted(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        document = db.get(Document, uuid.UUID(document_id))
+        assert document is not None
+
+        zone = ZoneInfo(settings.default_timezone)
+        this_morning = datetime.now(zone).replace(hour=0, minute=1, second=0, microsecond=0)
+        document.received_at = this_morning.astimezone(UTC)
+        db.flush()
+
+        assert api_storage.get("/api/v1/dashboard").json()["kpis"]["documentsToday"] == 1
+
+
+class TestAuditOrdering:
+    """Un jurnal care nu se poate ordona nu spune ce s-a întâmplat după ce."""
+
+    def test_entries_written_in_the_same_request_keep_their_order(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+        api_storage.post(
+            f"/api/v1/documents/{document_id}/assign-client",
+            json={"clientId": str(client_row.id)},
+        )
+        api_storage.patch(
+            f"/api/v1/documents/{document_id}",
+            json={
+                "updates": [
+                    {"field": "documentType", "value": "FACTURA_INTRARE"},
+                    {"field": "documentDate", "value": "2026-08-14"},
+                    {"field": "documentNumber", "value": "F1"},
+                    {"field": "supplierName", "value": "Furnizor SRL"},
+                    {"field": "totalAmount", "value": "1190.00"},
+                ]
+            },
+        )
+        # Aprobarea și arhivarea sunt scrise în **aceeași** tranzacție. Cu `now()`,
+        # ambele ar primi timestampul de început al tranzacției și ordinea ar fi
+        # arbitrară; cu `clock_timestamp()` sunt două momente distincte.
+        api_storage.post(f"/api/v1/documents/{document_id}/approve")
+
+        history = api_storage.get(f"/api/v1/documents/{document_id}").json()["history"]
+        actions = [entry["action"] for entry in history]
+        assert actions.index("DOCUMENT_APPROVED") < actions.index("DOCUMENT_ARCHIVED")
+        assert actions[0] == "DOCUMENT_UPLOADED"
+
+        moments = [entry["at"] for entry in history]
+        assert moments == sorted(moments)
+        assert len(set(moments)) == len(moments), "două intrări nu pot avea același moment"
