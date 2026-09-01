@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     prompt_version: str = "v1"
     confidence_auto_threshold: float = 0.90
     confidence_review_threshold: float = 0.70
+    # Implicit oprita. Aprobarea unei probe contabile fara ca un om sa se uite este
+    # o decizie de business, nu un implicit tehnic — chiar si peste pragul automat.
+    auto_approve_enabled: bool = False
+    # Cate reprocesari automate incearca workerul inainte sa lase documentul in ERROR.
+    max_processing_attempts: int = 3
 
     # ── Notificări ───────────────────────────────────────────────────────────
     notifications_enabled: bool = False

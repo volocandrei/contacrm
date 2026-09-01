@@ -359,3 +359,43 @@ class DocumentFieldOverride(Base):
 
     def __repr__(self) -> str:
         return f"<DocumentFieldOverride {self.field_name} doc={self.document_id}>"
+
+
+class DocumentProcessingJob(Base, TimestampMixin):
+    """O încercare de procesare (§39, §55).
+
+    Există pentru trei întrebări la care `processing_attempts` nu răspunde: de ce a
+    eșuat a doua încercare, cât a durat, și dacă cererea curentă nu cumva a mai fost
+    tratată o dată.
+
+    `idempotency_key` este ce oprește dubla procesare: două livrări ale aceleiași
+    cereri produc aceeași cheie, iar unicitatea o respinge pe a doua.
+    """
+
+    __tablename__ = "document_processing_jobs"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_document_processing_jobs_idempotency_key"),
+        CheckConstraint("status IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED')", name="status"),
+        CheckConstraint("attempt >= 1", name="attempt_positive"),
+        Index("ix_document_processing_jobs_document_id", "document_id"),
+        Index("ix_document_processing_jobs_status", "status"),
+    )
+
+    id: Mapped[uuid_pk]
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    job_type: Mapped[str] = mapped_column(String(32), default="EXTRACTION", nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="PENDING", nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Ce s-a întâmplat, structurat. Fără traceback (§53).
+    error_code: Mapped[str | None] = mapped_column(String(32), default=None)
+    error_detail: Mapped[str | None] = mapped_column(String(512), default=None)
+    provider: Mapped[str | None] = mapped_column(String(64), default=None)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, default=None)
+    started_at: Mapped[datetime | None] = mapped_column(default=None)
+    finished_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    def __repr__(self) -> str:
+        return f"<DocumentProcessingJob {self.document_id} #{self.attempt} {self.status}>"

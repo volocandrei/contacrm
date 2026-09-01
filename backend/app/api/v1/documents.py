@@ -11,7 +11,17 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
@@ -43,9 +53,11 @@ from app.services.document_delivery import (
     stream,
 )
 from app.services.document_fields import FieldUpdate, read_fields
+from app.services.document_processing import DocumentProcessingService
 from app.services.document_service import ActorContext, DocumentService
 from app.services.document_upload import DocumentUploadService
 from app.services.files import FileValidationError
+from app.services.processing_runner import build_extractor, run_processing
 from app.services.storage import ObjectNotFoundError
 
 logger = get_logger(__name__)
@@ -232,6 +244,7 @@ def upload_document(
     storage: StorageDep,
     user: DocumentWriter,
     request: Request,
+    background: BackgroundTasks,
     file: Annotated[UploadFile, File()],
     client_id: Annotated[uuid.UUID | None, Form()] = None,
 ) -> DocumentDetailOut:
@@ -271,7 +284,19 @@ def upload_document(
         user_agent=request.headers.get("User-Agent"),
     )
     session.flush()
-    return _to_detail(session, _fetch(session, user, document.id))
+    detail = _to_detail(session, _fetch(session, user, document.id))
+
+    # OCR-ul nu se face în cerere (§38): pornește după ce răspunsul a plecat.
+    # Un duplicat nu se procesează — conținutul lui este deja cunoscut.
+    if not result.is_duplicate:
+        # Commit **înainte** de a programa procesarea. Altfel workerul pornește pe o
+        # tranzacție încă necomisă și nu găsește documentul — cursa clasică
+        # „enqueue înainte de commit". Varianta complet corectă este un outbox
+        # tranzacțional; până la coada persistentă (M6), commit-ul explicit aici
+        # este suficient și onest: în acest punct upload-ul chiar s-a terminat.
+        session.commit()
+        background.add_task(run_processing, user.organization_id, document.id, storage)
+    return detail
 
 
 # ── Modificare și acțiuni ────────────────────────────────────────────────────
@@ -450,3 +475,55 @@ def download_document(
     )
     session.flush()
     return response
+
+
+@router.post(
+    "/documents/{document_id}/reprocess",
+    response_model=DocumentDetailOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def reprocess_document(
+    session: DbSession,
+    storage: StorageDep,
+    user: DocumentWriter,
+    request: Request,
+    background: BackgroundTasks,
+    document_id: uuid.UUID,
+) -> DocumentDetailOut:
+    """Reia procesarea unui document existent (§54).
+
+    Nu creează un document nou și nu șterge istoricul: `processing_attempts` crește,
+    iar corecțiile manuale rămân neatinse. Răspunde 202 — rezultatul apare când
+    workerul termină.
+    """
+    row = _fetch(session, user, document_id)
+    document = row.document
+
+    allowed, reason = DocumentProcessingService(session, storage, build_extractor()).can_reprocess(
+        document
+    )
+    if not allowed:
+        raise AppError(ErrorCode.CONFLICT, reason or "Documentul nu poate fi reprocesat.")
+
+    DocumentService(session).audit.record(
+        organization_id=user.organization_id,
+        action="DOCUMENT_REPROCESS_REQUESTED",
+        entity_type="Document",
+        entity_id=str(document_id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=f"încercarea {document.processing_attempts + 1}",
+        ip=client_ip(request),
+        user_agent=request.headers.get("User-Agent"),
+    )
+    # Ca la upload: intrarea de audit trebuie să fie vizibilă workerului.
+    session.commit()
+
+    background.add_task(
+        run_processing,
+        user.organization_id,
+        document_id,
+        storage,
+        triggered_by=user.id,
+    )
+    return _to_detail(session, _fetch(session, user, document_id))

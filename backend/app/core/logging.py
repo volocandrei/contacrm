@@ -33,6 +33,13 @@ def configure_logging() -> None:
     """Se apelează o singură dată, la pornirea aplicației."""
     level = getattr(logging, settings.log_level.upper(), logging.INFO)
 
+    # Mesajele aplicației sunt în română. Pe o consolă Windows (cp1252) un simplu
+    # diacritic într-un mesaj de eroare ar arunca UnicodeEncodeError **din interiorul
+    # loggerului** — adică exact atunci când ai cea mai mare nevoie de el.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level)
     # Uvicorn își are propriile handlere; le lăsăm să treacă prin structlog.
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):

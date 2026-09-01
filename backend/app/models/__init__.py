@@ -13,6 +13,7 @@ from app.models.document import (
     Document,
     DocumentFieldOverride,
     DocumentIntake,
+    DocumentProcessingJob,
     DocumentType,
     DocumentVersion,
 )
@@ -37,6 +38,7 @@ ALL_MODELS = (
     Document,
     DocumentVersion,
     DocumentFieldOverride,
+    DocumentProcessingJob,
 )
 
 __all__ = [
@@ -49,6 +51,7 @@ __all__ = [
     "Document",
     "DocumentFieldOverride",
     "DocumentIntake",
+    "DocumentProcessingJob",
     "DocumentType",
     "DocumentVersion",
     "Organization",
