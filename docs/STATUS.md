@@ -5,6 +5,7 @@ cum pornești pe o mașină nouă, ce este construit și ce urmează.
 
 Pentru arhitectură, schema de bază de date și registrul de riscuri, vezi
 [ARCHITECTURE.md](ARCHITECTURE.md). Pentru deciziile de fond, [adr/](adr/).
+Pentru punerea în funcțiune, [DEPLOY.md](DEPLOY.md).
 
 ---
 
