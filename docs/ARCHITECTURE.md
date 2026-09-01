@@ -212,10 +212,10 @@ Praguri (configurabile în `system_settings`, valori inițiale propuse):
 | **M2** | Backend skeleton: FastAPI, settings, Postgres, Alembic, health, error handling, logging structurat | ✅ |
 | **M3** | Auth: users/roles/permissions, JWT + refresh rotativ, Argon2id, RBAC, audit log | ✅ |
 | **M4** | CRM: clients, contacts, tags, note, tasks | ✅ |
-| **M5** | Documents: upload, StorageProvider, SHA-256, duplicate detection, FilenameGenerator, StoragePathService, preview securizat |  |
-| **M6** | Processing: Celery+Redis, MockOCRProvider, clasificare, schema de extracție Pydantic, confidence, review UI |  |
-| **M7** | Accounting periods + checklist + dashboard KPI + audit UI |  |
-| **M8** | Notificări (abstracție + email), teste E2E, Docker compose, CI |  |
+| **M5** | Documente: încărcare, StorageProvider, SHA-256, duplicate, API, preview securizat, procesare, interfața de verificare, arhivare | M5.1–M5.6 ✅ |
+| **M6** | Coadă persistentă (Celery+Redis), perioade + checklist, dashboard KPI, ecran audit, acțiuni în masă |  |
+| **M7** | Notificări (abstracție + email), rapoarte |  |
+| **M8** | Teste E2E, Docker compose, CI |  |
 | **Faza 2** | Microsoft Graph, WhatsApp, OCR/AI real, remindere, bulk, export ZIP |  |
 | **Faza 3** | Integrare software contabil, rapoarte, detecție anomalii |  |
 

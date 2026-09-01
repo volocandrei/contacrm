@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.domain.document_actions import reprocess_check
 from app.domain.document_state import can_transition
 from app.domain.enums import DocumentErrorCode, DocumentStatus, FieldSource
 from app.models.document import Document, DocumentProcessingJob
@@ -322,16 +323,13 @@ class DocumentProcessingService:
     # ── Reprocesare (§54) ───────────────────────────────────────────────────
 
     def can_reprocess(self, document: Document) -> tuple[bool, str | None]:
-        if document.processing_attempts >= settings.max_processing_attempts:
-            return False, (
-                f"Documentul a fost procesat de {document.processing_attempts} ori; "
-                "limita configurată a fost atinsă."
-            )
-        if not can_transition(
-            document.status, DocumentStatus.PROCESSING, explicit_reprocess=True
-        ).allowed:
-            return False, f"Nu se poate reprocesa din starea {document.status.value}."
-        return True, None
+        """Predicatul trăiește în domeniu: aceeași regulă alimentează și lista de
+        acțiuni trimisă interfeței, ca butonul să nu promită ce ruta refuză."""
+        return reprocess_check(
+            document.status,
+            document.processing_attempts,
+            max_attempts=settings.max_processing_attempts,
+        )
 
 
 __all__ = [

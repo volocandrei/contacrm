@@ -47,6 +47,22 @@ class ActorContext:
     user_agent: str | None = None
 
 
+def approval_blockers(document: Document) -> list[str]:
+    """Ce mai lipsește ca documentul să poată fi aprobat.
+
+    Aceeași funcție hrănește și verificarea din `approve()`, și câmpul
+    `approvalBlockers` din detaliu — ecranul de verificare nu recalculează nimic
+    și nu poate ajunge să spună altceva decât serverul.
+    """
+    problems: list[str] = []
+    if document.client_id is None:
+        problems.append("Documentul nu are client atribuit.")
+    missing = missing_required_fields(document)
+    if missing:
+        problems.append("Câmpuri obligatorii lipsă: " + ", ".join(missing))
+    return problems
+
+
 class DocumentService:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -191,12 +207,7 @@ class DocumentService:
                 f"Documentul nu poate fi aprobat din starea {document.status.value}."
             )
 
-        problems: list[str] = []
-        if document.client_id is None:
-            problems.append("Documentul nu are client atribuit.")
-        missing = missing_required_fields(document)
-        if missing:
-            problems.append("Câmpuri obligatorii lipsă: " + ", ".join(missing))
+        problems = approval_blockers(document)
         if problems:
             raise ValidationError("Documentul nu poate fi aprobat.", {"document": problems})
 
@@ -235,6 +246,32 @@ class DocumentService:
         self._mark_reviewed(document, actor)
 
         self._record(actor, document, "DOCUMENT_REJECTED", detail=cleaned[:255])
+        self.session.flush()
+        return document
+
+    # ── Cererea de reprocesare ──────────────────────────────────────────────
+
+    def begin_reprocessing(
+        self, organization_id: uuid.UUID, document_id: uuid.UUID, actor: ActorContext
+    ) -> Document:
+        """Acceptă cererea și mută documentul în `PROCESSING`.
+
+        Starea se schimbă aici, nu abia când workerul apucă să pornească. Altfel
+        răspunsul ar spune „am acceptat" și ar returna un document care arată
+        neatins — iar ecranul de verificare, care se ține după status, nu ar avea
+        de unde ști că mai are ce aștepta.
+
+        Tranziția este cea explicită: numai o cerere ca asta scoate un document din
+        arhivă (§40).
+        """
+        document = self._get(organization_id, document_id)
+        self._transition(document, DocumentStatus.PROCESSING, explicit=True)
+        self._record(
+            actor,
+            document,
+            "DOCUMENT_REPROCESS_REQUESTED",
+            detail=f"încercarea {document.processing_attempts + 1}",
+        )
         self.session.flush()
         return document
 

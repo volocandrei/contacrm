@@ -1,39 +1,107 @@
-import { FileText, ImageOff } from "lucide-react";
-import { apiMode } from "@/api/client";
+import { useEffect, useState } from "react";
+import { FileText, ImageOff, LoaderCircle, TriangleAlert } from "lucide-react";
+import { apiMode, fetchFile } from "@/api/client";
+import { ApiError } from "@/api/types";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { DocumentDetail } from "@/types/domain";
 
 /**
  * Previzualizarea documentului.
  *
- * Fișierele nu sunt niciodată expuse public (§23): în modul `http` conținutul vine
+ * Fișierele nu sunt niciodată expuse public (§51): în modul `http` conținutul vine
  * de la un endpoint autorizat, nu de la o cale de filesystem.
  * În modul `mock` nu există fișiere reale, așa că randăm un facsimil generat din
  * datele extrase — util pentru testarea fluxului de verificare, marcat explicit ca simulare.
  */
 export function DocumentPreview({ document }: { document: DocumentDetail }) {
   if (apiMode() === "http") {
-    const previewUrl = `/api/v1/documents/${document.id}/preview`;
-    return document.mimeType.startsWith("image/") ? (
-      <img
-        src={previewUrl}
-        alt={`Previzualizare ${document.originalFilename}`}
-        className="max-h-full w-full object-contain"
-      />
-    ) : (
-      <object data={previewUrl} type={document.mimeType} className="h-full w-full">
-        <p className="p-6 text-sm text-gray-500">
-          Previzualizarea nu poate fi afișată.{" "}
-          <a href={previewUrl} className="text-blue-600 underline">
-            Descarcă documentul
-          </a>
-          .
-        </p>
-      </object>
+    // `key` pe id: la schimbarea documentului vrem o instanță nouă, nu una care
+    // mai ține pentru o clipă `blob:` URL-ul celui precedent.
+    return <StoredDocument key={document.id} document={document} />;
+  }
+  return <SimulatedDocument document={document} />;
+}
+
+/**
+ * Conținutul real, citit autentificat.
+ *
+ * Nu punem calea direct în `src`: un `<img>` sau `<object>` nu trimite antetul
+ * `Authorization`, iar un token în query string ar ajunge în logurile serverului, în
+ * istoricul browserului și în `Referer` (§27). Citim cu `fetch` — care duce
+ * cookie-ul și antetul — și dăm elementului un `blob:` URL, valabil doar în fila
+ * curentă.
+ */
+function StoredDocument({ document }: { document: DocumentDetail }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+
+    void fetchFile(`/documents/${document.id}/preview`, controller.signal)
+      .then((file) => {
+        if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(file.blob);
+        setUrl(objectUrl);
+      })
+      .catch((caught: unknown) => {
+        if (controller.signal.aborted) return;
+        setError(
+          caught instanceof ApiError
+            ? caught.message
+            : "Conținutul documentului nu a putut fi încărcat.",
+        );
+      });
+
+    return () => {
+      controller.abort();
+      // Fără asta, fiecare document deschis rămâne în memoria filei.
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [document.id]);
+
+  if (error) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-gray-500 dark:text-gray-400">
+        <TriangleAlert className="h-8 w-8" aria-hidden="true" />
+        <p className="text-sm font-medium">{error}</p>
+        <p className="text-xs">Datele extrase rămân disponibile în panoul din dreapta.</p>
+      </div>
     );
   }
 
-  return <SimulatedDocument document={document} />;
+  if (!url) {
+    return (
+      <div
+        role="status"
+        className="flex h-full items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400"
+      >
+        <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+        Se încarcă documentul…
+      </div>
+    );
+  }
+
+  if (document.mimeType.startsWith("image/")) {
+    return (
+      <img
+        src={url}
+        alt={`Previzualizare ${document.originalFilename}`}
+        className="max-h-full w-full object-contain"
+      />
+    );
+  }
+
+  return (
+    <object data={url} type={document.mimeType} className="h-full w-full">
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-gray-500">
+        <FileText className="h-8 w-8" aria-hidden="true" />
+        Previzualizarea nu poate fi afișată în această fereastră. Folosește butonul
+        „Descarcă”.
+      </div>
+    </object>
+  );
 }
 
 function SimulatedDocument({ document }: { document: DocumentDetail }) {

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  ArrowRight,
   CircleAlert,
   CircleCheck,
   Copy,
+  Download,
   History,
+  Inbox,
+  LoaderCircle,
   RefreshCw,
   Save,
   Sparkles,
@@ -13,7 +15,6 @@ import {
   UserCheck,
   X,
 } from "lucide-react";
-import { ApiError } from "@/api/types";
 import {
   useApproveDocument,
   useAssignClient,
@@ -21,6 +22,7 @@ import {
   useDocument,
   useDocumentTypes,
   useMarkDuplicate,
+  useNextReviewDocument,
   useRejectDocument,
   useReprocessDocument,
   useUpdateDocumentFields,
@@ -28,10 +30,17 @@ import {
 import { ErrorState, LoadingState, Panel } from "@/components/page";
 import { ConfidenceBadge, DocumentStatusBadge } from "@/components/status-badge";
 import { DocumentPreview } from "@/features/documents/document-preview";
-import { useHasPermission } from "@/features/auth/use-auth";
+import { useDownloadDocument } from "@/features/documents/use-download";
+import { describeError } from "@/lib/errors";
 import { formatDateTime, formatFileSize } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { DocumentDetail, DocumentFieldName, ExtractedField } from "@/types/domain";
+import type {
+  DocumentAction,
+  DocumentDetail,
+  DocumentErrorCode,
+  DocumentFieldName,
+  ExtractedField,
+} from "@/types/domain";
 
 /** Ordinea câmpurilor în formular — aceeași cu ordinea de citire a unei facturi. */
 const FIELD_ORDER: Array<{ name: DocumentFieldName; label: string; type?: string }> = [
@@ -47,8 +56,26 @@ const FIELD_ORDER: Array<{ name: DocumentFieldName; label: string; type?: string
   { name: "subtotal", label: "Subtotal" },
   { name: "vatAmount", label: "TVA" },
   { name: "totalAmount", label: "Total" },
-  { name: "referenceMonth", label: "Perioadă de referință" },
+  // Perioada de referință decide în ce lună contabilă intră documentul — se
+  // schimbă dintr-un selector de lună, nu prin text liber (§31).
+  { name: "referenceMonth", label: "Perioadă de referință", type: "month" },
 ];
+
+/** Codurile de eroare, în română. Codul se persistă; textul se traduce (§53). */
+const ERROR_LABEL: Record<DocumentErrorCode, string> = {
+  INVALID_FILE: "Fișierul nu a putut fi citit.",
+  UNSUPPORTED_FORMAT: "Formatul nu este acceptat.",
+  FILE_TOO_LARGE: "Fișierul depășește dimensiunea maximă.",
+  OCR_FAILED: "Recunoașterea textului a eșuat.",
+  EXTRACTION_FAILED: "Extragerea datelor a eșuat.",
+  CLASSIFICATION_FAILED: "Tipul documentului nu a putut fi stabilit.",
+  VALIDATION_FAILED: "Datele extrase nu au trecut validarea.",
+  DUPLICATE_DETECTED: "Documentul există deja în sistem.",
+  CLIENT_NOT_FOUND: "Clientul nu a putut fi identificat.",
+  STORAGE_FAILED: "Fișierul nu a putut fi salvat.",
+  ARCHIVE_FAILED: "Arhivarea a eșuat.",
+  INTERNAL_ERROR: "Eroare internă la procesare.",
+};
 
 type Draft = Partial<Record<DocumentFieldName, string>>;
 
@@ -82,8 +109,11 @@ function ReviewScreen({
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
-  const canWrite = useHasPermission("documents:write");
-  const canApprove = useHasPermission("documents:approve");
+  // Ce se poate face îl spune serverul, în starea de acum a documentului și pentru
+  // rolul acestui utilizator. Interfața nu recalculează regulile ciclului de viață:
+  // o a doua copie ar rămâne în urmă tăcut, iar butoanele ar minți.
+  const can = (action: DocumentAction) => document.availableActions.includes(action);
+  const canWrite = can("edit");
 
   const { data: documentTypes } = useDocumentTypes();
   const { data: clientsPage } = useClients({ pageSize: 200, status: "ACTIVE" });
@@ -94,6 +124,9 @@ function ReviewScreen({
   const markDuplicate = useMarkDuplicate();
   const reprocess = useReprocessDocument();
   const assignClient = useAssignClient();
+  const { download, isPending: downloading } = useDownloadDocument();
+
+  const isProcessing = document.status === "RECEIVED" || document.status === "PROCESSING";
 
   const dirtyFields = useMemo(
     () =>
@@ -108,12 +141,14 @@ function ReviewScreen({
     return draft[name] ?? document.fields[name].value ?? "";
   }
 
+  function pendingUpdates() {
+    return dirtyFields.map((name) => ({ field: name, value: draft[name] || null }));
+  }
+
   async function handleSave() {
     if (!isDirty) return;
     try {
-      await updateFields.mutateAsync(
-        dirtyFields.map((name) => ({ field: name, value: draft[name] || null })),
-      );
+      await updateFields.mutateAsync(pendingUpdates());
       setDraft({});
       setFeedback({ tone: "ok", message: "Modificările au fost salvate." });
     } catch (caught) {
@@ -123,14 +158,14 @@ function ReviewScreen({
 
   async function handleApprove() {
     try {
+      // Corecțiile nesalvate se trimit înainte: altfel aprobarea ar cădea pe câmpuri
+      // pe care operatorul tocmai le-a completat.
       if (isDirty) {
-        await updateFields.mutateAsync(
-          dirtyFields.map((name) => ({ field: name, value: draft[name] || null })),
-        );
+        await updateFields.mutateAsync(pendingUpdates());
         setDraft({});
       }
       await approve.mutateAsync(document.id);
-      setFeedback({ tone: "ok", message: "Document aprobat și arhivat." });
+      setFeedback({ tone: "ok", message: "Document aprobat." });
     } catch (caught) {
       setFeedback({ tone: "error", message: describeError(caught) });
     }
@@ -147,6 +182,15 @@ function ReviewScreen({
     }
   }
 
+  async function run(action: () => Promise<unknown>, message: string) {
+    try {
+      await action();
+      setFeedback({ tone: "ok", message });
+    } catch (caught) {
+      setFeedback({ tone: "error", message: describeError(caught) });
+    }
+  }
+
   // Scurtături de tastatură — operatorul trebuie să treacă rapid prin sute de documente (§67).
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -155,7 +199,7 @@ function ReviewScreen({
       if (key === "s" && canWrite) {
         event.preventDefault();
         void handleSave();
-      } else if (key === "a" && canApprove) {
+      } else if (key === "a" && can("approve")) {
         event.preventDefault();
         void handleApprove();
       }
@@ -165,7 +209,16 @@ function ReviewScreen({
   });
 
   const busy =
-    updateFields.isPending || approve.isPending || reject.isPending || markDuplicate.isPending;
+    updateFields.isPending ||
+    approve.isPending ||
+    reject.isPending ||
+    markDuplicate.isPending ||
+    reprocess.isPending ||
+    assignClient.isPending;
+
+  // Aprobarea nu se oferă cât timp serverul are ce reproșa documentului: ar
+  // răspunde 422 cu exact lista de mai jos.
+  const approvalBlocked = document.approvalBlockers.length > 0;
 
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col">
@@ -184,14 +237,57 @@ function ReviewScreen({
             {formatDateTime(document.receivedAt)} · SHA-256 {document.sha256.slice(0, 12)}…
           </p>
         </div>
-        <Link
-          to="/documente/verificare"
-          className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-        >
-          <X className="h-4 w-4" aria-hidden="true" />
-          Închide
-        </Link>
+        <div className="flex items-center gap-2">
+          {can("download") && (
+            <button
+              type="button"
+              onClick={() =>
+                void run(() => download(document), "Descărcarea a pornit.")
+              }
+              disabled={downloading}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Descarcă
+            </button>
+          )}
+          <Link
+            to="/documente/verificare"
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+            Închide
+          </Link>
+        </div>
       </div>
+
+      {isProcessing && (
+        <div
+          role="status"
+          className="mb-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+        >
+          <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+          Documentul este în procesare. Ecranul se actualizează singur când se termină.
+        </div>
+      )}
+
+      {document.status === "ERROR" && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm dark:border-red-800 dark:bg-red-900/20">
+          <p className="flex items-center gap-1.5 font-medium text-red-900 dark:text-red-200">
+            <CircleAlert className="h-4 w-4" aria-hidden="true" />
+            Procesarea a eșuat
+          </p>
+          <p className="mt-1 ml-6 text-red-800 dark:text-red-300">
+            {document.errorCode ? ERROR_LABEL[document.errorCode] : "Motiv necunoscut."}{" "}
+            {document.processingAttempts > 0 && (
+              <span className="text-red-700 dark:text-red-400">
+                ({document.processingAttempts}{" "}
+                {document.processingAttempts === 1 ? "încercare" : "încercări"})
+              </span>
+            )}
+          </p>
+        </div>
+      )}
 
       {document.validationIssues.length > 0 && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-900/20">
@@ -245,17 +341,24 @@ function ReviewScreen({
 
         {/* Dreapta: câmpuri extrase */}
         <div className="space-y-4 lg:col-span-2">
-          {!document.clientId && (
+          {!document.clientId && can("assignClient") && (
             <Panel title="Atribuie client">
               <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
                 Expeditorul nu a putut fi mapat automat. Alege clientul căruia îi aparține documentul.
               </p>
               <select
                 defaultValue=""
-                disabled={!canWrite || busy}
+                disabled={busy}
                 onChange={(event) => {
                   if (!event.target.value) return;
-                  void assignClient.mutateAsync({ id: document.id, clientId: event.target.value });
+                  void run(
+                    () =>
+                      assignClient.mutateAsync({
+                        id: document.id,
+                        clientId: event.target.value,
+                      }),
+                    "Clientul a fost atribuit.",
+                  );
                 }}
                 className="h-9 w-full cursor-pointer rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
               >
@@ -273,7 +376,8 @@ function ReviewScreen({
             title="Date extrase"
             action={
               <span className="text-xs text-gray-400 dark:text-gray-500">
-                {document.extraction.provider} · {document.extraction.promptVersion}
+                {document.extraction.provider ?? "—"}
+                {document.extraction.promptVersion ? ` · ${document.extraction.promptVersion}` : ""}
               </span>
             }
           >
@@ -302,11 +406,16 @@ function ReviewScreen({
           {/* Acțiuni */}
           <Panel>
             <div className="flex flex-wrap gap-2">
-              {canApprove && (
+              {can("approve") && (
                 <button
                   type="button"
                   onClick={handleApprove}
-                  disabled={busy}
+                  disabled={busy || (approvalBlocked && !isDirty)}
+                  title={
+                    approvalBlocked && !isDirty
+                      ? document.approvalBlockers.join(" ")
+                      : undefined
+                  }
                   className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-60"
                 >
                   <CircleCheck className="h-4 w-4" aria-hidden="true" />
@@ -328,8 +437,16 @@ function ReviewScreen({
               )}
             </div>
 
+            {can("approve") && approvalBlocked && (
+              <ul className="mt-2 ml-1 list-disc space-y-0.5 pl-4 text-xs text-gray-500 dark:text-gray-400">
+                {document.approvalBlockers.map((blocker) => (
+                  <li key={blocker}>{blocker}</li>
+                ))}
+              </ul>
+            )}
+
             <div className="mt-2 flex flex-wrap gap-2">
-              {canApprove && (
+              {can("reject") && (
                 <button
                   type="button"
                   onClick={() => setRejecting((value) => !value)}
@@ -340,31 +457,48 @@ function ReviewScreen({
                   Respinge
                 </button>
               )}
-              {canWrite && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void markDuplicate.mutateAsync({ id: document.id, duplicateOfId: null })
-                    }
-                    disabled={busy}
-                    className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                  >
-                    <Copy className="h-4 w-4" aria-hidden="true" />
-                    Duplicat
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void reprocess.mutateAsync(document.id)}
-                    disabled={busy}
-                    className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                  >
-                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                    Reprocesează
-                  </button>
-                </>
+              {can("markDuplicate") && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void run(
+                      () =>
+                        markDuplicate.mutateAsync({ id: document.id, duplicateOfId: null }),
+                      "Documentul a fost marcat ca duplicat.",
+                    )
+                  }
+                  disabled={busy}
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  <Copy className="h-4 w-4" aria-hidden="true" />
+                  Duplicat
+                </button>
+              )}
+              {can("reprocess") && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void run(
+                      () => reprocess.mutateAsync(document.id),
+                      "Documentul a fost trimis din nou la procesare.",
+                    )
+                  }
+                  disabled={busy}
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                  Reprocesează
+                </button>
               )}
             </div>
+
+            {/* Când reprocesarea nu se poate, spunem de ce. Un buton care dispare
+                fără explicație face documentul să pară pur și simplu uitat. */}
+            {canWrite && document.reprocessBlockedReason && (
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {document.reprocessBlockedReason}
+              </p>
+            )}
 
             {rejecting && (
               <div className="mt-3 space-y-2 rounded-lg bg-gray-50 p-3 dark:bg-gray-800/60">
@@ -543,25 +677,54 @@ function FieldOrigin({ field, isDirty }: { field: ExtractedField<string>; isDirt
   );
 }
 
-function describeError(error: unknown): string {
-  if (error instanceof ApiError) {
-    const details = error.details ? Object.values(error.details).flat() : [];
-    return details.length > 0 ? `${error.message} ${details.join(" ")}` : error.message;
-  }
-  return error instanceof Error ? error.message : "Eroare neașteptată.";
-}
-
-/** Ecranul „coada de verificare" — deschide primul document care așteaptă. */
+/**
+ * Ecranul „coada de verificare".
+ *
+ * Nu este o listă: deschide direct cel mai vechi document care așteaptă un om.
+ * Ordinea o dă serverul — documentul uitat la coadă este exact cel care blochează
+ * o declarație.
+ */
 export function ReviewQueuePage() {
+  const navigate = useNavigate();
+  const { data: next, isLoading, error } = useNextReviewDocument();
+
+  if (isLoading) return <LoadingState label="Se caută următorul document…" />;
+  if (error) return <ErrorState error={error} />;
+
   return (
     <div className="flex min-h-[50vh] items-center justify-center">
       <div className="max-w-md rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <div className="mx-auto mb-3 grid h-11 w-11 place-content-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
-          <ArrowRight className="h-5 w-5" aria-hidden="true" />
-        </div>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Alege un document din listă pentru a începe verificarea.
-        </p>
+        {next ? (
+          <>
+            <div className="mx-auto mb-3 grid h-11 w-11 place-content-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
+              <Inbox className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+              Următorul document care așteaptă verificare:
+              <br />
+              <span className="font-medium text-gray-900 dark:text-gray-100">
+                {next.storedFilename ?? next.originalFilename}
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate(`/documente/verificare/${next.id}`)}
+              className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+            >
+              Deschide pentru verificare
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="mx-auto mb-3 grid h-11 w-11 place-content-center rounded-lg bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400">
+              <CircleCheck className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Nu mai este niciun document în așteptare. Alege unul din listă dacă vrei să
+              revii asupra lui.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

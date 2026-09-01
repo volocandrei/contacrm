@@ -35,6 +35,40 @@ export type PeriodStatus = (typeof PERIOD_STATUS)[number];
 export const DOCUMENT_SOURCE = ["EMAIL", "WHATSAPP", "UPLOAD", "API"] as const;
 export type DocumentSource = (typeof DOCUMENT_SOURCE)[number];
 
+/** Motivul structurat al unui eșec de procesare — se afișează, nu se aruncă (§53). */
+export const DOCUMENT_ERROR_CODE = [
+  "INVALID_FILE",
+  "UNSUPPORTED_FORMAT",
+  "FILE_TOO_LARGE",
+  "OCR_FAILED",
+  "EXTRACTION_FAILED",
+  "CLASSIFICATION_FAILED",
+  "VALIDATION_FAILED",
+  "DUPLICATE_DETECTED",
+  "CLIENT_NOT_FOUND",
+  "STORAGE_FAILED",
+  "ARCHIVE_FAILED",
+  "INTERNAL_ERROR",
+] as const;
+export type DocumentErrorCode = (typeof DOCUMENT_ERROR_CODE)[number];
+
+/**
+ * Ce poate face utilizatorul curent cu un document, în starea lui de acum.
+ * Lista vine de la server (`availableActions`): regulile ciclului de viață trăiesc
+ * în backend, iar interfața doar le respectă. Nu le recalculează — o a doua copie
+ * ar rămâne în urmă tăcut.
+ */
+export const DOCUMENT_ACTION = [
+  "edit",
+  "assignClient",
+  "approve",
+  "reject",
+  "markDuplicate",
+  "reprocess",
+  "download",
+] as const;
+export type DocumentAction = (typeof DOCUMENT_ACTION)[number];
+
 export const TASK_STATUS = ["TODO", "IN_PROGRESS", "BLOCKED", "DONE"] as const;
 export type TaskStatus = (typeof TASK_STATUS)[number];
 
@@ -251,6 +285,9 @@ export type DocumentDetail = DocumentListItem & {
   fileSize: number;
   sha256: string;
   duplicateOfId: string | null;
+  /** Prezent doar când procesarea a eșuat; codul se traduce, urma de stivă nu. */
+  errorCode: DocumentErrorCode | null;
+  processingAttempts: number;
   fields: DocumentFields;
   ocr: {
     provider: string;
@@ -266,6 +303,12 @@ export type DocumentDetail = DocumentListItem & {
   };
   /** Motivele pentru care documentul a fost trimis la verificare (§17). */
   validationIssues: string[];
+  /** Ergonomie de interfață: serverul reverifică oricum la fiecare cerere. */
+  availableActions: DocumentAction[];
+  /** Ce mai lipsește pentru aprobare — aceleași motive pe care le-ar da un 422. */
+  approvalBlockers: string[];
+  /** `null` când reprocesarea este posibilă; altfel motivul, în cuvintele serverului. */
+  reprocessBlockedReason: string | null;
   history: DocumentHistoryEntry[];
 };
 

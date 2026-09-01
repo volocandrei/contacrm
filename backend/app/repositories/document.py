@@ -152,6 +152,32 @@ class DocumentRepository:
         row = self.session.execute(stmt).unique().first()
         return None if row is None else DocumentRow(document=row[0], client_name=row[1])
 
+    def next_for_review(
+        self, organization_id: uuid.UUID, *, exclude: uuid.UUID | None = None
+    ) -> DocumentRow | None:
+        """Cel mai vechi document care așteaptă un om.
+
+        Coada de verificare înseamnă `REVIEW_REQUIRED` și `UNMATCHED`: în ambele
+        cazuri sistemul a făcut tot ce putea și cere o decizie.
+        """
+        stmt = (
+            select(Document, Client.name)
+            .outerjoin(Client, Document.client_id == Client.id)
+            .where(
+                Document.organization_id == organization_id,
+                Document.deleted_at.is_(None),
+                Document.status.in_([DocumentStatus.REVIEW_REQUIRED, DocumentStatus.UNMATCHED]),
+            )
+            .options(joinedload(Document.document_type))
+            # Cel mai vechi primul; `id` doar ca ordinea să fie stabilă.
+            .order_by(Document.received_at.asc(), Document.id)
+            .limit(1)
+        )
+        if exclude is not None:
+            stmt = stmt.where(Document.id != exclude)
+        row = self.session.execute(stmt).unique().first()
+        return None if row is None else DocumentRow(document=row[0], client_name=row[1])
+
     def get_for_update(self, organization_id: uuid.UUID, document_id: uuid.UUID) -> Document | None:
         """Blochează rândul până la finalul tranzacției (§43).
 

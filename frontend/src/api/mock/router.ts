@@ -87,38 +87,38 @@ const routes: Route[] = [
     pattern: "/documents/next-review",
     handler: ({ query }) => store.nextReviewDocument(query.after),
   },
-  { method: "GET", pattern: "/documents/:id", handler: ({ params }) => store.getDocument(params.id!) },
+  { method: "GET", pattern: "/documents/:id", handler: ({ params }) => store.toDetail(store.getDocument(params.id!)) },
   {
     method: "PATCH",
     pattern: "/documents/:id",
     handler: ({ params, body }) =>
-      store.updateDocumentFields(params.id!, body.updates as store.FieldUpdate[]),
+      store.toDetail(store.updateDocumentFields(params.id!, body.updates as store.FieldUpdate[])),
   },
   {
     method: "POST",
     pattern: "/documents/:id/assign-client",
-    handler: ({ params, body }) => store.assignClient(params.id!, str(body, "clientId")),
+    handler: ({ params, body }) => store.toDetail(store.assignClient(params.id!, str(body, "clientId"))),
   },
   {
     method: "POST",
     pattern: "/documents/:id/approve",
-    handler: ({ params }) => store.approveDocument(params.id!),
+    handler: ({ params }) => store.toDetail(store.approveDocument(params.id!)),
   },
   {
     method: "POST",
     pattern: "/documents/:id/reject",
-    handler: ({ params, body }) => store.rejectDocument(params.id!, str(body, "reason")),
+    handler: ({ params, body }) => store.toDetail(store.rejectDocument(params.id!, str(body, "reason"))),
   },
   {
     method: "POST",
     pattern: "/documents/:id/duplicate",
     handler: ({ params, body }) =>
-      store.markDuplicate(params.id!, (body.duplicateOfId as string | undefined) ?? null),
+      store.toDetail(store.markDuplicate(params.id!, (body.duplicateOfId as string | undefined) ?? null)),
   },
   {
     method: "POST",
     pattern: "/documents/:id/reprocess",
-    handler: ({ params }) => store.reprocessDocument(params.id!),
+    handler: ({ params }) => store.toDetail(store.reprocessDocument(params.id!)),
   },
   {
     method: "POST",

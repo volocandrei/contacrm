@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.domain.document_types import DEFAULT_DOCUMENT_TYPES
 from app.domain.enums import DocumentStatus
 from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS, RoleCode
@@ -852,3 +853,285 @@ def test_document_types_are_listed_in_order(
         "supplierName",
         "totalAmount",
     ]
+
+
+# ── Coada de verificare și contoarele din bara laterală (M5.6) ───────────────
+
+
+def _received_at(db: Session, document_id: str, when: datetime) -> None:
+    """Ordinea cronologică se impune explicit: în teste două documente încărcate
+    unul după altul pot ajunge la aceeași milisecundă."""
+    document = db.get(Document, uuid.UUID(document_id))
+    assert document is not None
+    document.received_at = when
+    db.flush()
+
+
+class TestReviewQueue:
+    def test_returns_the_oldest_waiting_document(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        first = upload(api_storage, name="prima.pdf")["id"]
+        second = upload(api_storage, content=PDF + b"a doua", name="a-doua.pdf")["id"]
+        _to_review(db, first)
+        _to_review(db, second)
+        _received_at(db, first, datetime(2026, 1, 1, tzinfo=UTC))
+        _received_at(db, second, datetime(2026, 2, 1, tzinfo=UTC))
+
+        assert api_storage.get("/api/v1/documents/next-review").json()["id"] == first
+
+    def test_after_skips_the_document_just_closed(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        first = upload(api_storage, name="prima.pdf")["id"]
+        second = upload(api_storage, content=PDF + b"a doua", name="a-doua.pdf")["id"]
+        _to_review(db, first)
+        _to_review(db, second)
+        _received_at(db, first, datetime(2026, 1, 1, tzinfo=UTC))
+        _received_at(db, second, datetime(2026, 2, 1, tzinfo=UTC))
+
+        body = api_storage.get("/api/v1/documents/next-review", params={"after": first}).json()
+        assert body["id"] == second
+
+    def test_an_empty_queue_is_null_not_an_error(
+        self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
+    ) -> None:
+        login(api_storage, admin.email)
+        upload(api_storage)  # rămâne în RECEIVED: încă nu așteaptă un om
+
+        response = api_storage.get("/api/v1/documents/next-review")
+        assert response.status_code == 200
+        assert response.json() is None
+
+    def test_the_route_is_not_read_as_a_document_id(
+        self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
+    ) -> None:
+        """Regresie: declarată dupa /documents/{id}, ar fi raspuns 422."""
+        login(api_storage, admin.email)
+        assert api_storage.get("/api/v1/documents/next-review").status_code == 200
+
+    def test_documents_from_another_organization_are_not_offered(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        roles: dict[RoleCode, Role],
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        _to_review(db, upload(api_storage)["id"])
+
+        other_org = Organization(name="Alt birou")
+        db.add(other_org)
+        db.flush()
+        intruder = make_user(
+            db, other_org, roles, email="strain@contacrm.test", role=RoleCode.ADMIN
+        )
+
+        api_storage.post("/api/v1/auth/logout")
+        login(api_storage, intruder.email)
+        assert api_storage.get("/api/v1/documents/next-review").json() is None
+
+
+class TestAvailableActions:
+    def test_detail_says_what_the_current_user_may_do(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+
+        actions = api_storage.get(f"/api/v1/documents/{document_id}").json()["availableActions"]
+        assert {"approve", "reject", "download"} <= set(actions)
+
+    def test_an_operator_is_not_offered_approval(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        org: Organization,
+        roles: dict[RoleCode, Role],
+        types: dict[str, DocumentType],
+    ) -> None:
+        operator = make_user(db, org, roles, email="operator@contacrm.test", role=RoleCode.OPERATOR)
+        login(api_storage, operator.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+
+        actions = api_storage.get(f"/api/v1/documents/{document_id}").json()["availableActions"]
+        assert "approve" not in actions
+        # Corectarea câmpurilor este exact munca lui.
+        assert "edit" in actions
+
+    def test_what_the_list_refuses_the_route_refuses_too(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        org: Organization,
+        roles: dict[RoleCode, Role],
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Lista este ergonomie, dar nu are voie sa contrazica ruta."""
+        operator = make_user(
+            db, org, roles, email="operator2@contacrm.test", role=RoleCode.OPERATOR
+        )
+        login(api_storage, operator.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+
+        actions = api_storage.get(f"/api/v1/documents/{document_id}").json()["availableActions"]
+        assert "approve" not in actions
+        assert api_storage.post(f"/api/v1/documents/{document_id}/approve").status_code == 403
+
+    def test_blockers_are_exactly_the_reasons_the_route_returns(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+
+        blockers = api_storage.get(f"/api/v1/documents/{document_id}").json()["approvalBlockers"]
+        assert any("client" in blocker.lower() for blocker in blockers)
+
+        refused = api_storage.post(f"/api/v1/documents/{document_id}/approve")
+        assert refused.status_code == 422
+        assert refused.json()["details"]["document"] == blockers
+
+
+class TestSidebarCounts:
+    def test_counts_group_documents_by_what_they_need(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        waiting = upload(api_storage, name="asteapta.pdf")["id"]
+        upload(api_storage, content=PDF + b"in inbox", name="inbox.pdf")
+        _to_review(db, waiting)
+
+        body = api_storage.get("/api/v1/dashboard/counts").json()
+        assert body == {"inbox": 1, "review": 1, "unmatched": 0, "tasks": 0}
+
+    def test_counts_stop_at_the_organization_boundary(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        roles: dict[RoleCode, Role],
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        upload(api_storage)
+
+        other_org = Organization(name="Alt birou")
+        db.add(other_org)
+        db.flush()
+        intruder = make_user(
+            db, other_org, roles, email="strain2@contacrm.test", role=RoleCode.ADMIN
+        )
+        api_storage.post("/api/v1/auth/logout")
+        login(api_storage, intruder.email)
+
+        assert api_storage.get("/api/v1/dashboard/counts").json()["inbox"] == 0
+
+    def test_counting_requires_a_session(self, api_storage: TestClient) -> None:
+        assert api_storage.get("/api/v1/dashboard/counts").status_code == 401
+
+
+class TestReprocessAvailability:
+    """Regresie găsită rulând serverul: lista oferea `reprocess` pe un document care
+    își epuizase încercările, iar ruta răspundea 409."""
+
+    def _exhaust(self, db: Session, document_id: str) -> None:
+        document = db.get(Document, uuid.UUID(document_id))
+        assert document is not None
+        document.processing_attempts = settings.max_processing_attempts
+        db.flush()
+
+    def test_reprocess_is_not_offered_once_the_attempts_are_spent(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+        self._exhaust(db, document_id)
+
+        body = api_storage.get(f"/api/v1/documents/{document_id}").json()
+        assert "reprocess" not in body["availableActions"]
+        assert api_storage.post(f"/api/v1/documents/{document_id}/reprocess").status_code == 409
+
+    def test_the_reason_is_told_instead_of_the_button_simply_vanishing(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+        self._exhaust(db, document_id)
+
+        body = api_storage.get(f"/api/v1/documents/{document_id}").json()
+        reason = body["reprocessBlockedReason"]
+        assert reason is not None
+        refused = api_storage.post(f"/api/v1/documents/{document_id}/reprocess")
+        assert refused.json()["message"] == reason
+
+    def test_a_document_that_can_be_reprocessed_has_no_reason(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+
+        body = api_storage.get(f"/api/v1/documents/{document_id}").json()
+        assert body["reprocessBlockedReason"] is None
+        assert "reprocess" in body["availableActions"]
+
+    def test_accepting_the_request_moves_the_document_into_processing(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Răspunsul 202 trebuie să și arate că s-a întâmplat ceva.
+
+        Altfel ecranul, care se ține după status, nu are de unde ști că mai are ce
+        aștepta — și rămâne pe datele vechi până la o reîncărcare manuală.
+        """
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+
+        response = api_storage.post(f"/api/v1/documents/{document_id}/reprocess")
+        assert response.status_code == 202
+        assert response.json()["status"] == "PROCESSING"

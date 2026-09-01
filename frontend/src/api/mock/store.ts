@@ -32,6 +32,7 @@ import type {
   Contact,
   CurrentUser,
   DashboardData,
+  DocumentAction,
   DocumentDetail,
   DocumentFieldName,
   DocumentListItem,
@@ -144,6 +145,92 @@ function toListItem(doc: StoredDocument): DocumentListItem {
     ...listItem
   } = doc;
   return listItem;
+}
+
+/**
+ * Ce tranziții permite fiecare stare.
+ *
+ * **Sursa de adevăr este backend-ul** (`app/domain/document_state.py`). Copia asta
+ * există doar ca backendul simulat să răspundă la fel; `tests/test_contract_document_actions.py`
+ * compară cele două și cade dacă se despart.
+ */
+const ALLOWED_TRANSITIONS: Record<DocumentStatus, DocumentStatus[]> = {
+  RECEIVED: ["PROCESSING", "DUPLICATE", "ERROR", "UNMATCHED", "REJECTED"],
+  PROCESSING: ["REVIEW_REQUIRED", "APPROVED", "DUPLICATE", "ERROR", "UNMATCHED"],
+  REVIEW_REQUIRED: ["APPROVED", "REJECTED", "DUPLICATE", "PROCESSING"],
+  UNMATCHED: ["REVIEW_REQUIRED", "PROCESSING", "REJECTED", "DUPLICATE"],
+  APPROVED: ["ARCHIVED", "REVIEW_REQUIRED"],
+  ARCHIVED: ["PROCESSING"],
+  REJECTED: ["REVIEW_REQUIRED", "PROCESSING"],
+  DUPLICATE: ["REVIEW_REQUIRED", "PROCESSING"],
+  ERROR: ["PROCESSING", "REJECTED"],
+};
+
+function reachable(from: DocumentStatus, to: DocumentStatus): boolean {
+  return from !== to && ALLOWED_TRANSITIONS[from].includes(to);
+}
+
+/** Oglinda lui `app/domain/document_actions.py`. */
+function availableActionsFor(doc: StoredDocument): DocumentAction[] {
+  const has = (permission: Permission) => currentUser.permissions.includes(permission);
+  const actions: DocumentAction[] = [];
+
+  if (has("documents:write")) actions.push("edit", "assignClient");
+  if (has("documents:approve") && reachable(doc.status, "APPROVED")) actions.push("approve");
+  if (has("documents:approve") && reachable(doc.status, "REJECTED")) actions.push("reject");
+  if (has("documents:write") && reachable(doc.status, "DUPLICATE")) actions.push("markDuplicate");
+  if (has("documents:write") && reprocessBlockedReason(doc) === null) actions.push("reprocess");
+  if (has("documents:read")) actions.push("download");
+
+  return actions;
+}
+
+/**
+ * Limita de reprocesări, oglinda lui `settings.max_processing_attempts`. Un document
+ * care a eșuat de trei ori nu se repară a patra oară.
+ */
+const MAX_PROCESSING_ATTEMPTS = 3;
+
+/** Oglinda lui `reprocess_check` din `app/domain/document_actions.py`. */
+function reprocessBlockedReason(doc: StoredDocument): string | null {
+  if (doc.processingAttempts >= MAX_PROCESSING_ATTEMPTS) {
+    return `Documentul a fost procesat de ${doc.processingAttempts} ori; limita configurată a fost atinsă.`;
+  }
+  if (!reachable(doc.status, "PROCESSING")) {
+    return `Nu se poate reprocesa din starea ${doc.status}.`;
+  }
+  return null;
+}
+
+/** Ce mai lipsește pentru aprobare — aceleași motive pe care le-ar da API-ul real. */
+function approvalBlockersFor(doc: StoredDocument): string[] {
+  const blockers: string[] = [];
+  if (!doc.clientId) blockers.push("Documentul nu are client atribuit.");
+  const required = DOCUMENT_TYPES.find((t) => t.code === doc.documentTypeCode)?.requiredFields;
+  const missing = (required ?? []).filter(
+    (field) => !doc.fields[field as DocumentFieldName]?.value,
+  );
+  if (missing.length > 0) {
+    blockers.push("Câmpuri obligatorii lipsă: " + missing.join(", "));
+  }
+  return blockers;
+}
+
+/**
+ * Forma pe care o vede interfața.
+ *
+ * `storagePath` rămâne în starea internă, dar nu iese niciodată printr-un răspuns:
+ * o cale de stocare nu are ce căuta într-un API (§73). Backendul real nu o trimite,
+ * deci nici cel simulat nu are voie.
+ */
+export function toDetail(doc: StoredDocument): DocumentDetail {
+  const { storagePath: _storagePath, ...detail } = doc;
+  return {
+    ...detail,
+    availableActions: availableActionsFor(doc),
+    approvalBlockers: approvalBlockersFor(doc),
+    reprocessBlockedReason: reprocessBlockedReason(doc),
+  };
 }
 
 function recordAudit(action: string, entityType: string, entityId: string, detail: string | null) {
@@ -342,11 +429,12 @@ export function getDocument(id: string): StoredDocument {
 
 /** Următorul document care așteaptă verificare — pentru fluxul rapid al operatorului (§67). */
 export function nextReviewDocument(afterId?: string): DocumentDetail | null {
-  const queue = state.documents.filter((d) => d.status === "REVIEW_REQUIRED" || d.status === "UNMATCHED");
-  if (queue.length === 0) return null;
-  if (!afterId) return queue[0] ?? null;
-  const index = queue.findIndex((d) => d.id === afterId);
-  return queue[index + 1] ?? queue[0] ?? null;
+  const queue = state.documents.filter(
+    (d) => d.status === "REVIEW_REQUIRED" || d.status === "UNMATCHED",
+  );
+  // `after` scoate din coadă documentul tocmai închis, ca operatorul să nu revină pe el.
+  const next = afterId ? queue.find((d) => d.id !== afterId) : queue[0];
+  return next ? toDetail(next) : null;
 }
 
 export type FieldUpdate = { field: DocumentFieldName; value: string | null };

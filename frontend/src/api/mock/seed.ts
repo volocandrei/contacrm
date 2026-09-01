@@ -237,7 +237,20 @@ export const CLIENT_NOTES: ClientNote[] = ACTIVE_CLIENTS.slice(0, 6).map((client
  * niciodată prin API (§73). Backendul simulat o ține totuși, pentru că are nevoie
  * de ea ca să detecteze coliziunile de nume la arhivare.
  */
-export type StoredDocument = DocumentDetail & { storagePath: string | null };
+/**
+ * Forma stocată intern.
+ *
+ * `availableActions` si `approvalBlockers` nu fac parte din ea: depind de cine
+ * intreaba si de starea de acum, deci se calculeaza la fiecare citire, in
+ * `store.toDetail`. `storagePath` este invers — exista intern, dar nu iese
+ * niciodata printr-un raspuns (§73).
+ */
+export type StoredDocument = Omit<
+  DocumentDetail,
+  "availableActions" | "approvalBlockers" | "reprocessBlockedReason"
+> & {
+  storagePath: string | null;
+};
 
 /* ─── Documente ────────────────────────────────────────────────────────────── */
 
@@ -486,6 +499,8 @@ function buildDocument(
       ? `/ARHIVA/${year}/${String(month).padStart(2, "0")}/${(client?.name ?? "NEIDENTIFICAT").replace(/\s+/g, "")}/`
       : null,
     duplicateOfId: null,
+    errorCode: status === "ERROR" ? "OCR_FAILED" : null,
+    processingAttempts: status === "RECEIVED" ? 0 : 1,
     fields,
     ocr: {
       provider: "mock",

@@ -26,9 +26,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from app.api.deps import DbSession, StorageDep, client_ip, require_permission
+from app.core.config import settings
 from app.core.errors import AppError, ErrorCode, NotFoundError
 from app.core.logging import get_logger
-from app.domain.permissions import Permission
+from app.domain.document_actions import available_actions, reprocess_check
+from app.domain.permissions import Permission, permissions_for
 from app.models.audit import AuditLog
 from app.models.document import Document
 from app.models.user import User
@@ -54,7 +56,7 @@ from app.services.document_delivery import (
 )
 from app.services.document_fields import FieldUpdate, read_fields
 from app.services.document_processing import DocumentProcessingService
-from app.services.document_service import ActorContext, DocumentService
+from app.services.document_service import ActorContext, DocumentService, approval_blockers
 from app.services.document_upload import DocumentUploadService
 from app.services.files import FileValidationError
 from app.services.processing_runner import build_extractor, run_processing
@@ -148,7 +150,7 @@ def _history(session: DbSession, document: Document) -> list[DocumentHistoryEntr
     ]
 
 
-def _to_detail(session: DbSession, row: DocumentRow) -> DocumentDetailOut:
+def _to_detail(session: DbSession, user: User, row: DocumentRow) -> DocumentDetailOut:
     document = row.document
     base = to_list_item(row)
     preview = document.ocr_text[:OCR_PREVIEW_CHARS] if document.ocr_text else None
@@ -173,8 +175,26 @@ def _to_detail(session: DbSession, row: DocumentRow) -> DocumentDetailOut:
             duration_ms=document.extraction_duration_ms,
         ),
         validation_issues=list(document.validation_issues or []),
+        available_actions=available_actions(
+            document.status,
+            permissions_for(user.primary_role),
+            processing_attempts=document.processing_attempts,
+            max_attempts=settings.max_processing_attempts,
+        ),
+        approval_blockers=approval_blockers(document),
+        # De ce nu se poate reprocesa, când nu se poate: altfel butonul dispare fără
+        # explicație, iar documentul pare pur și simplu uitat.
+        reprocess_blocked_reason=reprocess_check(
+            document.status,
+            document.processing_attempts,
+            max_attempts=settings.max_processing_attempts,
+        )[1],
         history=_history(session, document),
     )
+
+
+def _detail(session: DbSession, user: User, document_id: uuid.UUID) -> DocumentDetailOut:
+    return _to_detail(session, user, _fetch(session, user, document_id))
 
 
 def _fetch(session: DbSession, user: User, document_id: uuid.UUID) -> DocumentRow:
@@ -224,11 +244,32 @@ def list_documents(
     )
 
 
+# Declarată **înaintea** lui `/documents/{document_id}`: altfel FastAPI ar încerca
+# să citească „next-review" ca UUID și ar răspunde 422.
+@router.get("/documents/next-review", response_model=DocumentDetailOut | None)
+def next_review_document(
+    session: DbSession,
+    user: DocumentReader,
+    after: uuid.UUID | None = None,
+) -> DocumentDetailOut | None:
+    """Următorul document care așteaptă un om (§31).
+
+    Coada este cronologică: cel mai vechi primul, pentru că un document uitat la
+    coada listei este exact cel care blochează o declarație. `after` scoate din
+    coadă documentul tocmai închis, ca operatorul să nu revină pe el.
+
+    Răspunde `null` — nu 404 — când coada este goală: „nu mai e nimic de făcut"
+    este un răspuns valid, nu o eroare.
+    """
+    row = DocumentRepository(session).next_for_review(user.organization_id, exclude=after)
+    return None if row is None else _to_detail(session, user, row)
+
+
 @router.get("/documents/{document_id}", response_model=DocumentDetailOut)
 def get_document(
     session: DbSession, user: DocumentReader, document_id: uuid.UUID
 ) -> DocumentDetailOut:
-    return _to_detail(session, _fetch(session, user, document_id))
+    return _detail(session, user, document_id)
 
 
 # ── Upload ───────────────────────────────────────────────────────────────────
@@ -284,7 +325,7 @@ def upload_document(
         user_agent=request.headers.get("User-Agent"),
     )
     session.flush()
-    detail = _to_detail(session, _fetch(session, user, document.id))
+    detail = _detail(session, user, document.id)
 
     # OCR-ul nu se face în cerere (§38): pornește după ce răspunsul a plecat.
     # Un duplicat nu se procesează — conținutul lui este deja cunoscut.
@@ -316,7 +357,7 @@ def update_document(
         [FieldUpdate(field=u.field, value=u.value) for u in payload.updates],
         _actor(user, request),
     )
-    return _to_detail(session, _fetch(session, user, document_id))
+    return _detail(session, user, document_id)
 
 
 @router.post("/documents/{document_id}/assign-client", response_model=DocumentDetailOut)
@@ -330,7 +371,7 @@ def assign_client(
     DocumentService(session).assign_client(
         user.organization_id, document_id, payload.client_id, _actor(user, request)
     )
-    return _to_detail(session, _fetch(session, user, document_id))
+    return _detail(session, user, document_id)
 
 
 @router.post("/documents/{document_id}/approve", response_model=DocumentDetailOut)
@@ -341,7 +382,7 @@ def approve_document(
     document_id: uuid.UUID,
 ) -> DocumentDetailOut:
     DocumentService(session).approve(user.organization_id, document_id, _actor(user, request))
-    return _to_detail(session, _fetch(session, user, document_id))
+    return _detail(session, user, document_id)
 
 
 @router.post("/documents/{document_id}/reject", response_model=DocumentDetailOut)
@@ -355,7 +396,7 @@ def reject_document(
     DocumentService(session).reject(
         user.organization_id, document_id, payload.reason, _actor(user, request)
     )
-    return _to_detail(session, _fetch(session, user, document_id))
+    return _detail(session, user, document_id)
 
 
 @router.post("/documents/{document_id}/duplicate", response_model=DocumentDetailOut)
@@ -369,7 +410,7 @@ def mark_duplicate(
     DocumentService(session).mark_duplicate(
         user.organization_id, document_id, payload.duplicate_of_id, _actor(user, request)
     )
-    return _to_detail(session, _fetch(session, user, document_id))
+    return _detail(session, user, document_id)
 
 
 # ── Preview și download (§27-§30) ────────────────────────────────────────────
@@ -505,18 +546,11 @@ def reprocess_document(
     if not allowed:
         raise AppError(ErrorCode.CONFLICT, reason or "Documentul nu poate fi reprocesat.")
 
-    DocumentService(session).audit.record(
-        organization_id=user.organization_id,
-        action="DOCUMENT_REPROCESS_REQUESTED",
-        entity_type="Document",
-        entity_id=str(document_id),
-        user_id=user.id,
-        user_name=user.full_name,
-        detail=f"încercarea {document.processing_attempts + 1}",
-        ip=client_ip(request),
-        user_agent=request.headers.get("User-Agent"),
+    DocumentService(session).begin_reprocessing(
+        user.organization_id, document_id, _actor(user, request)
     )
-    # Ca la upload: intrarea de audit trebuie să fie vizibilă workerului.
+
+    # Ca la upload: starea și intrarea de audit trebuie să fie vizibile workerului.
     session.commit()
 
     background.add_task(
@@ -526,4 +560,4 @@ def reprocess_document(
         storage,
         triggered_by=user.id,
     )
-    return _to_detail(session, _fetch(session, user, document_id))
+    return _detail(session, user, document_id)

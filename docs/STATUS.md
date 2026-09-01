@@ -1,6 +1,6 @@
 # STATUS — ContaCRM
 
-Starea proiectului la **31.08.2026**. Documentul acesta răspunde la trei întrebări:
+Starea proiectului la **01.09.2026**. Documentul acesta răspunde la trei întrebări:
 cum pornești pe o mașină nouă, ce este construit și ce urmează.
 
 Pentru arhitectură, schema de bază de date și registrul de riscuri, vezi
@@ -62,16 +62,24 @@ Conturi de development, parola `contacrm-dev`:
 fluxul „cont dezactivat" să fie testabil) — toate pe domeniul `contacrm.test`.
 
 Ca frontend-ul să vorbească cu API-ul real în loc de cel simulat, creează
-`frontend/.env.local`:
+`frontend/.env.local` (pornind de la `frontend/.env.example`):
 
 ```
 VITE_API_MODE=http
-VITE_API_BASE_URL=http://localhost:8000/api/v1
+VITE_PROXY_TARGET=http://127.0.0.1:8000
 ```
 
-> Atenție: în modul `http` funcționează autentificarea, administrarea
-> utilizatorilor și CRM-ul (clienți, contacte, note, sarcini). Ecranele de
-> documente, perioade și rapoarte vor da 404 până la M5–M7.
+**Lasă `VITE_API_BASE_URL` pe calea relativă implicită (`/api/v1`).** Serverul de
+development proxy-ază `/api` către backend, deci browserul vede o singură origine.
+Nu e comoditate: cookie-ul de sesiune este `SameSite=Lax`, iar de pe altă origine nu
+ar fi trimis la cererile pornite de `<img>` sau `<object>` — adică exact la
+previzualizarea documentului. Un token în URL nu este o alternativă (§27).
+
+> În modul `http` funcționează autentificarea, administrarea utilizatorilor,
+> CRM-ul (clienți, contacte, note, sarcini) și **tot fluxul de documente**: inbox,
+> încărcare, procesare, ecranul de verificare, previzualizare, descărcare, arhivă.
+> Panoul principal, perioadele și rapoartele încă dau 404 — vin cu M6–M7.
+> Contoarele din bara laterală funcționează deja.
 
 ### Verificări
 
@@ -97,12 +105,12 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  7.909 linii sursă +   411 linii teste   →  38 teste
-backend   3.140 linii sursă + 1.722 linii teste   → 123 teste
-migrări     548 linii
+frontend  8.549 linii sursă +   654 linii teste   →  55 teste
+backend   7.513 linii sursă + 5.577 linii teste   → 462 teste
+migrări   1.079 linii
 ```
 
-Toate verificările trec: **161 teste**, lint curat, `mypy --strict` curat, build curat.
+Toate verificările trec: **517 teste**, lint curat, `mypy --strict` curat, build curat.
 
 ### Frontend — complet, pe backend simulat ✅
 
@@ -130,7 +138,7 @@ Alte lucruri gata: temă light/dark persistată, filtre în URL (o listă filtra
 poate trimite unui coleg), sidebar colapsabil cu contoare live, accesibilitate
 consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 
-### Backend — M2 + M3 + M4 ✅
+### Backend — M2 + M3 + M4 + M5.1–M5.6 ✅
 
 **M2 — schelet**
 - FastAPI cu fabrică `create_app()`, fără efecte secundare la import
@@ -176,16 +184,68 @@ construiește cu `alembic upgrade head`, deci extensiile, funcțiile, constrâng
 `CHECK` și indexurile parțiale — care există doar în migrări — sunt prezente și
 exercitate. Un test compară modelele cu schema migrată și cade la primul derapaj.
 
-Rute reale existente: 14 endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
-health ×3).
+**M5 — documente (M5.1 → M5.6 gata; M5.7 și M5.8 rămân)**
+
+- **M5.1 model și stocare.** `Document`, `DocumentVersion`, `DocumentFieldOverride`,
+  `DocumentIntake`, `DocumentType`. `StorageProvider` (ADR-004) cu implementare
+  locală: scriere atomică, cheie generată de sistem — **numele venit de la expeditor
+  nu ajunge niciodată într-o cale de filesystem** (R3, R7).
+- **M5.2 încărcare.** Tipul se stabilește din octeți (magic bytes), nu din ce declară
+  clientul. Dimensiunea și SHA-256 se calculează **în timpul citirii**, ca un fișier
+  peste limită să nu ajungă întreg în memorie. Duplicatele se recunosc după hash.
+- **M5.3 API.** 12 rute, filtrare, sortare pe listă albă, paginare stabilă.
+  Nicio cale de stocare nu iese printr-un răspuns (§73).
+- **M5.4 preview și download.** Cereri autentificate, cu `Range`, `nosniff`,
+  `default-src 'none'; sandbox` și `no-store`. Descărcarea se auditează —
+  previzualizarea nu, ca volumul să nu înece intrările care contează.
+- **M5.5 procesare.** Extracția stă în spatele unei interfețe (`DocumentExtractionProvider`)
+  și primește doar fișierul, nu baza de date. Fiecare câmp are propriul scor de
+  încredere. Idempotență la nivel de tabel, rândul blocat cu `FOR UPDATE`,
+  **corecțiile manuale supraviețuiesc reprocesării**. Aprobarea automată există, dar
+  este implicit oprită: a aproba o probă contabilă fără ca un om să se uite este o
+  decizie de business, nu un implicit tehnic. Singura verificare numerică este
+  `subtotal + TVA = total` — aritmetică pură. **Sistemul nu calculează niciodată TVA.**
+- **M5.6 interfața de verificare pe API-ul real.** Ecranul existent a fost legat, nu
+  rescris. Ce s-a adăugat:
+  - **Serverul spune ce butoane sunt valide.** `availableActions` se calculează din
+    aceeași mașină de stări pe care o folosesc și rutele, plus rolul utilizatorului.
+    Interfața nu recalculează regulile ciclului de viață — o a doua copie ar rămâne
+    în urmă tăcut, iar butoanele ar minți. Un test de contract compară tabelul de
+    tranziții din backend cu cel din backendul simulat.
+  - **`approvalBlockers` și `reprocessBlockedReason`** vin din exact aceleași funcții
+    pe care rutele le folosesc ca să refuze. Un buton nu dispare fără explicație.
+  - **Previzualizare autentificată prin `blob:`.** `<img>` și `<object>` nu trimit
+    antetul `Authorization`, iar un token în query string este interzis (§27):
+    conținutul se citește cu `fetch` și se dă elementului un URL de obiect, revocat
+    la ieșire. Același drum pentru descărcare, cu numele standardizat de server.
+  - **Sesiunea se reîmprospătează singură.** Tokenul de acces trăiește 15 minute; un
+    operator stă mai mult pe același ecran. Un 401 declanșează un singur refresh
+    (indiferent câte cereri așteaptă) și reîncearcă.
+  - **Ecranul se actualizează singur** cât timp documentul este în procesare, și se
+    oprește când ajunge într-o stare care așteaptă un om.
+  - Rute noi: `GET /documents/next-review` (coada, cronologică) și
+    `GET /dashboard/counts` (contoarele din bara laterală).
+
+Rute reale existente: 27 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
+documente ×12, `/dashboard/counts`, health ×3).
 
 ### Verificat pe date reale, nu doar în teste
 
-- Toate cele trei migrări se aplică **și se dau înapoi** curat
+- Toate cele cinci migrări se aplică **și se dau înapoi** curat
 - Flux HTTP complet: parolă greșită → 401, login → `CurrentUser`, cookie-uri
   `HttpOnly`, `/me`, `/users` ca ADMIN, refresh, logout, `/me` după logout → 401
 - În baza de date: audit cu `ip` și `request_id`, `timestamptz` cu offset,
   refresh tokenurile arată rotația (primul înlocuit de al doilea, aceeași familie)
+- Ciclul complet al unui document, pe server real: încărcare → procesare automată →
+  `REVIEW_REQUIRED` cu proveniență per câmp → corecție manuală → reprocesare care
+  **nu** calcă peste corecție → aprobare → descărcare cu numele corect; al doilea
+  fișier identic devine duplicat legat de original; un OPERATOR primește 403
+- **Interfața, în modul `http`, într-un browser real** (M5.6): login, reîncărcare cu
+  sesiunea intactă, previzualizare PDF și imagine dintr-un `blob:` (fără token în
+  URL), corectare și salvare, aprobare, descărcare cu numele de la server,
+  reîmprospătarea automată a sesiunii după ștergerea cookie-ului de acces, butoanele
+  care dispar corect pentru un OPERATOR, și ecranul care se actualizează singur cât
+  timp documentul este reprocesat
 
 ### Defecte găsite și reparate pe parcurs
 
@@ -204,6 +264,14 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 | `%` din căutare era tratat ca joker LIKE, nu ca text | test scris din contractul mock-ului |
 | Constrângerile `CHECK` existau doar în migrări, nu în modele | testul de derapaj modele↔migrări |
 | `Mapped[TaskStatus]` întorcea `str` din baza de date, nu enum-ul | **rulând serverul real** |
+| Filtrele de listă nu se legau deloc din query string — API-ul returna tot | **rulând serverul real** |
+| `FOR UPDATE` pe partea nullable a unui outer join → 500 | **rulând serverul real** |
+| Procesarea pornea pe o tranzacție încă necomisă; documentul rămânea tăcut în `RECEIVED` | **rulând serverul real** (testele împart sesiunea, deci nu puteau vedea) |
+| Loggerul cădea pe consolă cp1252 exact când excepția avea diacritice | **rulând serverul real** |
+| Tokenul fals `mock-session-…` era trimis și către API-ul real, unde `Bearer` are prioritate în fața cookie-ului → 401 la fiecare cerere | **rulând interfața în modul `http`** |
+| `availableActions` oferea `reprocess` pe un document cu încercările epuizate; ruta răspundea 409 | **rulând interfața în modul `http`** |
+| Reprocesarea răspundea 202 cu un document care arăta neatins, deci ecranul nu știa că mai are ce aștepta | **rulând interfața în modul `http`** |
+| Suita de teste frontend își schimba comportamentul după `.env.local` | rulând testele după ce am creat `.env.local` |
 
 ---
 
@@ -211,22 +279,22 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 
 ### Golul concret
 
-Frontend-ul consumă **29 de rute**. Backendul real implementează **10** dintre ele
-(plus `/auth/refresh` și health). **Rămân 19.**
+Frontend-ul consumă **31 de rute**. Backendul real implementează **24** dintre ele
+(plus `/auth/refresh` și health). **Rămân 7.**
 
 | Rută | Milestone |
 |---|---|
-| `GET /dashboard`, `GET /dashboard/counts` | M7 |
 | ~~`GET /clients`, `/clients/:id`, `/clients/:id/{contacts,notes}`~~ | ✅ M4 |
-| `GET /clients/:id/periods` | M7 |
-| `GET /clients/:id/messages` | Faza 2 |
-| `GET /documents`, `/documents/:id`, `PATCH /documents/:id` | M5 |
-| `GET /documents/next-review`, `POST /documents/:id/{assign-client,approve,reject,duplicate,reprocess}`, `POST /documents/bulk` | M6 |
-| `GET /document-types` | M5 |
-| `GET /periods`, `GET /periods/missing` | M7 |
 | ~~`GET /tasks`, `PATCH /tasks/:id`~~ | ✅ M4 |
-| `GET /messages` | Faza 2 |
-| `GET /audit-logs` | M3 (ecran) / M7 |
+| ~~`GET /documents`, `/documents/:id`, `PATCH /documents/:id`, `/document-types`~~ | ✅ M5.3 |
+| ~~`/documents/:id/{preview,download}`~~ | ✅ M5.4 |
+| ~~`POST /documents/:id/{assign-client,approve,reject,duplicate,reprocess}`~~ | ✅ M5.3–M5.5 |
+| ~~`GET /documents/next-review`, `GET /dashboard/counts`~~ | ✅ M5.6 |
+| `POST /documents/bulk` | M6 (ecranul de listă) |
+| `GET /dashboard` | M6 |
+| `GET /periods`, `GET /periods/missing`, `GET /clients/:id/periods` | M6 |
+| `GET /audit-logs` | M6 (ecran) |
+| `GET /messages`, `GET /clients/:id/messages` | Faza 2 |
 
 Contractul fiecăreia este deja definit: `frontend/src/types/domain.ts` spune exact
 ce câmpuri, iar `frontend/src/api/mock/store.ts` spune exact ce semantică
@@ -243,33 +311,32 @@ ci portat.**
 | M2 | Schelet backend | ✅ |
 | M3 | Auth, RBAC, audit | ✅ |
 | M4 | CRM: clients, contacts, notes, tags, tasks | ✅ |
-| **M5** | **Documents: upload, StorageProvider, SHA-256, duplicate, FilenameGenerator, preview securizat** | ⏳ **urmează** |
-| M6 | Processing: Celery + Redis, MockOCRProvider, clasificare, extracție, confidence, review | |
-| M7 | Perioade + checklist + dashboard KPI + ecran audit | |
-| M8 | Notificări, teste E2E, CI | |
+| **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare** | ⏳ **M5.1–M5.6 ✅ · M5.7–M5.8 rămân** |
+| M6 | Coadă persistentă (Celery + Redis), perioade + checklist, dashboard, ecran audit, acțiuni în masă | |
+| M7 | Notificări, rapoarte | |
+| M8 | Teste E2E, CI | |
 | Faza 2 | Microsoft Graph, WhatsApp, OCR/AI real, remindere, export ZIP | |
 | Faza 3 | Integrare software contabil, rapoarte avansate, detecție anomalii | |
 
 **MVP = M1–M8.**
 
-### De ce M5 este următorul
+### Ce mai are M5 de făcut
 
-Ecranul de verificare — piesa centrală a produsului — este complet pe date
-sintetice, deci contractul e definit până la ultimul câmp. De construit:
+**M5.7 — arhivarea.** `frontend/src/lib/filename.ts` trebuie **portat identic** în
+Python: testele din `filename.test.ts` sunt specificația executabilă, aceleași cazuri
+trebuie să treacă. Aprobarea trebuie să continue până la `ARCHIVED`, cu numele
+standardizat și calea `/ARHIVA/{an}/{lună}/{client}/`, sufix anti-coliziune și audit.
 
-1. `Document` + `DocumentField` cu proveniență (`AI`/`OCR`/`MANUAL`/`EMPTY`) și
-   scor de încredere per câmp
-2. Upload cu limită de dimensiune și listă albă de MIME, hash SHA-256 pentru
-   detecția duplicatelor (§13)
-3. `StorageProvider` (ADR-004) cu implementare locală, plus
-   `FilenameGeneratorService` — regulile există deja testate în
-   `frontend/src/lib/filename.ts`, care trebuie **portat identic** în Python
-4. Preview autorizat: `<img>`/`<object>` nu trimit antetul `Authorization`, deci
-   endpointul trebuie să accepte cookie de sesiune. Decizia se ia aici.
+> Deocamdată backendul simulat arhivează în același pas cu aprobarea, iar cel real se
+> oprește la `APPROVED`. M5.7 închide diferența — în Python, nu prin modificarea
+> testelor frontend.
 
-Cea mai mare capcană: numele venit de la expeditor nu are voie să ajungă
-nemodificat într-o cale de filesystem (R3, R7). Testele din `filename.test.ts`
-sunt specificația executabilă — aceleași cazuri trebuie să treacă în Python.
+Cea mai mare capcană rămâne aceeași: numele venit de la expeditor nu are voie să
+ajungă nemodificat într-o cale de filesystem (R3, R7).
+
+**M5.8 — întărire.** Teste de integrare capăt-la-capăt, teste de securitate (IDOR,
+traversare de căi, tipuri de fișier ostile), măsurători pe volum, documentație,
+revizuire finală.
 
 ---
 
@@ -295,16 +362,19 @@ Necesită input uman, nu sunt de rezolvat în cod:
 
 ## 5. Datorie tehnică cunoscută
 
-Niciuna nu blochează M4.
+Niciuna nu blochează M5.7.
 
 | Element | Notă |
 |---|---|
 | `QueryBoundary` (`components/page.tsx`) | scris ca să elimine triada `isLoading/error/empty`, dar nefolosit — cele 8 pagini o repetă manual |
-| `useNextReviewDocument` + `/documents/next-review` | lanț implementat pe 4 straturi, folosit de nimeni; `ReviewQueuePage` (`/documente/verificare/coada`) e un stub nelegat din navigație |
 | `react-hook-form`, `zod`, `@hookform/resolvers` | instalate, nefolosite |
 | primitivele shadcn (`button`, `card`, `badge`, `separator`) | importate doar de componenta de demo; aplicația scrie Tailwind brut. Ori le adoptăm, ori recunoaștem că nu le folosim |
 | `"2026-08"` hardcodat în 6 locuri | merge azi; din septembrie panoul principal arată o lună goală |
-| `document-preview.tsx:16` | hardcodează `/api/v1/...`, ocolind `VITE_API_BASE_URL`; `<img>`/`<object>` nu trimit `Authorization`, deci endpointul de preview va trebui să accepte cookie de sesiune (decizie de luat la M5) |
 | `client_ip()` (`api/deps.py`) | ignoră `X-Forwarded-For` — corect acum, dar trebuie citit din proxy-uri de încredere când apare un reverse proxy |
 | lipsă `.gitattributes` | Git raportează conversii LF↔CRLF; un `* text=auto eol=lf` previne diff-uri false dacă intră cineva pe Linux/Mac |
 | `oxlint`: 2 warning-uri | `only-export-components` pe fișiere shadcn generate — cosmetic |
+| procesarea rulează în procesul API (`BackgroundTasks`) | dacă procesul cade între încărcare și finalul extracției, documentul rămâne în `PROCESSING` și cere reprocesare. `process(document_id)` are deja semnătura unui task de worker: trecerea la Celery e infrastructură, nu logică (M6) |
+| `session.commit()` explicit înainte de a programa procesarea | pragmatic și corect azi; varianta complet corectă este un outbox tranzacțional, care vine odată cu coada persistentă (M6) |
+| `POST /documents/bulk` | declarat în `api/endpoints.ts`, fără rută în backend și fără apelant în interfață — se leagă la M6, odată cu acțiunile în masă din ecranul de listă |
+| `update_fields` nu verifică starea | un document `ARCHIVED` poate fi editat. Starea nu este încă atinsă de nimic (arhivarea vine la M5.7), dar garda trebuie pusă **în serviciu**, nu doar în lista de acțiuni |
+| panoul principal dă 404 în modul `http` | `GET /dashboard` vine la M6; ecranul afișează starea de eroare, nu se blochează |

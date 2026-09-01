@@ -77,11 +77,21 @@ export function useDocuments(params: QueryParams) {
   return useQuery({ queryKey: queryKeys.documents(params), queryFn: () => documents.list(params) });
 }
 
+/** Cât de des reîntrebăm cât timp workerul încă lucrează la document. */
+const PROCESSING_POLL_MS = 1500;
+
 export function useDocument(id: string | undefined) {
   return useQuery({
     queryKey: queryKeys.document(id ?? ""),
     queryFn: () => documents.get(id!),
     enabled: !!id,
+    // Procesarea se întâmplă în afara cererii (§38): ecranul nu are cum să afle că
+    // s-a terminat decât întrebând. Interogarea se oprește singură când documentul
+    // ajunge într-o stare care așteaptă un om.
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "RECEIVED" || status === "PROCESSING" ? PROCESSING_POLL_MS : false;
+    },
   });
 }
 

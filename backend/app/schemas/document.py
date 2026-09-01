@@ -18,6 +18,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, field_serializer, field_validator
 
+from app.domain.document_actions import DocumentAction
 from app.domain.enums import (
     DOCUMENT_FIELD_NAMES,
     DocumentErrorCode,
@@ -128,6 +129,13 @@ class DocumentDetailOut(DocumentListItemOut):
     ocr: DocumentOcrOut
     extraction: DocumentExtractionOut
     validation_issues: list[str]
+    # Ce poate face **utilizatorul curent** cu documentul, în starea lui de acum.
+    # Doar ergonomie de interfață: fiecare rută reverifică (§31).
+    available_actions: list[DocumentAction]
+    # Ce mai lipsește pentru aprobare — aceeași listă pe care ar returna-o un 422.
+    approval_blockers: list[str]
+    # `null` când reprocesarea este posibilă; altfel motivul, în cuvintele rutei.
+    reprocess_blocked_reason: str | None
     history: list[DocumentHistoryEntryOut]
 
 
@@ -197,6 +205,7 @@ class DocumentFilters(ApiModel):
 __all__ = [
     "DOCUMENT_FIELD_NAMES",
     "SORTABLE_FIELDS",
+    "DocumentAction",
     "DocumentDetailOut",
     "DocumentExtractionOut",
     "DocumentFieldsOut",
