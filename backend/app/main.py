@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1 import health
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import register_exception_handlers
@@ -60,8 +61,15 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.api_v1_prefix)
-    # Health-ul stă și în afara prefixului: orchestratorul nu trebuie să știe versiunea API.
-    app.include_router(api_router)
+    # Doar health-ul stă și în afara prefixului: orchestratorul nu trebuie să știe
+    # versiunea API-ului ca să întrebe dacă procesul este viu.
+    #
+    # **Doar health-ul.** Aici stătea `api_router` întreg, ceea ce publica toată
+    # suprafața și neprefixat: `/documents`, `/dashboard`, `/clients`. Autorizarea
+    # era aceeași pe ambele căi, deci nu se putea ajunge nicăieri în plus — dar un
+    # reverse proxy configurat să protejeze `/api/*` ar fi lăsat descoperit exact
+    # același API, iar versionarea nu ar mai fi însemnat nimic.
+    app.include_router(health.router)
 
     return app
 

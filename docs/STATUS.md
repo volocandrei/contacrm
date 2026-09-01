@@ -106,11 +106,11 @@ placeholdere evidente din `.env.example`.
 
 ```
 frontend  8.577 linii sursă +   653 linii teste   →  55 teste
-backend   8.742 linii sursă + 6.834 linii teste   → 536 teste
+backend   8.756 linii sursă + 7.625 linii teste   → 577 teste
 migrări   1.229 linii
 ```
 
-Toate verificările trec: **591 de teste**, lint curat, `mypy --strict` curat, build curat.
+Toate verificările trec: **632 de teste**, lint curat, `mypy --strict` curat, build curat.
 
 ### Frontend — complet, pe backend simulat ✅
 
@@ -266,6 +266,32 @@ deci toate intrările scrise într-o cerere aveau exact aceeași valoare, iar
 istoricul unui document putea arăta arhivarea înaintea încărcării.
 `clock_timestamp()` este ceasul real, evaluat la fiecare rând.
 
+**Revizuirea de securitate și de volum (M5.8)**
+
+Testele punctuale existau deja. Ce lipsea era o trecere **sistematică**: lista de
+rute se citește din schema OpenAPI a aplicației, nu din memoria cuiva, iar fiecare
+rută primește aceleași trei întrebări — cere sesiune? se oprește la granița
+organizației? scapă ceva intern? Un sweep care nu descoperă nicio rută ar trece
+oricând, așa că testul cade și dacă descoperirea returnează prea puțin.
+
+Sweep-ul a găsit imediat ceva ce nicio verificare punctuală nu putea găsi:
+**`api_router` era montat de două ori** — cu prefix și fără. Autorizarea era
+aceeași pe ambele căi, deci nu se putea ajunge nicăieri în plus, dar un reverse
+proxy configurat să protejeze `/api/*` ar fi lăsat descoperit exact același API pe
+`/documents`, iar versionarea nu ar mai fi însemnat nimic. Acum doar health-ul stă
+în afara prefixului, iar un test ține asta pe loc.
+
+Volumul se măsoară în **interogări, nu în secunde**: un test cronometrat cade când
+mașina e ocupată și trece când nu e. Regula verificată este că numărul de
+interogări nu crește odată cu numărul de rânduri. Măsurat: o pagină de 50 de
+documente costă 8 interogări, panoul 17, o încărcare 16 — toate fixe, indiferent
+câte documente există deja.
+
+Tot de acolo: `count(*)` pentru paginare se făcea peste o subinterogare care
+proiecta **toate** coloanele documentului, textul OCR inclusiv (§64). Acum
+proiectează doar cheia; join-urile și filtrele rămân neatinse, pentru că de ele
+depinde căutarea după numele clientului.
+
 Rute reale existente: 28 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
 documente ×12, `/dashboard` ×2, health ×3).
 
@@ -304,6 +330,9 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 | `%` din căutare era tratat ca joker LIKE, nu ca text | test scris din contractul mock-ului |
 | Constrângerile `CHECK` existau doar în migrări, nu în modele | testul de derapaj modele↔migrări |
 | `Mapped[TaskStatus]` întorcea `str` din baza de date, nu enum-ul | **rulând serverul real** |
+| `api_router` era montat de două ori: tot API-ul răspundea și fără prefixul de versiune | sweep-ul de securitate care citește rutele din schema OpenAPI |
+| jurnalul de audit nu se putea ordona: `now()` dă în Postgres timpul de **început al tranzacției**, deci toate intrările unei cereri aveau aceeași valoare | testul care cerea ca aprobarea să apară înaintea arhivării |
+| `count(*)` pentru paginare proiecta toate coloanele, textul OCR inclusiv | testul care numără interogările |
 | Filtrele de listă nu se legau deloc din query string — API-ul returna tot | **rulând serverul real** |
 | `FOR UPDATE` pe partea nullable a unui outer join → 500 | **rulând serverul real** |
 | Procesarea pornea pe o tranzacție încă necomisă; documentul rămânea tăcut în `RECEIVED` | **rulând serverul real** (testele împart sesiunea, deci nu puteau vedea) |

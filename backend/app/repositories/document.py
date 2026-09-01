@@ -120,8 +120,14 @@ class DocumentRepository:
         )
         stmt = self._apply_filters(stmt, filters)
 
+        # Numai cheia în subinterogare: altfel `count(*)` s-ar face peste o proiecție
+        # care conține toate coloanele documentului, inclusiv textul OCR (§64).
+        # Join-urile și filtrele rămân neatinse — căutarea după numele clientului
+        # depinde de ele.
         total = self.session.scalar(
-            select(func.count()).select_from(stmt.order_by(None).subquery())
+            select(func.count()).select_from(
+                stmt.with_only_columns(Document.id).order_by(None).subquery()
+            )
         )
 
         column = getattr(Document, SORTABLE_FIELDS[filters.sort])
