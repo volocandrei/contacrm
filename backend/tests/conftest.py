@@ -112,7 +112,11 @@ def db(db_engine: sa.Engine) -> Iterator[Session]:
         yield session
     finally:
         session.close()
-        transaction.rollback()
+        # Un test care si-a dat singur rollback (ca sa verifice starea de dupa) lasa
+        # tranzactia deja inchisa; a o inchide a doua oara ar produce un warning care
+        # ar acoperi warning-urile reale.
+        if transaction.is_active:
+            transaction.rollback()
         connection.close()
 
 

@@ -371,9 +371,7 @@ class TestListing:
         assert amounts == [Decimal("55.50"), Decimal("1190.00")]
 
     def test_paginates(self, db: Session, org: Organization, corpus: dict[str, Document]) -> None:
-        page_two, total = repo(db).list(
-            org.id, DocumentFilters(), PageParams(page=2, page_size=2)
-        )
+        page_two, total = repo(db).list(org.id, DocumentFilters(), PageParams(page=2, page_size=2))
         assert total == 3
         assert len(page_two) == 1
 
