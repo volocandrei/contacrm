@@ -24,9 +24,7 @@ _ALLOWED: Mapping[DocumentStatus, frozenset[DocumentStatus]] = MappingProxyType(
         # Abia primit: poate intra în procesare, sau se dovedește duplicat/nevalid
         # înainte de a ajunge acolo. Un operator care vede un fișier evident
         # nefolositor îl poate respinge fără să aștepte OCR-ul.
-        S.RECEIVED: frozenset(
-            {S.PROCESSING, S.DUPLICATE, S.ERROR, S.UNMATCHED, S.REJECTED}
-        ),
+        S.RECEIVED: frozenset({S.PROCESSING, S.DUPLICATE, S.ERROR, S.UNMATCHED, S.REJECTED}),
         # În procesare: se termină cu bine, cere om, sau eșuează.
         S.PROCESSING: frozenset({S.REVIEW_REQUIRED, S.APPROVED, S.DUPLICATE, S.ERROR, S.UNMATCHED}),
         # Așteaptă un operator.

@@ -12,10 +12,12 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from app.api.deps import DbSession, StorageDep, client_ip, require_permission
 from app.core.errors import AppError, ErrorCode, NotFoundError
+from app.core.logging import get_logger
 from app.domain.permissions import Permission
 from app.models.audit import AuditLog
 from app.models.document import Document
@@ -31,10 +33,22 @@ from app.schemas.document import (
     DocumentOcrOut,
     DocumentTypeOut,
 )
+from app.services.document_delivery import (
+    SECURITY_HEADERS,
+    RangeNotSatisfiableError,
+    content_disposition,
+    parse_range,
+    safe_filename,
+    stored_size,
+    stream,
+)
 from app.services.document_fields import FieldUpdate, read_fields
 from app.services.document_service import ActorContext, DocumentService
 from app.services.document_upload import DocumentUploadService
 from app.services.files import FileValidationError
+from app.services.storage import ObjectNotFoundError
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["documente"])
 
@@ -240,7 +254,7 @@ def upload_document(
         raise AppError(
             ErrorCode.VALIDATION_ERROR,
             exc.message,
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             details={"file": [exc.code.value]},
         ) from exc
 
@@ -331,3 +345,108 @@ def mark_duplicate(
         user.organization_id, document_id, payload.duplicate_of_id, _actor(user, request)
     )
     return _to_detail(session, _fetch(session, user, document_id))
+
+
+# ── Preview și download (§27-§30) ────────────────────────────────────────────
+
+
+def _serve(
+    session: DbSession,
+    storage: StorageDep,
+    user: User,
+    document_id: uuid.UUID,
+    request: Request,
+    *,
+    inline: bool,
+) -> StreamingResponse:
+    """Trunchiul comun al celor două rute.
+
+    Autentificarea vine din cookie-ul de sesiune, la fel ca pentru orice altă rută:
+    `<img>` și `<object>` nu trimit antetul `Authorization`, dar trimit cookie-ul.
+    Nu există și nu trebuie să existe un token în query string (§27).
+    """
+    row = _fetch(session, user, document_id)
+    document = row.document
+
+    try:
+        size = stored_size(storage, document)
+    except ObjectNotFoundError as exc:
+        # Rândul există, fișierul nu. Nu spunem ce cheie lipsește (§73).
+        logger.error("document_file_missing", document_id=str(document.id))
+        raise NotFoundError("Fișierul documentului", document_id) from exc
+
+    try:
+        byte_range = parse_range(request.headers.get("Range"), size)
+    except RangeNotSatisfiableError:
+        return StreamingResponse(
+            iter(()),
+            status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE,
+            headers={**SECURITY_HEADERS, "Content-Range": f"bytes */{size}"},
+        )
+
+    headers = {
+        **SECURITY_HEADERS,
+        "Content-Disposition": content_disposition(document, inline=inline),
+        "Accept-Ranges": "bytes",
+    }
+    if byte_range is None:
+        headers["Content-Length"] = str(size)
+        code = status.HTTP_200_OK
+    else:
+        headers["Content-Length"] = str(byte_range.length)
+        headers["Content-Range"] = f"bytes {byte_range.start}-{byte_range.end}/{size}"
+        code = status.HTTP_206_PARTIAL_CONTENT
+
+    return StreamingResponse(
+        stream(storage, document, byte_range=byte_range),
+        status_code=code,
+        # Tipul validat la upload, nu cel declarat de client (§50).
+        media_type=document.mime_type,
+        headers=headers,
+    )
+
+
+@router.get("/documents/{document_id}/preview")
+def preview_document(
+    session: DbSession,
+    storage: StorageDep,
+    user: DocumentReader,
+    request: Request,
+    document_id: uuid.UUID,
+) -> StreamingResponse:
+    """Conținutul documentului, pentru afișare în pagină.
+
+    Nu se auditează: previzualizarea se întâmplă la fiecare deschidere de ecran, iar
+    volumul ar îneca intrările care contează (§33).
+    """
+    return _serve(session, storage, user, document_id, request, inline=True)
+
+
+@router.get("/documents/{document_id}/download")
+def download_document(
+    session: DbSession,
+    storage: StorageDep,
+    user: DocumentReader,
+    request: Request,
+    document_id: uuid.UUID,
+) -> StreamingResponse:
+    """Descărcarea documentului, cu numele standardizat (§29).
+
+    Spre deosebire de previzualizare, descărcarea **se auditează**: este actul prin
+    care o probă contabilă părăsește sistemul.
+    """
+    response = _serve(session, storage, user, document_id, request, inline=False)
+    row = _fetch(session, user, document_id)
+    DocumentService(session).audit.record(
+        organization_id=user.organization_id,
+        action="DOCUMENT_DOWNLOADED",
+        entity_type="Document",
+        entity_id=str(document_id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=safe_filename(row.document),
+        ip=client_ip(request),
+        user_agent=request.headers.get("User-Agent"),
+    )
+    session.flush()
+    return response

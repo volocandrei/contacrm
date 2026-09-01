@@ -292,13 +292,9 @@ class TestList:
         response = api_storage.get("/api/v1/documents", params={"sort": "ocr_text"})
         assert response.status_code == 422
 
-    def test_rejects_sql_in_the_sort_parameter(
-        self, api_storage: TestClient, admin: User
-    ) -> None:
+    def test_rejects_sql_in_the_sort_parameter(self, api_storage: TestClient, admin: User) -> None:
         login(api_storage, admin.email)
-        response = api_storage.get(
-            "/api/v1/documents", params={"sort": "id; DROP TABLE documents"}
-        )
+        response = api_storage.get("/api/v1/documents", params={"sort": "id; DROP TABLE documents"})
         assert response.status_code == 422
 
     def test_filters_by_status(
@@ -602,9 +598,7 @@ class TestWorkflow:
         ).json()
 
         assert body["status"] == "REJECTED"
-        entry = db.scalars(
-            select(AuditLog).where(AuditLog.action == "DOCUMENT_REJECTED")
-        ).first()
+        entry = db.scalars(select(AuditLog).where(AuditLog.action == "DOCUMENT_REJECTED")).first()
         assert entry is not None and entry.detail == "Document ilizibil."
 
     def test_assigning_a_client_moves_an_unmatched_document_to_review(
@@ -840,9 +834,7 @@ class TestClientDocuments:
         ).json()
         assert body["total"] == 0
 
-    def test_an_unknown_client_is_not_found(
-        self, api_storage: TestClient, admin: User
-    ) -> None:
+    def test_an_unknown_client_is_not_found(self, api_storage: TestClient, admin: User) -> None:
         login(api_storage, admin.email)
         assert api_storage.get(f"/api/v1/clients/{uuid.uuid4()}/documents").status_code == 404
 

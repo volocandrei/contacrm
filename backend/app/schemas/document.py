@@ -179,6 +179,7 @@ class DocumentFilters(ApiModel):
                     parts.append(entry)
             return parts
         return value
+
     source: DocumentSource | None = None
     document_type: str | None = Field(default=None, max_length=64)
     reference_month: str | None = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
