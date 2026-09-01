@@ -20,6 +20,7 @@ import {
   TASKS,
   USERS,
   derivePeriodStatus,
+  type StoredDocument,
   periodProgress,
 } from "@/api/mock/seed";
 import { buildArchivePath, buildDocumentFilename, type FilenameInput } from "@/lib/filename";
@@ -47,7 +48,7 @@ const state = {
   clients: structuredClone(CLIENTS) as Client[],
   contacts: structuredClone(CONTACTS) as Contact[],
   notes: structuredClone(CLIENT_NOTES) as ClientNote[],
-  documents: structuredClone(DOCUMENTS) as DocumentDetail[],
+  documents: structuredClone(DOCUMENTS) as StoredDocument[],
   periods: structuredClone(PERIODS),
   tasks: structuredClone(TASKS) as Task[],
   audit: structuredClone(AUDIT_LOGS) as AuditLogEntry[],
@@ -129,12 +130,11 @@ function matches(haystack: Array<string | null | undefined>, needle: string): bo
   return haystack.some((value) => value && normalize(value).includes(q));
 }
 
-function toListItem(doc: DocumentDetail): DocumentListItem {
+function toListItem(doc: StoredDocument): DocumentListItem {
   const {
     mimeType: _mimeType,
     fileSize: _fileSize,
     sha256: _sha256,
-    storagePath: _storagePath,
     duplicateOfId: _duplicateOfId,
     fields: _fields,
     ocr: _ocr,
@@ -336,7 +336,7 @@ export function listDocuments(filters: DocumentFilters): Paginated<DocumentListI
   return paginate(sorted.map(toListItem), filters.page, filters.pageSize);
 }
 
-export function getDocument(id: string): DocumentDetail {
+export function getDocument(id: string): StoredDocument {
   return state.documents.find((d) => d.id === id) ?? notFound("Document", id);
 }
 
@@ -351,7 +351,7 @@ export function nextReviewDocument(afterId?: string): DocumentDetail | null {
 
 export type FieldUpdate = { field: DocumentFieldName; value: string | null };
 
-export function updateDocumentFields(id: string, updates: FieldUpdate[]): DocumentDetail {
+export function updateDocumentFields(id: string, updates: FieldUpdate[]): StoredDocument {
   requirePermission("documents:write");
   const doc = getDocument(id);
   for (const { field, value } of updates) {
@@ -373,7 +373,7 @@ export function updateDocumentFields(id: string, updates: FieldUpdate[]): Docume
 }
 
 /** Câmpurile de listă derivă din câmpurile extrase — le ținem sincronizate. */
-function syncDocumentSummary(doc: DocumentDetail) {
+function syncDocumentSummary(doc: StoredDocument) {
   doc.documentTypeCode = doc.fields.documentType.value;
   doc.documentTypeLabel = doc.fields.documentType.value
     ? (DOCUMENT_TYPE_LABEL.get(doc.fields.documentType.value) ?? null)
@@ -386,7 +386,7 @@ function syncDocumentSummary(doc: DocumentDetail) {
   doc.currency = doc.fields.currency.value;
 }
 
-export function assignClient(id: string, clientId: string): DocumentDetail {
+export function assignClient(id: string, clientId: string): StoredDocument {
   requirePermission("documents:write");
   const doc = getDocument(id);
   const client = getClient(clientId);
@@ -410,7 +410,7 @@ export function assignClient(id: string, clientId: string): DocumentDetail {
 }
 
 /** Verificările care blochează aprobarea (§17). */
-export function validateForApproval(doc: DocumentDetail): string[] {
+export function validateForApproval(doc: StoredDocument): string[] {
   const errors: string[] = [];
   if (!doc.clientId) errors.push("Documentul nu are client atribuit.");
   const typeCode = doc.fields.documentType.value;
@@ -430,7 +430,7 @@ export function validateForApproval(doc: DocumentDetail): string[] {
  * `@/lib/filename` — aceleași care trebuie implementate în `FilenameGeneratorService`
  * din backend. La coliziune în același director se adaugă un sufix numeric (R7).
  */
-function archiveFilename(doc: DocumentDetail): string {
+function archiveFilename(doc: StoredDocument): string {
   const input: FilenameInput = {
     documentDate: doc.fields.documentDate.value,
     documentTypeLabel: doc.documentTypeLabel,
@@ -454,7 +454,7 @@ function archiveFilename(doc: DocumentDetail): string {
   return candidate;
 }
 
-export function approveDocument(id: string): DocumentDetail {
+export function approveDocument(id: string): StoredDocument {
   requirePermission("documents:approve");
   const doc = getDocument(id);
   const errors = validateForApproval(doc);
@@ -480,7 +480,7 @@ export function approveDocument(id: string): DocumentDetail {
   return doc;
 }
 
-export function rejectDocument(id: string, reason: string): DocumentDetail {
+export function rejectDocument(id: string, reason: string): StoredDocument {
   requirePermission("documents:approve");
   const doc = getDocument(id);
   if (!reason.trim()) {
@@ -502,7 +502,7 @@ export function rejectDocument(id: string, reason: string): DocumentDetail {
   return doc;
 }
 
-export function markDuplicate(id: string, duplicateOfId: string | null): DocumentDetail {
+export function markDuplicate(id: string, duplicateOfId: string | null): StoredDocument {
   requirePermission("documents:write");
   const doc = getDocument(id);
   doc.status = "DUPLICATE";
@@ -521,7 +521,7 @@ export function markDuplicate(id: string, duplicateOfId: string | null): Documen
   return doc;
 }
 
-export function reprocessDocument(id: string): DocumentDetail {
+export function reprocessDocument(id: string): StoredDocument {
   requirePermission("documents:write");
   const doc = getDocument(id);
   doc.status = "PROCESSING";

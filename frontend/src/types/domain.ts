@@ -250,7 +250,6 @@ export type DocumentDetail = DocumentListItem & {
   mimeType: string;
   fileSize: number;
   sha256: string;
-  storagePath: string | null;
   duplicateOfId: string | null;
   fields: DocumentFields;
   ocr: {

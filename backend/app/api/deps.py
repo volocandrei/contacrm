@@ -7,17 +7,21 @@ pentru că JavaScript-ul paginii nu îl poate citi, deci un XSS nu îl poate fur
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Annotated, Any
 
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.db import get_db
 from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.security import TokenError, decode_token
 from app.domain.permissions import Permission, permissions_for
 from app.models.user import User
 from app.repositories.user import UserRepository
+from app.services.storage import StorageProvider
+from app.services.storage.local import LocalStorageProvider, build_storage_provider
 
 ACCESS_COOKIE = "contacrm_access"
 REFRESH_COOKIE = "contacrm_refresh"
@@ -80,3 +84,16 @@ def client_ip(request: Request) -> str | None:
     TODO: citește antetul doar pentru rețele de proxy configurate explicit.
     """
     return request.client.host if request.client else None
+
+
+@lru_cache(maxsize=1)
+def _storage() -> LocalStorageProvider:
+    """Un singur provider pentru tot procesul: rădăcina nu se schimbă la runtime."""
+    return build_storage_provider(settings.storage_path)
+
+
+def get_storage() -> StorageProvider:
+    return _storage()
+
+
+StorageDep = Annotated[StorageProvider, Depends(get_storage)]

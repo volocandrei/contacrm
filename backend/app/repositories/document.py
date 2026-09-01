@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import ColumnElement, Select, func, or_, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, lazyload
 
 from app.domain.enums import DocumentStatus
 from app.models.client import Client
@@ -158,7 +158,13 @@ class DocumentRepository:
         Două worker-e care iau același document nu trebuie să-l arhiveze de două ori.
         """
         return self.session.scalars(
-            self._base(organization_id).where(Document.id == document_id).with_for_update()
+            self._base(organization_id)
+            .where(Document.id == document_id)
+            # `document_type` este `lazy="joined"`, iar Postgres refuza FOR UPDATE pe
+            # partea nullable a unui outer join. Pentru blocarea randului nu avem
+            # nevoie de relatie; se incarca lene daca o cere cineva.
+            .options(lazyload(Document.document_type))
+            .with_for_update()
         ).first()
 
     # ── Duplicate ───────────────────────────────────────────────────────────

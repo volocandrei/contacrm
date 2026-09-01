@@ -10,16 +10,19 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import DbSession, require_permission
+from app.api.v1.documents import to_list_item
 from app.core.errors import NotFoundError
 from app.domain.permissions import Permission
 from app.models.client import Client
 from app.models.user import User
 from app.repositories.client import ClientRepository
+from app.repositories.document import DocumentRepository
 from app.schemas.client import ClientFilters, ClientNoteOut, ClientOut, ContactOut
 from app.schemas.common import PageParams, Paginated
+from app.schemas.document import DocumentFilters, DocumentListItemOut
 
 router = APIRouter(prefix="/clients", tags=["crm"])
 
@@ -94,3 +97,26 @@ def list_notes(session: DbSession, user: ClientReader, client_id: uuid.UUID) -> 
         ClientNoteOut.model_validate(note)
         for note in repository.notes(user.organization_id, client_id)
     ]
+
+
+@router.get("/{client_id}/documents", response_model=Paginated[DocumentListItemOut])
+def list_client_documents(
+    session: DbSession,
+    user: ClientReader,
+    client_id: uuid.UUID,
+    filters: Annotated[DocumentFilters, Query()],
+    page: Annotated[PageParams, Depends()],
+) -> Paginated[DocumentListItemOut]:
+    """Documentele unui client (§35).
+
+    Filtrul de client vine din calea rutei, nu din query — altfel un utilizator ar
+    putea cere documentele altui client prin parametru.
+    """
+    if ClientRepository(session).get(user.organization_id, client_id) is None:
+        raise NotFoundError("Client", client_id)
+
+    scoped = filters.model_copy(update={"client_id": client_id})
+    rows, total = DocumentRepository(session).list(user.organization_id, scoped, page)
+    return Paginated[DocumentListItemOut].build(
+        items=[to_list_item(row) for row in rows], total=total, params=page
+    )

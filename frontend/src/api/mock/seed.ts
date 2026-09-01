@@ -232,6 +232,13 @@ export const CLIENT_NOTES: ClientNote[] = ACTIVE_CLIENTS.slice(0, 6).map((client
   createdAt: `2026-0${randInt(6, 8)}-${String(randInt(1, 28)).padStart(2, "0")}T11:20:00+03:00`,
 }));
 
+/**
+ * Calea de arhivă este o cale internă de stocare: backendul real nu o expune
+ * niciodată prin API (§73). Backendul simulat o ține totuși, pentru că are nevoie
+ * de ea ca să detecteze coliziunile de nume la arhivare.
+ */
+export type StoredDocument = DocumentDetail & { storagePath: string | null };
+
 /* ─── Documente ────────────────────────────────────────────────────────────── */
 
 const SUPPLIERS = [
@@ -346,7 +353,7 @@ function buildDocument(
   client: Client | null,
   monthIndex: number,
   typeCode: string,
-): DocumentDetail {
+): StoredDocument {
   documentCounter += 1;
   const referenceMonth = MONTHS[monthIndex]!;
   const [year, month] = referenceMonth.split("-").map(Number) as [number, number];
@@ -507,7 +514,7 @@ const TYPE_WEIGHTS: string[] = [
   "ALTE_DOCUMENTE",
 ];
 
-export const DOCUMENTS: DocumentDetail[] = [];
+export const DOCUMENTS: StoredDocument[] = [];
 
 for (const client of ACTIVE_CLIENTS) {
   MONTHS.forEach((_, monthIndex) => {

@@ -16,7 +16,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import Field, field_serializer
+from pydantic import Field, field_serializer, field_validator
 
 from app.domain.enums import (
     DOCUMENT_FIELD_NAMES,
@@ -161,7 +161,24 @@ class DocumentFilters(ApiModel):
     q: str | None = Field(default=None, max_length=200)
     client_id: uuid.UUID | None = None
     # Mai multe statusuri deodată: inbox-ul cere „tot ce nu e arhivat".
+    # Clientul HTTP serializează listele separate prin virgulă (`value.join(",")`
+    # în `api/client.ts`), deci acceptăm ambele forme.
     status: list[DocumentStatus] | None = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _split_comma_separated(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        if isinstance(value, list):
+            parts: list[str] = []
+            for entry in value:
+                if isinstance(entry, str):
+                    parts.extend(p.strip() for p in entry.split(",") if p.strip())
+                else:  # pragma: no cover — deja un membru de enum
+                    parts.append(entry)
+            return parts
+        return value
     source: DocumentSource | None = None
     document_type: str | None = Field(default=None, max_length=64)
     reference_month: str | None = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
