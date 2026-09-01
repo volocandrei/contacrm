@@ -2,6 +2,7 @@
 
     uv run python -m app.cli sync-roles     # aduce rolurile/permisiunile la zi
     uv run python -m app.cli seed-dev       # organizație + utilizatori de development
+    uv run python -m app.cli create-admin   # primul cont al unei baze de producție
 
 `sync-roles` este idempotentă și trebuie rulată după fiecare schimbare în
 `app/domain/permissions.py`: tabelele `roles`/`permissions` sunt administrabile,
@@ -33,6 +34,10 @@ from app.models.task import Task
 from app.models.user import Permission, Role, User
 
 DEV_PASSWORD = "contacrm-dev"
+
+# Lungimea minima ceruta primului administrator. Nu este o politica de parole —
+# doar pragul sub care o instalare noua ar porni deja compromisa.
+MIN_ADMIN_PASSWORD_LENGTH = 12
 
 # Toate denumirile, CUI-urile și adresele sunt inventate. „Șerbănescu" există
 # intenționat: verifică vizual că sortarea și căutarea ignoră diacriticele.
@@ -299,18 +304,88 @@ def recover_processing() -> None:
     aceeași funcție rulează periodic în worker, fără să mai fie chemată de mână.
     """
     from app.services.processing_recovery import recover
-    from app.services.storage.local import build_storage_provider
+    from app.services.storage.factory import build_storage_provider
 
-    report = recover(build_storage_provider(settings.storage_path))
+    report = recover(build_storage_provider())
     if report.nothing_to_do:
         print("Nicio cerere de procesare abandonată.")
     else:
         print(f"Repuse în coadă: {report.requeued}. Rulate acum: {report.ran}.")
 
 
+def create_admin() -> None:
+    """Primul cont al unei baze de producție.
+
+    Fără ea, o bază proaspăt migrată are roluri și n-are pe nimeni care să se
+    autentifice — nu există niciun drum prin interfață care să creeze primul
+    utilizator, pentru că orice creare de utilizator cere deja un utilizator.
+
+    `seed-dev` nu ajută: refuză să ruleze în producție, și pe bună dreptate —
+    parolele lui sunt publice, iar datele sunt inventate.
+
+    Parola se citește de la tastatură (`getpass`), niciodată dintr-un argument:
+    argumentele ajung în istoricul shell-ului și în lista de procese, unde le vede
+    oricine este pe aceeași mașină.
+
+    Idempotentă în sensul care contează: dacă adresa există deja, comanda se
+    oprește fără să atingă contul. Nu resetează parole — asta ar face din ea o
+    portiță, nu o comandă de instalare.
+    """
+    import getpass
+
+    email = input("email: ").strip().lower()
+    if not email or "@" not in email:
+        sys.exit("Adresă de email invalidă.")
+    full_name = input("nume complet: ").strip()
+    if not full_name:
+        sys.exit("Numele este obligatoriu.")
+
+    password = getpass.getpass("parolă: ")
+    if len(password) < MIN_ADMIN_PASSWORD_LENGTH:
+        sys.exit(f"Parola are minimum {MIN_ADMIN_PASSWORD_LENGTH} caractere.")
+    if password != getpass.getpass("repetă parola: "):
+        sys.exit("Parolele nu coincid.")
+
+    with session_scope() as session:
+        if session.scalars(select(User).where(User.email == email)).first():
+            sys.exit(f"Există deja un cont cu adresa {email}.")
+
+        role = session.scalars(select(Role).where(Role.code == "ADMIN")).first()
+        if role is None:
+            sys.exit("Rolurile nu sunt încărcate. Rulează întâi `sync-roles`.")
+
+        organization = session.scalars(select(Organization)).first()
+        if organization is None:
+            name = input("numele cabinetului: ").strip()
+            if not name:
+                sys.exit("Numele cabinetului este obligatoriu.")
+            organization = Organization(name=name)
+            session.add(organization)
+            session.flush()
+
+        session.add(
+            User(
+                organization_id=organization.id,
+                email=email,
+                full_name=full_name,
+                password_hash=hash_password(password),
+                is_active=True,
+                roles=[role],
+            )
+        )
+        session.flush()
+        # Un cabinet fără tipuri de document nu poate primi niciun fișier.
+        types_created = sync_document_types(session, organization)
+
+        print(f"organizație: {organization.name}")
+        print(f"administrator: {email}")
+        print(f"tipuri de document: {types_created}")
+
+
 COMMANDS = {
     "sync-roles": sync_roles,
     "seed-dev": seed_dev,
+    "create-admin": create_admin,
     "recover-processing": recover_processing,
 }
 

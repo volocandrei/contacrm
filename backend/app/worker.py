@@ -42,7 +42,7 @@ from app.models.document import Document, DocumentProcessingJob
 from app.services import processing_queue as queue
 from app.services.processing_runner import run_processing
 from app.services.storage import StorageProvider
-from app.services.storage.local import build_storage_provider
+from app.services.storage.factory import build_storage_provider
 
 logger = get_logger(__name__)
 
@@ -182,7 +182,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     configure_logging()
-    storage = build_storage_provider(settings.storage_path)
+    storage = build_storage_provider()
 
     if not args.no_recover:
         recover_stale(storage)

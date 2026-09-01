@@ -1,87 +1,160 @@
 # Deploy
 
-Două lucruri diferite, cu constrângeri diferite.
+Un singur proiect Vercel, două servicii, aceeași origine.
+
+```
+                    ┌──────────────────────────────┐
+   /api/*  ────────▶│  backend   (FastAPI, uvicorn) │──▶ Postgres
+                    └──────────────────────────────┘    S3
+                    ┌──────────────────────────────┐
+   /*      ────────▶│  frontend  (Vite, static)     │
+                    └──────────────────────────────┘
+```
+
+`vercel.json` de la rădăcina repo-ului descrie amândouă. **Root Directory rămâne
+rădăcina**, nu `frontend/` — serviciile își declară singure rădăcinile.
 
 ---
 
-## 1. Frontend — Vercel
+## De ce aceeași origine, și nu două domenii
 
-Funcționează așa cum e. Fără backend, fără bază de date: interfața rulează pe
-backendul simulat din browser (`VITE_API_MODE=mock`, implicit), cu date sintetice.
+Nu este o preferință de estetică. Sesiunea trăiește într-un cookie `httpOnly`
+cu `SameSite=Lax`, iar un cookie `Lax` **nu însoțește cererile pornite de
+`<img>` sau `<object>`** de pe altă origine. Cu API-ul pe alt domeniu,
+autentificarea ar merge și previzualizarea documentelor ar returna 401 — un bug
+care nu apare în niciun test și se vede abia când cineva deschide o factură.
 
-**Legare:** proiect Vercel din repo, `Root Directory = frontend`. Vercel detectează
-Vite; `frontend/vercel.json` adaugă ce nu poate ghici:
+Alternativele ar fi fost `SameSite=None` (slăbește apărarea CSRF) sau un token în
+URL (interzis, §27: URL-ul ajunge în loguri de proxy, în istoricul browserului și
+în `Referer`). Rescrierea `/api/*` către serviciul de backend le face pe amândouă
+inutile: pentru browser, totul vine de la aceeași origine.
 
-- **rescrieri SPA** — fără ele, o reîncărcare pe `/documente/verificare/<id>` dă 404,
-  pentru că ruta trăiește în browser, nu pe server. Excepția `assets/` lasă fișierele
-  statice să fie servite ca fișiere;
-- **antete** — `nosniff`, `X-Frame-Options: DENY`, `no-referrer`, plus o politică de
-  permisiuni care închide camera, microfonul, locația și plățile. Aplicația nu are
-  nevoie de niciuna.
-
-**Ca demonstrația să vorbească cu un API real**, se setează în Vercel:
-
-```
-VITE_API_MODE=http
-VITE_API_BASE_URL=https://<api>/api/v1
-```
-
-Atenție: baza absolută pe altă origine **rupe previzualizarea documentelor**.
-Cookie-ul de sesiune este `SameSite=Lax`, iar de pe altă origine nu ajunge la
-cererile pornite de `<img>` sau `<object>`. Soluția este să servești API-ul de pe
-aceeași origine — un rewrite Vercel de la `/api` către backend — nu să slăbești
-cookie-ul și în niciun caz să pui un token în URL (§27).
+De aceea frontendul nu primește `VITE_API_BASE_URL`. Implicit folosește calea
+relativă `/api/v1`, care este exact ce trebuie.
 
 ---
 
-## 2. Backend — ce cere, și de ce nu intră ca atare pe Vercel
+## 1. Legarea proiectului
 
-Trei lucruri lipsesc dintr-un mediu serverless:
+Aplicația Vercel pentru GitHub are nevoie de acces la repo. Pe
+[vercel.com/new](https://vercel.com/new) → *Import Git Repository* → dacă
+`contacrm` nu apare, **Adjust GitHub App Permissions**.
 
-| Ce cere | De ce | Ce se schimbă |
+La import: `Root Directory` = rădăcina repo-ului. Restul vine din `vercel.json`.
+
+## 2. Variabile de mediu
+
+Pe serviciul **frontend**:
+
+| Variabilă | Valoare | De ce |
 |---|---|---|
-| **Disc persistent** | `LocalStorageProvider` scrie originalele și arhiva pe disc. `/tmp` din serverless dispare între invocări, iar o probă contabilă nu are voie să dispară | un `S3StorageProvider` care implementează același protocol (ADR-004). Business logic nu se atinge: nu cunoaște `os.path` |
-| **Proces continuu** | `app/worker.py` ia din coadă și procesează. Serverless nu ține procese vii | worker pe un serviciu cu proces continuu, **sau** `python -m app.worker --once` chemat de un cron care rulează des |
-| **PostgreSQL** | schema, migrările, coada, auditul | serviciu gestionat (Neon, Supabase). Conexiunile serverless cer **pooling** — altfel fiecare invocare deschide o conexiune și baza rămâne fără |
+| `VITE_API_MODE` | `http` | altfel rulează pe backendul simulat din browser |
 
-### Ce mai trebuie făcut pentru varianta „Vercel + servicii externe"
+`VITE_API_BASE_URL` rămâne **nesetată**. Vezi secțiunea de mai sus.
 
-În ordinea în care blochează:
+Pe serviciul **backend**:
 
-1. **`S3StorageProvider`.** Protocolul există și e respectat peste tot; nimic din
-   restul aplicației nu știe unde ajung fișierele. De implementat: `save` cu scriere
-   atomică, `open`/`iter_range` pentru preview cu `Range`, `copy` pentru arhivare,
-   `exists`, `size`, `delete`. Testele de storage existente sunt scrise pe protocol,
-   deci se aplică și noului provider.
-2. **Pooling de conexiuni.** `DATABASE_URL` către endpointul cu pooler al
-   furnizorului, plus `db_pool_size` mic. Fără asta, primul vârf de trafic epuizează
-   conexiunile.
-3. **Workerul pe cron.** Vercel Cron poate chema o rută protejată care rulează un tur.
-   `--once` există exact pentru asta. Ruta trebuie autentificată cu un secret, nu
-   lăsată publică.
-4. **Migrările.** Nu rulează din funcția serverless: se aplică separat, înainte de
-   deploy, dintr-un pas de CI sau de la o mașină cu acces la baza de date.
+| Variabilă | Valoare | De ce |
+|---|---|---|
+| `ENVIRONMENT` | `production` | ascunde `/docs` și pune `Secure` pe cookie-uri |
+| `SECRET_KEY` | `python -c "import secrets; print(secrets.token_urlsafe(64))"` | pornirea se oprește dacă a rămas cel implicit |
+| `DATABASE_URL` | `postgresql+psycopg://…` | endpointul **cu pooler** al furnizorului |
+| `DB_EXTERNAL_POOLER` | `true` | vezi §3 |
+| `CORS_ALLOWED_ORIGINS` | domeniul real | caracterul universal este refuzat de configurare |
+| `STORAGE_PROVIDER` | `s3` | vezi §4 |
+| `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT_URL` | de la furnizor | |
+| `CRON_SECRET` | un secret generat | vezi §5 |
 
-### Alternativa, mai simplă
+`OCR_PROVIDER` și `AI_PROVIDER` rămân `mock`. Trecerea la un provider real
+înseamnă că documentele părăsesc infrastructura noastră — o decizie cu implicații
+GDPR (R2), nu o schimbare de configurare.
 
-Un singur serviciu cu proces continuu și disc (Railway, Render, Fly.io, sau un VPS cu
-`docker compose`) rezolvă toate trei fără să schimbe nicio linie de cod: API, worker
-și Postgres, exact cum rulează azi local. Alegerea „Vercel + servicii externe" este
-justificată dacă frontendul și API-ul trebuie să stea pe aceeași platformă; costul ei
-este munca de la punctele 1–4.
+## 3. Baza de date
+
+Orice PostgreSQL gestionat (Neon, Supabase). Două lucruri contează:
+
+**Conectează-te prin pooler și spune-i aplicației.** Într-un mediu unde procesele
+apar și dispar odată cu traficul, fiecare instanță ar deschide propriile
+conexiuni și baza ar rămâne fără exact în vârf. `DB_EXTERNAL_POOLER=true` oprește
+poolul propriu al SQLAlchemy — poolerul este deja poolul — și oprește
+instrucțiunile pregătite, pe care un pooler în mod tranzacție le rupe tăcut:
+sesiunea din spate se schimbă între tranzacții, iar la a doua cerere apare un
+`prepared statement "_pg3_0" does not exist` venit aparent din senin.
+
+**Migrările nu rulează din deploy.** Se aplică separat, de la o mașină cu acces
+la baza de date, **înainte** de a promova versiunea:
+
+```bash
+cd backend
+DATABASE_URL=… uv run alembic upgrade head
+DATABASE_URL=… uv run python -m app.cli sync-roles
+DATABASE_URL=… uv run python -m app.cli create-admin
+```
+
+`create-admin` există pentru că nu există niciun drum prin interfață care să
+creeze primul utilizator: orice creare de cont cere deja un cont. Parola se
+citește de la tastatură, niciodată dintr-un argument — argumentele ajung în
+istoricul shell-ului și în lista de procese.
+
+## 4. Stocarea documentelor
+
+`LocalStorageProvider` presupune un disc care supraviețuiește repornirii. În
+containere efemere, discul dispare — iar o probă contabilă nu are voie să dispară
+(R8). De aceea `STORAGE_PROVIDER=s3`.
+
+`S3StorageProvider` vorbește **protocolul**, nu cu un furnizor anume: AWS S3,
+Supabase Storage, Cloudflare R2, MinIO. Se schimbă doar `S3_ENDPOINT_URL` (gol
+înseamnă AWS). Aceleași teste de contract rulează pe el și pe providerul local —
+`tests/test_storage.py` pune fiecare întrebare de două ori.
+
+**Bucket-ul trebuie să fie privat.** Nu se generează URL-uri semnate și nu se
+servește nimic direct: tot ce iese trece prin API, care verifică organizația
+(§51, §72). Un bucket citibil anonim ar face inutilă fiecare verificare de
+autorizare din aplicație.
+
+## 5. Workerul
+
+`python -m app.worker` presupune un proces care trăiește. Într-un mediu care
+scalează la zero, procesul acela nu are unde să existe; ce rămâne este un ceas
+din afară. `vercel.json` declară un cron la 5 minute către
+`/api/v1/internal/run-queue`, iar Vercel trimite `Authorization: Bearer
+$CRON_SECRET`.
+
+Ruta face exact ce face workerul la pornire: repune în coadă ce a rămas de la o
+rulare moartă, apoi execută un lot mic. Într-un mediu fără proces continuu, „o
+rulare moartă" este cazul normal — o funcție care a depășit timpul maxim lasă
+aceeași urmă ca un proces ucis.
+
+**Fără `CRON_SECRET`, ruta răspunde 404** — același răspuns ca pentru un secret
+greșit, deci nimic din afară nu află care dintre ele s-a întâmplat. Un endpoint
+care execută muncă nu are voie să fie deschis nici măcar o clipă.
+
+Consecința pe care merită s-o știi dinainte: un document încărcat așteaptă până
+la 5 minute înainte să înceapă procesarea. Cu un proces continuu, așteptarea este
+de ordinul secundelor.
 
 ---
 
-## 3. Înainte de orice deploy în producție
+## Alternativa: un singur serviciu cu proces continuu
 
-`Settings.assert_production_ready()` oprește pornirea dacă `SECRET_KEY` a rămas cel
-implicit sau dacă providerii sunt configurați inconsistent. În plus, de verificat
-manual:
+Railway, Render, Fly.io sau un VPS cu `docker compose` rulează API, worker și
+Postgres exact cum rulează azi local, fără cron și fără S3 — `docker-compose.yml`
+descrie deja stiva completă, worker inclus. Procesarea pornește imediat, nu la
+următoarea bătaie de ceas.
 
-- `CORS_ALLOWED_ORIGINS` enumeră originile reale (caracterul universal este refuzat
-  de configurare);
-- `ENVIRONMENT=production` — ascunde `/docs` și pune `Secure` pe cookie-uri;
-- `OCR_PROVIDER` / `AI_PROVIDER`: `mock` înseamnă că **niciun document nu părăsește
-  mașina**. Trecerea la un provider real este o decizie cu implicații GDPR (R2), nu o
-  schimbare de configurare;
-- documentele nu se comit niciodată în repo — `storage/` și `ARHIVA/` sunt ignorate.
+Vercel câștigă la altceva: frontend și API pe aceeași origine, fără nimic de
+administrat. Alege în funcție de care dintre cele două contează mai mult.
+
+---
+
+## Înainte de orice deploy în producție
+
+`Settings.assert_production_ready()` oprește pornirea dacă `SECRET_KEY` a rămas
+cel implicit, dacă `STORAGE_PROVIDER=s3` fără `S3_BUCKET`, sau dacă providerii de
+OCR/AI sunt configurați inconsistent. În plus, de verificat manual:
+
+- bucket-ul nu este public;
+- `CORS_ALLOWED_ORIGINS` enumeră originile reale;
+- migrările sunt aplicate **înainte** de a promova versiunea nouă;
+- documentele nu se comit niciodată în repo — `storage/` și `ARHIVA/` sunt
+  ignorate.

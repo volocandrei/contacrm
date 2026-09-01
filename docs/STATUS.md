@@ -20,7 +20,7 @@ Pentru punerea în funcțiune, [DEPLOY.md](DEPLOY.md).
 | PostgreSQL | 17 | backend |
 | Git | oricare | — |
 
-Docker este opțional: `docker compose up -d` ridică Postgres + Redis. **Pe Windows
+Docker este opțional: `docker compose up -d` ridică Postgres. **Pe Windows
 ARM64 Docker Desktop nu ridică engine-ul** (clientul primește 500 chiar și la
 `docker version`), de aceea mașina curentă rulează un PostgreSQL nativ.
 
@@ -359,7 +359,9 @@ Vechile și noile valori nu ies prin API: auditul răspunde la „cine, ce, cân
 deschidere se auditează la rândul ei.
 
 Rute reale existente: 35 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
-documente ×13, `/dashboard` ×2, perioade ×5, audit, health ×3).
+documente ×13, `/dashboard` ×2, perioade ×5, audit, health ×3), plus
+`/internal/run-queue`, care nu apare în OpenAPI pentru că nu face parte din
+contractul cu frontend-ul.
 
 ### Verificat pe date reale, nu doar în teste
 
@@ -454,30 +456,36 @@ ci portat.**
 
 **MVP = M1–M8.**
 
-### De ce M6 este următorul
+### Punerea în funcțiune
 
-M5 este complet: un document intră, se procesează singur, ajunge la un om, se
-corectează, se aprobă și se arhivează cu numele standardizat — verificat capăt la
-capăt pe server real, nu doar în teste.
+M1–M6 sunt complete: un document intră, se procesează în afara cererii HTTP,
+ajunge la un om, se corectează, se aprobă și se arhivează cu numele standardizat,
+iar luna contabilă și panoul principal se construiesc din date, nu din calendar.
 
-Ce cere M6, în ordinea în care doare lipsa lor:
+Repo-ul este pregătit pentru un singur proiect Vercel cu două servicii — detaliile
+și motivele sunt în [DEPLOY.md](DEPLOY.md). Pe scurt, ce a fost nevoie:
 
-1. **Coadă persistentă (Celery + Redis).** Outbox-ul există deja și cererea nu se
-   mai pierde; ce lipsește este un proces separat care să consume coada și să ruleze
-   recuperarea periodic, în loc de `app.cli recover-processing` chemat de mână.
-   `process(document_id)` are deja semnătura potrivită.
-2. **Perioade contabile + checklist.** Sunt singurul lucru care lipsește din panoul
-   principal (`periods`, `clientsComplete`, `clientsMissingDocs`) și din ecranele de
-   contabilitate. Contractul este definit până la ultimul câmp în
-   `frontend/src/api/mock/store.ts`, inclusiv regula de progres: o factură în plus nu
-   compensează un extras de cont lipsă.
-3. **`POST /documents/bulk`** — acțiunile în masă din ecranul de listă. Funcția
-   există în `api/endpoints.ts` și nu are încă rută.
-4. **`GET /audit-logs`** — ecranul de jurnal există, ruta nu.
+- **`S3StorageProvider`.** `LocalStorageProvider` presupune un disc care
+  supraviețuiește repornirii; în containere efemere discul dispare, iar o probă
+  contabilă nu are voie să dispară (R8). Vorbește protocolul, nu cu un furnizor
+  anume: AWS, Supabase Storage, R2, MinIO — se schimbă doar endpointul. Testele de
+  stocare au fost rescrise ca **contract**: fiecare întrebare se pune de două ori,
+  o dată pe disc și o dată pe S3, pentru că un provider nou nu se validează
+  citindu-l.
+- **`GET /api/v1/internal/run-queue`.** Un ceas din afară în locul procesului
+  continuu, acolo unde nu există proces continuu. Fără `CRON_SECRET`, ruta
+  răspunde 404 — la fel ca pentru un secret greșit.
+- **Pooling.** `DB_EXTERNAL_POOLER=true` oprește poolul propriu și instrucțiunile
+  pregătite, pe care un pooler în mod tranzacție le rupe tăcut: eșecul apare la a
+  doua cerere, nu la prima, deci niciodată la testare.
+- **`app.cli create-admin`.** Nu exista niciun drum care să creeze primul
+  utilizator al unei baze de producție: orice creare de cont cere deja un cont.
 
-Înainte de oricare: **decizia de business despre `reference_period`** (§4.1). Fără
-ea, perioadele se pot construi, dar nu se poate spune corect în ce lună intră un
-document a cărui dată cade în alta.
+Ce urcă în varianta fără backend este interfața completă pe **backendul simulat
+din browser**, cu date sintetice — o demonstrație care funcționează integral, dar
+nu aplicația legată la un API real.
+
+Următorul milestone rămâne **M7** (notificări, rapoarte), apoi M8 (E2E, CI).
 
 ---
 
@@ -505,15 +513,15 @@ Necesită input uman, nu sunt de rezolvat în cod:
 
 ## 5. Datorie tehnică cunoscută
 
-Niciuna nu blochează M5.7.
+Niciuna nu blochează deploy-ul.
 
 | Element | Notă |
 |---|---|
 | `QueryBoundary` (`components/page.tsx`) | scris ca să elimine triada `isLoading/error/empty`, dar nefolosit — cele 8 pagini o repetă manual |
 | `react-hook-form`, `zod`, `@hookform/resolvers` | instalate, nefolosite |
 | primitivele shadcn (`button`, `card`, `badge`, `separator`) | importate doar de componenta de demo; aplicația scrie Tailwind brut. Ori le adoptăm, ori recunoaștem că nu le folosim |
-| `"2026-08"` hardcodat în 6 locuri | merge azi; din septembrie panoul principal arată o lună goală |
-| `client_ip()` (`api/deps.py`) | ignoră `X-Forwarded-For` — corect acum, dar trebuie citit din proxy-uri de încredere când apare un reverse proxy |
+| `"2026-08"` hardcodat în 6 locuri | doar în backendul simulat, unde `MOCK_NOW` este tot august: setul sintetic rămâne coerent oricând l-ai deschide. Backendul real urmărește datele, nu calendarul (`latest_active_month`). Rămâne totuși o valoare scrisă de mână acolo unde ar trebui derivată din `MOCK_NOW` |
+| `client_ip()` (`api/deps.py`) | ignoră `X-Forwarded-For`. **Devine vizibil la primul deploy în spatele unui proxy**: auditul va nota IP-ul platformei, nu al utilizatorului. Antetul trebuie citit, dar numai de la proxy-uri de încredere — altfel oricine își poate falsifica IP-ul din audit |
 | lipsă `.gitattributes` | Git raportează conversii LF↔CRLF; un `* text=auto eol=lf` previne diff-uri false dacă intră cineva pe Linux/Mac |
 | `oxlint`: 2 warning-uri | `only-export-components` pe fișiere shadcn generate — cosmetic |
 | `POST /documents/bulk` | declarat în `api/endpoints.ts`, fără rută în backend și fără apelant în interfață — se leagă la M6, odată cu acțiunile în masă din ecranul de listă |

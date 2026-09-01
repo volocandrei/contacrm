@@ -18,8 +18,16 @@ build/
 *.pem
 *.key
 
-# Local storage (uploaded + archived documents)
-storage/
+# Documentele încărcate și arhiva. Niciodată în repo.
+#
+# Regulile sunt **ancorate** (`/backend/storage/`, nu `storage/`): un tipar
+# neancorat se potrivește cu orice director cu acel nume, la orice adâncime — și
+# se potrivea, tăcut, cu `backend/app/services/storage/`. Pachetul de stocare al
+# aplicației a stat necomis, deci o clonă proaspătă nu putea porni backendul.
+# `git add` nu spune nimic când un fișier este ignorat; asta se vede doar dacă
+# întrebi direct.
+/backend/storage/
+/storage/
 ARHIVA/
 
 # Tooling caches

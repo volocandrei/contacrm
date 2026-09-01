@@ -16,6 +16,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
+# Providerii de stocare care există. Enumerarea are rost: o valoare scrisă greșit
+# în mediu trebuie să oprească pornirea, nu să cadă tăcut pe implicit — adică pe
+# disc local, exact acolo unde documentele s-ar pierde la prima repornire.
+STORAGE_PROVIDERS = frozenset({"local", "s3"})
+
 
 class Environment(StrEnum):
     DEVELOPMENT = "development"
@@ -46,6 +51,10 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 14
     cors_allowed_origins: str = "http://localhost:5173"
     rate_limit_per_minute: int = 120
+    # Secretul cu care un planificator extern (cron) are voie să ceară un tur de
+    # coadă. Gol înseamnă **oprit**: ruta refuză orice, inclusiv o cerere corectă.
+    # Un endpoint care execută muncă nu are voie să fie public nici măcar o clipă.
+    cron_secret: str = ""
 
     # ── Bază de date ─────────────────────────────────────────────────────────
     database_url: str = (
@@ -54,13 +63,31 @@ class Settings(BaseSettings):
     db_echo: bool = False
     db_pool_size: int = 5
     db_max_overflow: int = 10
+    # Se pune pe `true` când `DATABASE_URL` arată către un pooler în mod tranzacție
+    # (PgBouncer, Supabase pe `:6543`) — situația obișnuită când procesele apar și
+    # dispar odată cu cererile. Un pooler în modul ăsta rupe două lucruri tăcut:
+    # instrucțiunile pregătite, pentru că sesiunea din spate se schimbă între
+    # cereri, și rostul unui pool propriu, pentru că poolerul e deja poolul.
+    db_external_pooler: bool = False
 
     # ── Storage (ADR-004) ────────────────────────────────────────────────────
+    # `local` scrie pe disc, `s3` într-un bucket compatibil S3. Restul aplicației
+    # nu află niciodată care dintre ele este activ.
     storage_provider: str = "local"
     storage_path: str = "./storage"
     archive_root: str = "./storage/ARHIVA"
     max_upload_size_mb: int = 25
     allowed_mime_types: str = "application/pdf,image/jpeg,image/png,image/webp"
+
+    # Folosite doar când STORAGE_PROVIDER=s3. Endpoint-ul gol înseamnă AWS; pentru
+    # Supabase Storage, Cloudflare R2 sau MinIO se pune adresa lor.
+    s3_bucket: str = ""
+    s3_endpoint_url: str = ""
+    s3_region: str = "eu-central-1"
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    # Separă medii care împart un bucket. Gol în cazul obișnuit.
+    s3_prefix: str = ""
 
     # ── OCR / AI (ADR-005) ───────────────────────────────────────────────────
     # `mock` este implicit: în development niciun document nu părăsește mașina (R2).
@@ -89,6 +116,16 @@ class Settings(BaseSettings):
     # ── Retenție (§64) ───────────────────────────────────────────────────────
     # Nicio ștergere automată nu rulează fără o regulă explicit activată (R8).
     retention_enabled: bool = False
+
+    @field_validator("storage_provider")
+    @classmethod
+    def _known_storage_provider(cls, value: str) -> str:
+        if value not in STORAGE_PROVIDERS:
+            raise ValueError(
+                f"STORAGE_PROVIDER necunoscut: {value!r}. Valori acceptate: "
+                + ", ".join(sorted(STORAGE_PROVIDERS))
+            )
+        return value
 
     @field_validator("cors_allowed_origins")
     @classmethod
@@ -128,6 +165,8 @@ class Settings(BaseSettings):
             problems.append("SECRET_KEY are încă valoarea implicită.")
         if self.ocr_provider != "mock" and self.ai_provider == "mock":
             problems.append("OCR_PROVIDER real cu AI_PROVIDER=mock — configurare inconsistentă.")
+        if self.storage_provider == "s3" and not self.s3_bucket:
+            problems.append("STORAGE_PROVIDER=s3 fără S3_BUCKET.")
         if problems:
             raise RuntimeError("Configurare invalidă pentru producție: " + " ".join(problems))
 

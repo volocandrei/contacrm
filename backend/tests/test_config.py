@@ -66,3 +66,41 @@ def test_upload_limits_are_derived_not_duplicated() -> None:
     settings = _settings(max_upload_size_mb=25)
     assert settings.max_upload_size_bytes == 26_214_400
     assert "application/pdf" in settings.allowed_mime_type_set
+
+
+def test_the_cron_route_is_off_until_a_secret_exists() -> None:
+    """Un endpoint care executa munca nu porneste deschis."""
+    assert _settings().cron_secret == ""
+
+
+class TestEngineForItsEnvironment:
+    """Poolingul se alege dupa cine il face — greseala se vede abia sub trafic."""
+
+    def test_a_long_lived_process_keeps_its_own_pool(self) -> None:
+        from app.core.db import build_engine
+
+        engine = build_engine(_settings(db_pool_size=7, db_max_overflow=3))
+        assert engine.pool.size() == 7
+        engine.dispose()
+
+    def test_behind_an_external_pooler_we_keep_none(self) -> None:
+        """Un pool peste alt pool tine conexiuni degeaba si epuizeaza baza."""
+        from sqlalchemy.pool import NullPool
+
+        from app.core.db import build_engine
+
+        engine = build_engine(_settings(db_external_pooler=True))
+        assert isinstance(engine.pool, NullPool)
+        engine.dispose()
+
+    def test_behind_an_external_pooler_prepared_statements_are_off(self) -> None:
+        """Poolerul da alta sesiune la fiecare tranzactie: o instructiune pregatita
+        intr-una nu exista in urmatoarea."""
+        from app.core.db import connect_arguments
+
+        assert connect_arguments(_settings(db_external_pooler=True))["prepare_threshold"] is None
+
+    def test_a_direct_connection_keeps_prepared_statements(self) -> None:
+        from app.core.db import connect_arguments
+
+        assert "prepare_threshold" not in connect_arguments(_settings())

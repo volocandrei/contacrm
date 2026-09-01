@@ -2,10 +2,14 @@ name: contacrm
 
 # Development stack.
 #
-#   docker compose up -d              # doar infrastructura (postgres + redis)
-#   docker compose --profile api up -d  # infrastructura + API
+#   docker compose up -d                # doar infrastructura (postgres)
+#   docker compose --profile api up -d  # infrastructura + API + worker
 #
-# Serviciul `worker` (Celery) se adaugă la M6, când există taskuri de rulat.
+# Nu există broker. Coada este `document_processing_jobs`, un outbox tranzacțional
+# în aceeași bază de date, revendicat cu `FOR UPDATE SKIP LOCKED`. Motivul pentru
+# care nu am adus Celery + Redis este scris în `backend/app/worker.py`; pe scurt,
+# ar fi însemnat încă un serviciu de rulat, monitorizat și repornit, ca să facă
+# exact ce face deja baza de date pe care oricum o avem.
 services:
   postgres:
     image: postgres:17-alpine
@@ -24,21 +28,6 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-contacrm} -d ${POSTGRES_DB:-contacrm}"]
       interval: 5s
       timeout: 5s
-      retries: 10
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    # AOF pornit: coada de joburi nu trebuie pierdută la restart (ADR-003).
-    command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
       retries: 10
 
   # Migrările rulează într-un container separat, care iese după ce termină.
@@ -63,9 +52,6 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-contacrm}:${POSTGRES_PASSWORD:-contacrm_dev_password}@postgres:5432/${POSTGRES_DB:-contacrm}
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       # Implicit `mock`: niciun document nu părăsește mașina în development (R2).
       OCR_PROVIDER: ${OCR_PROVIDER:-mock}
@@ -80,12 +66,35 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      migrate:
+        condition: service_completed_successfully
+
+  # Procesarea rulează în afara cererii HTTP — asta este tot rostul lui.
+  # Aceeași imagine ca API-ul, alt punct de intrare: nu poate exista o versiune
+  # de worker care execută alt cod decât cel din care a venit cererea.
+  worker:
+    profiles: ["api"]
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-contacrm}:${POSTGRES_PASSWORD:-contacrm_dev_password}@postgres:5432/${POSTGRES_DB:-contacrm}
+      OCR_PROVIDER: ${OCR_PROVIDER:-mock}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      STORAGE_PATH: /var/lib/contacrm/storage
+      ARCHIVE_ROOT: /var/lib/contacrm/storage/ARHIVA
+    volumes:
+      # Același volum ca API-ul: workerul citește originalul pe care l-a scris
+      # uploadul și scrie arhiva pe care o va descărca cineva prin API.
+      - storage_data:/var/lib/contacrm/storage
+    depends_on:
+      postgres:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
 
 volumes:
   postgres_data:
-  redis_data:
   storage_data:
