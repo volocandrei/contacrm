@@ -86,6 +86,11 @@ class FieldSource(StrEnum):
     AI = "AI"
     OCR = "OCR"
     MANUAL = "MANUAL"
+    # Calculată de o regulă a sistemului, nu citită de pe document: luna contabilă
+    # dedusă din data documentului (ADR-008) este singurul caz de azi. Se ține
+    # separat de `AI` pentru că badge-ul „AI 83%" pe o valoare pe care modelul nu a
+    # produs-o ar fi exact minciuna pe care ecranul de verificare promite să nu o spună.
+    DERIVED = "DERIVED"
     EMPTY = "EMPTY"
 
 

@@ -213,7 +213,7 @@ Praguri (configurabile în `system_settings`, valori inițiale propuse):
 | **M3** | Auth: users/roles/permissions, JWT + refresh rotativ, Argon2id, RBAC, audit log | ✅ |
 | **M4** | CRM: clients, contacts, tags, note, tasks | ✅ |
 | **M5** | Documente: încărcare, StorageProvider, SHA-256, duplicate, API, preview securizat, procesare, interfața de verificare, arhivare, întărire | ✅ |
-| **M6** | Coadă persistentă (Celery+Redis), perioade + checklist, dashboard KPI, ecran audit, acțiuni în masă |  |
+| **M6** | Coadă persistentă (Celery+Redis), perioade + checklist, dashboard KPI, ecran audit, acțiuni în masă | perioade + dashboard ✅ |
 | **M7** | Notificări (abstracție + email), rapoarte |  |
 | **M8** | Teste E2E, Docker compose, CI |  |
 | **Faza 2** | Microsoft Graph, WhatsApp, OCR/AI real, remindere, bulk, export ZIP |  |

@@ -18,6 +18,7 @@ from app.models.document import (
     DocumentVersion,
 )
 from app.models.organization import Organization
+from app.models.period import AccountingPeriod, ClientExpectation
 from app.models.task import Task
 from app.models.user import Permission, RefreshToken, Role, User, role_permissions, user_roles
 
@@ -33,6 +34,8 @@ ALL_MODELS = (
     ClientNote,
     Tag,
     Task,
+    AccountingPeriod,
+    ClientExpectation,
     DocumentType,
     DocumentIntake,
     Document,
@@ -43,9 +46,11 @@ ALL_MODELS = (
 
 __all__ = [
     "ALL_MODELS",
+    "AccountingPeriod",
     "AuditLog",
     "Base",
     "Client",
+    "ClientExpectation",
     "ClientNote",
     "Contact",
     "Document",

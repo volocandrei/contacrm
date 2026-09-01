@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     # Peste acest prag, o cerere noua de reprocesare — sau `app.cli recover-processing` —
     # il readuce in coada. Sub el, presupunem ca cineva chiar lucreaza la el.
     processing_stale_after_minutes: int = 15
+    # Din ce se derivă luna contabilă a unui document (ADR-008): `document_date`
+    # (implicit, si cazul coplesitor) sau `received_at`. Fara data, nu se derivă
+    # nimic — o luna gresita este mai rea decat una absenta.
+    reference_period_strategy: str = "document_date"
 
     # ── Notificări ───────────────────────────────────────────────────────────
     notifications_enabled: bool = False

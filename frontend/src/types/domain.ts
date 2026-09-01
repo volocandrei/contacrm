@@ -221,8 +221,15 @@ export type AccountingPeriod = {
 
 /* ─── Documente ────────────────────────────────────────────────────────────── */
 
-/** De unde provine valoarea unui câmp — se afișează în ecranul de verificare (§22). */
-export type FieldSource = "AI" | "OCR" | "MANUAL" | "EMPTY";
+/**
+ * De unde provine valoarea unui câmp — se afișează în ecranul de verificare (§22).
+ *
+ * `DERIVED` înseamnă calculată de o regulă a sistemului, nu citită de pe document:
+ * luna contabilă dedusă din data documentului (ADR-008). Se ține separat de `AI`
+ * pentru că un badge „AI 83%" pe o valoare pe care modelul nu a produs-o ar fi exact
+ * minciuna pe care ecranul promite să nu o spună.
+ */
+export type FieldSource = "AI" | "OCR" | "MANUAL" | "DERIVED" | "EMPTY";
 
 export type ExtractedField<T = string> = {
   value: T | null;

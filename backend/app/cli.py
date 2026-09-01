@@ -28,6 +28,7 @@ from app.domain.permissions import Permission as PermissionCode
 from app.models.client import Client, ClientNote, Contact, Tag
 from app.models.document import DocumentType
 from app.models.organization import Organization
+from app.models.period import ClientExpectation
 from app.models.task import Task
 from app.models.user import Permission, Role, User
 
@@ -112,11 +113,15 @@ def seed_dev() -> None:
         session.flush()
         types_created = sync_document_types(session, organization)
         clients_created = _seed_crm(session, organization)
+        # Separat de `_seed_crm`, care iese devreme dacă există deja clienți:
+        # așteptările trebuie să ajungă și pe o bază populată înainte de M6.
+        expectations = _seed_expectations(session, organization)
 
         print(f"organizație: {organization.name}")
         print(f"utilizatori creați: {created} (parolă: {DEV_PASSWORD})")
         print(f"tipuri de document: {types_created}")
         print(f"clienți creați: {clients_created}")
+        print(f"așteptări lunare adăugate: {expectations}")
 
 
 def sync_document_types(session: Session, organization: Organization) -> int:
@@ -226,6 +231,61 @@ def _seed_crm(session: Session, organization: Organization) -> int:
             ),
         ]
     )
+    return created
+
+
+# Ce se așteaptă lunar de la un client de development. În producție lista se
+# administrează per client — de la firma X vin extrase de cont, de la firma Y nu —
+# iar un checklist identic pentru toți ar raporta lipsuri inexistente.
+DEV_EXPECTATIONS: tuple[tuple[str, int], ...] = (
+    ("FACTURA_INTRARE", 5),
+    ("FACTURA_IESIRE", 2),
+    ("EXTRAS_CONT", 1),
+    ("BON_FISCAL", 3),
+)
+
+
+def _seed_expectations(session: Session, organization: Organization) -> int:
+    """Checklistul lunar al fiecărui client (§19).
+
+    Fără el, perioadele arată „în colectare" la nesfârșit: nu se așteaptă nimic,
+    deci nimic nu lipsește și nimic nu se completează niciodată.
+    """
+    types = {
+        row.code: row
+        for row in session.scalars(
+            select(DocumentType).where(DocumentType.organization_id == organization.id)
+        ).all()
+    }
+    clients = session.scalars(
+        select(Client).where(Client.organization_id == organization.id, Client.deleted_at.is_(None))
+    ).all()
+
+    existing = {
+        row.client_id
+        for row in session.scalars(
+            select(ClientExpectation).where(ClientExpectation.organization_id == organization.id)
+        ).all()
+    }
+
+    created = 0
+    for client in clients:
+        if client.id in existing:
+            continue
+        for code, minimum in DEV_EXPECTATIONS:
+            document_type = types.get(code)
+            if document_type is None:
+                continue
+            session.add(
+                ClientExpectation(
+                    organization_id=organization.id,
+                    client_id=client.id,
+                    document_type_id=document_type.id,
+                    expected_min_count=minimum,
+                )
+            )
+            created += 1
+    session.flush()
     return created
 
 

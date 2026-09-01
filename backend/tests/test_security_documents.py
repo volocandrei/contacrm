@@ -181,11 +181,18 @@ COLLECTION_ROUTES = [
     ("GET", "/api/v1/document-types"),
     ("GET", "/api/v1/dashboard"),
     ("GET", "/api/v1/dashboard/counts"),
+    ("GET", "/api/v1/periods"),
+    ("GET", "/api/v1/periods/missing?referenceMonth=2026-08"),
 ]
 
 # Rute de documente parametrizate pe altceva decât documentul. Granița lor de
 # organizație se verifică prin clientul din cale, nu prin documentul din URL.
-CLIENT_SCOPED_ROUTES = [("GET", "/api/v1/clients/{client_id}/documents")]
+CLIENT_SCOPED_ROUTES = [
+    ("GET", "/api/v1/clients/{client_id}/documents"),
+    ("GET", "/api/v1/clients/{client_id}/periods"),
+    ("POST", "/api/v1/clients/{client_id}/periods/2026-08/close"),
+    ("POST", "/api/v1/clients/{client_id}/periods/2026-08/reopen"),
+]
 
 
 def call(api: TestClient, method: str, path: str, body: dict[str, object] | None) -> object:
@@ -203,14 +210,17 @@ def test_the_list_covers_every_route(api_storage: TestClient) -> None:
     declared = _declared_routes(api_storage)
     # Ceva trebuie să fi fost găsit: un sweep care nu descoperă nicio rută ar trece
     # oricând, și ar da exact încrederea pe care nu o merită.
-    assert len(declared) >= 14, f"descoperire suspect de mică: {sorted(declared)}"
+    assert len(declared) >= 20, f"descoperire suspect de mică: {sorted(declared)}"
 
     # Formele din sweep, cu parametrul de cale înapoi în formă simbolică.
     covered = {
         (m, p.replace("PLACEHOLDER", "{document_id}")) for m, p, _ in document_routes("PLACEHOLDER")
     }
-    covered |= set(COLLECTION_ROUTES)
-    covered |= set(CLIENT_SCOPED_ROUTES)
+    covered |= {(method, path.split("?")[0]) for method, path in COLLECTION_ROUTES}
+    covered |= {
+        (method, template.split("?")[0].replace("2026-08", "{reference_month}"))
+        for method, template in CLIENT_SCOPED_ROUTES
+    }
     covered |= {("POST", "/api/v1/documents/upload")}
 
     missing = declared - covered
@@ -228,7 +238,7 @@ def _declared_routes(api: TestClient) -> set[tuple[str, str]]:
         (method.upper(), path)
         for path, operations in schema["paths"].items()
         for method in operations
-        if ("/documents" in path or "/dashboard" in path)
+        if ("/documents" in path or "/dashboard" in path or "/periods" in path)
         and method.upper() not in {"HEAD", "OPTIONS"}
     }
 
@@ -256,7 +266,8 @@ class TestEveryRouteRequiresASession:
     def test_client_scoped_routes(self, api_storage: TestClient) -> None:
         for method, template in CLIENT_SCOPED_ROUTES:
             path = template.format(client_id=uuid.uuid4())
-            response = call(api_storage, method, path, None)
+            body: dict[str, object] | None = {} if method == "POST" else None
+            response = call(api_storage, method, path, body)
             assert response.status_code == 401, f"{method} {path}"
 
     def test_upload(self, api_storage: TestClient) -> None:
@@ -320,7 +331,8 @@ class TestTheOrganizationBoundaryHolds:
         upload(api_storage)
         for method, template in CLIENT_SCOPED_ROUTES:
             path = template.format(client_id=foreign_client.id)
-            response = call(api_storage, method, path, None)
+            body: dict[str, object] | None = {} if method == "POST" else None
+            response = call(api_storage, method, path, body)
             assert response.status_code == 404, f"{method} {path}"
 
     def test_a_client_from_another_organization_cannot_be_attached(

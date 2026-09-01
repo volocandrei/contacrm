@@ -138,7 +138,7 @@ Alte lucruri gata: temă light/dark persistată, filtre în URL (o listă filtra
 poate trimite unui coleg), sidebar colapsabil cu contoare live, accesibilitate
 consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 
-### Backend — M2 + M3 + M4 + M5 complet (M5.1–M5.8) ✅
+### Backend — M2 + M3 + M4 + M5 complet ✅ · M6 început
 
 **M2 — schelet**
 - FastAPI cu fabrică `create_app()`, fără efecte secundare la import
@@ -292,8 +292,40 @@ proiecta **toate** coloanele documentului, textul OCR inclusiv (§64). Acum
 proiectează doar cheia; join-urile și filtrele rămân neatinse, pentru că de ele
 depinde căutarea după numele clientului.
 
-Rute reale existente: 28 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
-documente ×12, `/dashboard` ×2, health ×3).
+**M6 (prima parte) — luna contabilă și perioadele**
+
+Întrebarea deschisă de la §4.1 are acum un răspuns scris: [ADR-008](adr/ADR-008-reference-period.md).
+Implicit, luna contabilă este **luna documentului**; `REFERENCE_PERIOD_STRATEGY=received_at`
+o schimbă pe „luna primirii", pentru cabinetele care lucrează așa. Fără dată nu se
+derivă nimic — o lună greșită este mai rea decât una absentă, pentru că absența se
+vede. Corectura umană câștigă întotdeauna, iar reprocesarea nu o mai atinge.
+
+Valoarea derivată nu se dă drept altceva: `FieldSource` are o a cincea valoare,
+**`DERIVED`**, iar ecranul de verificare o arată ca „dedus". Un badge „AI 83%" pe o
+valoare pe care modelul nu a produs-o ar fi exact minciuna pe care ecranul promite
+să nu o spună.
+
+**Perioadele nu stochează nimic ce se poate calcula.** Tabelele țin doar faptele
+umane — cine a deschis o lună, cine a închis-o, ce se așteaptă de la fiecare client.
+Contoarele și statusul se derivă la citire, dintr-o singură interogare grupată. Un
+status ținut într-o coloană se desincronizează tăcut de contoarele lui: exact asta
+s-a întâmplat în backendul simulat, unde perioade marcate „complete" aveau documente
+obligatorii lipsă. Acum un document care își schimbă luna mută progresul instantaneu,
+fără vreun pas de „recalculare" pe care cineva ar putea să-l uite.
+
+Checklistul este **per client**, nu global: cabinetul știe că de la firma X vine un
+extras de cont și de la firma Y nu. Un checklist identic pentru toți ar raporta
+lipsuri inexistente, iar un raport care strigă degeaba ajunge să nu mai fie citit.
+
+Închiderea lunii refuză un checklist incomplet — dar acceptă `force`. Există motive
+legitime pe care sistemul nu le cunoaște; ce nu are voie este să treacă tăcut.
+
+Rute noi: `GET /periods`, `GET /periods/missing`, `GET /clients/:id/periods`,
+`POST /clients/:id/periods/:month/{close,reopen}`. Panoul principal are acum
+perioade reale, iar lunile incomplete apar la „necesită atenție".
+
+Rute reale existente: 33 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
+documente ×12, `/dashboard` ×2, perioade ×5, health ×3).
 
 ### Verificat pe date reale, nu doar în teste
 
@@ -348,8 +380,8 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 
 ### Golul concret
 
-Frontend-ul consumă **31 de rute**. Backendul real implementează **25** dintre ele
-(plus `/auth/refresh` și health). **Rămân 6.**
+Frontend-ul consumă **31 de rute**. Backendul real implementează **28** dintre ele
+(plus `/auth/refresh` și health). **Rămân 3.**
 
 | Rută | Milestone |
 |---|---|
@@ -359,9 +391,9 @@ Frontend-ul consumă **31 de rute**. Backendul real implementează **25** dintre
 | ~~`/documents/:id/{preview,download}`~~ | ✅ M5.4 |
 | ~~`POST /documents/:id/{assign-client,approve,reject,duplicate,reprocess}`~~ | ✅ M5.3–M5.5 |
 | ~~`GET /documents/next-review`, `GET /dashboard/counts`~~ | ✅ M5.6 |
-| ~~`GET /dashboard`~~ | ✅ parțial — fără perioade, care vin la M6 |
+| ~~`GET /dashboard`~~ | ✅ |
+| ~~`GET /periods`, `GET /periods/missing`, `GET /clients/:id/periods`~~ | ✅ M6 |
 | `POST /documents/bulk` | M6 (ecranul de listă) |
-| `GET /periods`, `GET /periods/missing`, `GET /clients/:id/periods` | M6 |
 | `GET /audit-logs` | M6 (ecran) |
 | `GET /messages`, `GET /clients/:id/messages` | Faza 2 |
 
@@ -381,7 +413,7 @@ ci portat.**
 | M3 | Auth, RBAC, audit | ✅ |
 | M4 | CRM: clients, contacts, notes, tags, tasks | ✅ |
 | **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare, arhivare, întărire** | ✅ |
-| M6 | Coadă persistentă (Celery + Redis), perioade + checklist, dashboard, ecran audit, acțiuni în masă | |
+| **M6** | Coadă persistentă (Celery + Redis), perioade + checklist, dashboard, ecran audit, acțiuni în masă | ⏳ perioade + dashboard ✅ |
 | M7 | Notificări, rapoarte | |
 | M8 | Teste E2E, CI | |
 | Faza 2 | Microsoft Graph, WhatsApp, OCR/AI real, remindere, export ZIP | |
@@ -420,14 +452,16 @@ document a cărui dată cade în alta.
 
 Necesită input uman, nu sunt de rezolvat în cod:
 
-1. **Regula de `reference_period`** — cum se decide luna contabilă când
-   `document_date` cade în altă lună? `document_date ≠ reference_month` și nu se
-   deduc una din alta fără o regulă configurată.
-   *TODO — BUSINESS RULE REQUIRES ACCOUNTING VALIDATION*
-2. **Când este o perioadă „completă"?** Implementarea actuală cere ca **fiecare**
-   item din checklist să fie satisfăcut (varianta conservatoare). Alternativa —
-   un prag pe total — a fost respinsă pentru că poate declara luna închisă cu
-   documente obligatorii lipsă. *Necesită confirmarea unui contabil.*
+1. ~~**Regula de `reference_period`**~~ — decisă în [ADR-008](adr/ADR-008-reference-period.md):
+   implicit luna documentului, cu „luna primirii" ca setare. Rămân de confirmat de un
+   contabil trei lucruri, scrise acolo: termenul până la care o factură mai poate intra
+   în luna ei, dacă regula diferă pe tip de document, și dacă este per cabinet sau per
+   client. *TODO — BUSINESS RULE REQUIRES ACCOUNTING VALIDATION* pe cele trei.
+2. **Când este o perioadă „completă"?** Implementarea cere ca **fiecare** item din
+   checklist să fie satisfăcut (varianta conservatoare) — alternativa, un prag pe
+   total, a fost respinsă pentru că poate declara luna închisă cu documente
+   obligatorii lipsă. Închiderea peste un checklist incomplet rămâne posibilă, dar
+   cerută explicit. *Necesită confirmarea unui contabil.*
 3. **Provider OCR/AI real** pentru Faza 2 și dacă politica firmei permite
    trimiterea documentelor în afara UE (GDPR, R2).
 4. **Software-ul contabil țintă** pentru export — determină formatul.
@@ -451,4 +485,3 @@ Niciuna nu blochează M5.7.
 | `oxlint`: 2 warning-uri | `only-export-components` pe fișiere shadcn generate — cosmetic |
 | `POST /documents/bulk` | declarat în `api/endpoints.ts`, fără rută în backend și fără apelant în interfață — se leagă la M6, odată cu acțiunile în masă din ecranul de listă |
 | execuția procesării rulează încă în procesul API | cererea **nu se mai pierde** (outbox tranzacțional), ce rămâne pe drum se reia cu `app.cli recover-processing`, iar documentele înțepenite apar pe panou ca "Procesare întreruptă". Lipsește doar un worker separat care s-o ruleze singur, periodic — infrastructură, nu logică (M6) |
-| `periods` din `GET /dashboard` este listă goală | perioadele contabile nu există încă în backend; zero este adevărat, nu o omisiune. M6 le umple, împreună cu `clientsComplete` și `clientsMissingDocs` |

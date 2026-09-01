@@ -36,6 +36,7 @@ from app.services.document_fields import (
     FieldUpdate,
     missing_required_fields,
 )
+from app.services.period_service import PeriodService
 
 logger = get_logger(__name__)
 
@@ -167,12 +168,27 @@ class DocumentService:
         # Corectarea manuală rezolvă problemele semnalate de extracție.
         document.validation_issues = missing_required_fields(document)
         self.session.flush()
+        self._sync_period(document)
         logger.info(
             "document_fields_updated",
             document_id=str(document.id),
             fields=[c.field for c in changes],
         )
         return document
+
+    def _sync_period(self, document: Document) -> None:
+        """Marchează luna în care documentul tocmai a aterizat.
+
+        Rândul perioadei se creează la primul document care intră în ea, nu în avans:
+        o lună fără nimic în ea nu s-a întâmplat. Tot aici se prinde momentul în care
+        checklistul devine prima dată complet — un fapt care nu se poate deriva la
+        citire, pentru că este *primul* moment, nu starea de acum.
+        """
+        if document.client_id is None or not document.reference_month:
+            return
+        PeriodService(self.session).touch(
+            document.organization_id, document.client_id, document.reference_month
+        )
 
     def _mark_reviewed(self, document: Document, actor: ActorContext) -> None:
         document.reviewed_by = actor.user.id
@@ -210,6 +226,7 @@ class DocumentService:
             new_value={"clientId": str(client.id)},
         )
         self.session.flush()
+        self._sync_period(document)
         return document
 
     # ── Aprobare ────────────────────────────────────────────────────────────
@@ -265,6 +282,7 @@ class DocumentService:
             new_value={"archivePath": document.archive_path},
         )
         self.session.flush()
+        self._sync_period(document)
         return document
 
     # ── Respingere ──────────────────────────────────────────────────────────

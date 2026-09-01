@@ -34,6 +34,7 @@ from app.core.logging import get_logger
 from app.domain.document_actions import reprocess_check
 from app.domain.document_state import can_transition
 from app.domain.enums import DocumentErrorCode, DocumentStatus, FieldSource
+from app.domain.periods import ReferencePeriodStrategy, derive_reference_month
 from app.models.document import Document, DocumentProcessingJob
 from app.repositories.document import DocumentRepository
 from app.services import processing_queue as queue
@@ -47,6 +48,7 @@ from app.services.extraction.base import (
     ExtractionInput,
     ExtractionResult,
 )
+from app.services.period_service import PeriodService
 from app.services.storage import ObjectNotFoundError, StorageProvider
 
 logger = get_logger(__name__)
@@ -149,6 +151,7 @@ class DocumentProcessingService:
             )
 
         self._apply(document, result)
+        self._assign_period(document)
         return self._decide(document, job, result)
 
     # ── Pași ────────────────────────────────────────────────────────────────
@@ -252,6 +255,36 @@ class DocumentProcessingService:
         document.ai_classification_confidence = result.classification_confidence
         document.ai_extraction_confidence = result.extraction_confidence
         document.extraction_duration_ms = result.duration_ms
+
+    def _assign_period(self, document: Document) -> None:
+        """Pune documentul în luna contabilă care i se cuvine (ADR-008).
+
+        Doar dacă nu are deja una: o valoare pusă de un om nu se rescrie, nici la
+        reprocesare. Dacă nu se poate deriva — documentul nu are dată — câmpul rămâne
+        gol și motivul ajunge în validare. Nu inventăm o lună.
+        """
+        if document.reference_month:
+            return
+
+        derived = derive_reference_month(
+            document_date=document.document_date,
+            received_at=document.received_at,
+            strategy=ReferencePeriodStrategy(settings.reference_period_strategy),
+        )
+        if derived is None:
+            return
+
+        document.reference_month = derived
+        metadata = dict(document.field_metadata or {})
+        # Proveniența spune adevărul: valoarea vine de la sistem, pe o regulă, nu de
+        # la extracție și nici de la un om.
+        metadata["referenceMonth"] = {"source": FieldSource.DERIVED.value, "confidence": None}
+        document.field_metadata = metadata
+
+        # Luna abia derivată trebuie și „atinsă": altfel perioada apare în rapoarte
+        # dar nu are rând, iar momentul completării nu se prinde niciodată.
+        if document.client_id is not None:
+            PeriodService(self.session).touch(document.organization_id, document.client_id, derived)
 
     def _decide(
         self, document: Document, job: DocumentProcessingJob, result: ExtractionResult

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  Calculator,
   CircleAlert,
   CircleCheck,
   Copy,
@@ -670,6 +671,15 @@ function FieldOrigin({ field, isDirty }: { field: ExtractedField<string>; isDirt
   }
   if (field.source === "EMPTY" || field.value === null) {
     return <span className="text-[10px] text-gray-400 dark:text-gray-500">lipsă</span>;
+  }
+  if (field.source === "DERIVED") {
+    // Nu a citit-o nimeni de pe document: a calculat-o o regulă (ADR-008).
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-medium text-gray-500 dark:text-gray-400">
+        <Calculator className="h-3 w-3" aria-hidden="true" />
+        dedus
+      </span>
+    );
   }
   const percent = field.confidence !== null ? Math.round(field.confidence * 100) : null;
   return (

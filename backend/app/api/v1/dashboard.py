@@ -22,8 +22,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import DbSession, require_permission
+from app.api.v1.periods import AccountingPeriodOut, to_period
 from app.core.config import settings
-from app.domain.enums import ClientStatus, DocumentStatus, TaskStatus
+from app.domain.enums import ClientStatus, DocumentStatus, PeriodStatus, TaskStatus
 from app.domain.permissions import Permission
 from app.models.audit import AuditLog
 from app.models.client import Client
@@ -34,6 +35,7 @@ from app.repositories.document import DocumentRepository
 from app.schemas.common import ApiModel
 from app.schemas.document import DocumentListItemOut
 from app.services import processing_queue as queue
+from app.services.period_service import PeriodService, PeriodView
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -49,6 +51,7 @@ RECENT_DOCUMENTS = 8
 MAX_ATTENTION = 8
 PER_REASON = 3
 TIMELINE_EVENTS = 6
+MAX_PERIODS = 6
 
 
 class SidebarCountsOut(ApiModel):
@@ -108,8 +111,7 @@ class DashboardOut(ApiModel):
     kpis: DashboardKpisOut
     attention: list[AttentionItemOut]
     recent_documents: list[DocumentListItemOut]
-    # Gol până la M6: perioadele contabile nu există încă.
-    periods: list[dict[str, object]]
+    periods: list[AccountingPeriodOut]
     timeline: list[TimelineEventOut]
 
 
@@ -131,13 +133,18 @@ def dashboard(session: DbSession, user: DashboardReader) -> DashboardOut:
     repository = DocumentRepository(session)
     by_status = repository.count_by_status(organization_id)
 
+    # Luna în lucru o spun datele, nu calendarul: vezi `latest_active_month`.
+    service = PeriodService(session)
+    current = service.latest_active_month(organization_id)
+    periods = service.list_periods(organization_id, reference_month=current) if current else []
+
     return DashboardOut(
-        kpis=_kpis(session, organization_id, by_status),
-        attention=_attention(session, organization_id),
+        kpis=_kpis(session, organization_id, by_status, periods),
+        attention=_attention(session, organization_id, periods),
         recent_documents=[
             _to_list_item(row) for row in _recent(session, organization_id, RECENT_DOCUMENTS)
         ],
-        periods=[],
+        periods=[to_period(view) for view in periods[:MAX_PERIODS]],
         timeline=_timeline(session, organization_id),
     )
 
@@ -161,7 +168,10 @@ def _open_tasks(session: Session, organization_id: uuid.UUID) -> int:
 
 
 def _kpis(
-    session: Session, organization_id: uuid.UUID, by_status: dict[DocumentStatus, int]
+    session: Session,
+    organization_id: uuid.UUID,
+    by_status: dict[DocumentStatus, int],
+    periods: list[PeriodView],
 ) -> DashboardKpisOut:
     clients_total = (
         session.scalar(
@@ -197,11 +207,16 @@ def _kpis(
         or 0
     )
 
+    # „Complet" înseamnă fiecare document așteptat sosit — nu un total atins.
+    complete = sum(
+        1 for p in periods if p.status in {PeriodStatus.COMPLETE, PeriodStatus.FINALIZED}
+    )
+
     return DashboardKpisOut(
         clients_total=clients_total,
         clients_active=clients_active,
-        clients_complete=0,
-        clients_missing_docs=0,
+        clients_complete=complete,
+        clients_missing_docs=len(periods) - complete,
         documents_today=documents_today,
         documents_processing=by_status.get(DocumentStatus.PROCESSING, 0),
         documents_error=by_status.get(DocumentStatus.ERROR, 0),
@@ -242,7 +257,9 @@ def _documents_where(
     return list(session.scalars(stmt).all())
 
 
-def _attention(session: Session, organization_id: uuid.UUID) -> list[AttentionItemOut]:
+def _attention(
+    session: Session, organization_id: uuid.UUID, periods: list[PeriodView]
+) -> list[AttentionItemOut]:
     items: list[AttentionItemOut] = []
 
     def add(document: Document, reason: AttentionReason, title: str, detail: str) -> None:
@@ -308,6 +325,25 @@ def _attention(session: Session, organization_id: uuid.UUID) -> list[AttentionIt
             "STUCK_IN_PROCESSING",
             "Procesare întreruptă",
             f"{document.original_filename} — cere `recover-processing` sau o reprocesare",
+        )
+
+    now = datetime.now(UTC)
+    for period in periods:
+        gaps = [item for item in period.checklist if not item.is_satisfied]
+        if not gaps or period.closed_at is not None:
+            continue
+        items.append(
+            AttentionItemOut(
+                id=f"att-incomplete-{period.client_id}-{period.reference_month}",
+                document_id=None,
+                reason="INCOMPLETE_PERIOD",
+                title="Lună incompletă",
+                detail=(
+                    f"{period.client_name} · {period.reference_month} — lipsesc: "
+                    + ", ".join(item.document_type_label for item in gaps)
+                ),
+                occurred_at=period.opened_at or now,
+            )
         )
 
     items.sort(key=lambda item: item.occurred_at, reverse=True)
