@@ -377,14 +377,27 @@ class TestIdempotency:
     ) -> None:
         document = upload(db, storage, org, client=client_row)
         service(db, storage).process(org.id, document.id)
-        document.status = DocumentStatus.ARCHIVED
-        document.archived_at = datetime.now(UTC)
-        document.stored_filename = "x.pdf"
+        _mark_archived(document)
         db.flush()
 
         outcome = service(db, storage).process(org.id, document.id)
         assert outcome.skipped
         assert document.status is DocumentStatus.ARCHIVED
+
+
+def _mark_archived(document: Document) -> None:
+    """Aduce documentul in starea in care il lasa arhivarea.
+
+    Constrangerea din baza de date cere tot ce inseamna „arhivat", nu doar statusul:
+    fara cale si fara cheie in stocare, randul este respins — ceea ce este exact ideea.
+    """
+    document.status = DocumentStatus.ARCHIVED
+    document.archived_at = datetime.now(UTC)
+    document.stored_filename = "x.pdf"
+    document.archive_path = "/ARHIVA/2026/08/Test/"
+    document.archive_key = (
+        f"organizations/{document.organization_id}/documents/{document.id}/archive/document.pdf"
+    )
 
 
 class TestManualCorrectionsSurvive:
@@ -509,9 +522,7 @@ class TestReprocessLimits:
     ) -> None:
         """`can_reprocess` cere explicit; procesarea obișnuită nu atinge arhiva."""
         document = upload(db, storage, org, client=client_row)
-        document.status = DocumentStatus.ARCHIVED
-        document.archived_at = datetime.now(UTC)
-        document.stored_filename = "x.pdf"
+        _mark_archived(document)
         db.flush()
 
         allowed, _ = service(db, storage).can_reprocess(document)

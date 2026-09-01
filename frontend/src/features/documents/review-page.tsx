@@ -165,7 +165,7 @@ function ReviewScreen({
         setDraft({});
       }
       await approve.mutateAsync(document.id);
-      setFeedback({ tone: "ok", message: "Document aprobat." });
+      setFeedback({ tone: "ok", message: "Document aprobat și arhivat." });
     } catch (caught) {
       setFeedback({ tone: "error", message: describeError(caught) });
     }

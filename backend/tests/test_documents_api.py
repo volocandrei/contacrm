@@ -14,17 +14,24 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.domain.document_types import DEFAULT_DOCUMENT_TYPES
-from app.domain.enums import DocumentStatus
+from app.domain.enums import DocumentErrorCode, DocumentStatus
 from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS, RoleCode
 from app.models.audit import AuditLog
 from app.models.client import Client
-from app.models.document import Document, DocumentFieldOverride, DocumentType
+from app.models.document import (
+    Document,
+    DocumentFieldOverride,
+    DocumentType,
+    DocumentVersion,
+)
 from app.models.organization import Organization
 from app.models.user import Permission, Role, User
+from app.services.storage import LocalStorageProvider
 from tests.conftest import requires_db
 
 pytestmark = requires_db
@@ -116,13 +123,16 @@ def client_row(db: Session, org: Organization) -> Client:
 
 
 @pytest.fixture
-def api_storage(api: TestClient, tmp_path: Path) -> TestClient:
-    """Leagă API-ul de un storage izolat, ca testele să nu scrie în `./storage`."""
-    from app.api.deps import get_storage
-    from app.services.storage import LocalStorageProvider
+def storage_provider(tmp_path: Path) -> LocalStorageProvider:
+    """Storage izolat, ca testele să nu scrie în `./storage`."""
+    return LocalStorageProvider(tmp_path / "storage")
 
-    provider = LocalStorageProvider(tmp_path / "storage")
-    api.app.dependency_overrides[get_storage] = lambda: provider  # type: ignore[attr-defined]
+
+@pytest.fixture
+def api_storage(api: TestClient, storage_provider: LocalStorageProvider) -> TestClient:
+    from app.api.deps import get_storage
+
+    api.app.dependency_overrides[get_storage] = lambda: storage_provider  # type: ignore[attr-defined]
     return api
 
 
@@ -538,9 +548,12 @@ class TestWorkflow:
         document_id = self._ready(api_storage, db, client_row, types)
 
         body = api_storage.post(f"/api/v1/documents/{document_id}/approve").json()
-        assert body["status"] == "APPROVED"
+        # Aprobarea arhivează în același pas: un document aprobat care nu a ajuns
+        # în arhivă nu este nicăieri (§10, §11).
+        assert body["status"] == "ARCHIVED"
         assert body["reviewRequired"] is False
         assert body["validationIssues"] == []
+        assert body["storedFilename"] == "2026-08-14_Facturaintrare_AlfaContaSRL_F1023.pdf"
 
     def test_approving_twice_is_refused(
         self,
@@ -550,14 +563,17 @@ class TestWorkflow:
         client_row: Client,
         types: dict[str, DocumentType],
     ) -> None:
-        """Mașina de stări nu permite APPROVED → APPROVED ca acțiune nouă (§40)."""
+        """Din `ARCHIVED` nu se mai aprobă nimic (§40).
+
+        A doua aprobare ar rescrie o probă contabilă deja arhivată; refuzul explicit
+        este mai onest decât un 200 care nu face nimic.
+        """
         login(api_storage, admin.email)
         document_id = self._ready(api_storage, db, client_row, types)
         api_storage.post(f"/api/v1/documents/{document_id}/approve")
 
         second = api_storage.post(f"/api/v1/documents/{document_id}/approve")
-        assert second.status_code == 200  # idempotent: aceeași stare, nu o tranziție
-        assert second.json()["status"] == "APPROVED"
+        assert second.status_code == 409
 
     def test_an_unprocessed_document_cannot_be_approved(
         self,
@@ -656,11 +672,14 @@ class TestWorkflow:
 
         history = api_storage.get(f"/api/v1/documents/{document_id}").json()["history"]
         actions = [entry["action"] for entry in history]
+        # Aprobarea și arhivarea sunt două intrări distincte: prima este decizia
+        # omului, a doua este actul sistemului.
         assert actions == [
             "DOCUMENT_UPLOADED",
             "DOCUMENT_CLIENT_ASSIGNED",
             "DOCUMENT_METADATA_UPDATED",
             "DOCUMENT_APPROVED",
+            "DOCUMENT_ARCHIVED",
         ]
         assert all(entry["actor"] == admin.full_name for entry in history)
 
@@ -1135,3 +1154,305 @@ class TestReprocessAvailability:
         response = api_storage.post(f"/api/v1/documents/{document_id}/reprocess")
         assert response.status_code == 202
         assert response.json()["status"] == "PROCESSING"
+
+
+# ── Arhivare (§10, §11, M5.7) ────────────────────────────────────────────────
+
+
+class TestArchiving:
+    def _approve(
+        self,
+        api: TestClient,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+        *,
+        content: bytes = PDF,
+        name: str = "factura.pdf",
+        number: str = "F1023",
+    ) -> dict:  # type: ignore[type-arg]
+        document_id = upload(api, content=content, name=name)["id"]
+        _to_review(db, document_id)
+        api.post(
+            f"/api/v1/documents/{document_id}/assign-client",
+            json={"clientId": str(client_row.id)},
+        )
+        api.patch(
+            f"/api/v1/documents/{document_id}",
+            json={
+                "updates": [
+                    {"field": "documentType", "value": "FACTURA_INTRARE"},
+                    {"field": "documentDate", "value": "2026-08-14"},
+                    {"field": "documentNumber", "value": number},
+                    {"field": "supplierName", "value": "Furnizor SRL"},
+                    {"field": "totalAmount", "value": "1190.00"},
+                    {"field": "referenceMonth", "value": "2026-08"},
+                ]
+            },
+        )
+        response = api.post(f"/api/v1/documents/{document_id}/approve")
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def test_approval_produces_the_standardised_name(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        body = self._approve(api_storage, db, client_row, types)
+
+        assert body["status"] == "ARCHIVED"
+        assert body["storedFilename"] == "2026-08-14_Facturaintrare_AlfaContaSRL_F1023.pdf"
+
+    def test_the_archive_path_follows_the_convention(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        body = self._approve(api_storage, db, client_row, types)
+
+        document = db.get(Document, uuid.UUID(body["id"]))
+        assert document is not None
+        assert document.archive_path == "/ARHIVA/2026/08/AlfaContaSRL/"
+
+    def test_the_original_file_is_left_untouched(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+        storage_provider: LocalStorageProvider,
+    ) -> None:
+        """O probă contabilă nu se rescrie (§16): arhiva este o copie, nu o mutare."""
+        login(api_storage, admin.email)
+        body = self._approve(api_storage, db, client_row, types)
+
+        document = db.get(Document, uuid.UUID(body["id"]))
+        assert document is not None
+        assert storage_provider.exists(document.storage_key)
+        assert document.archive_key is not None
+        assert storage_provider.exists(document.archive_key)
+        assert document.archive_key != document.storage_key
+
+        with (
+            storage_provider.open(document.storage_key) as original,
+            storage_provider.open(document.archive_key) as archived,
+        ):
+            assert original.read() == archived.read()
+
+    def test_a_version_row_records_the_archive_copy(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        body = self._approve(api_storage, db, client_row, types)
+
+        versions = db.scalars(
+            select(DocumentVersion).where(DocumentVersion.document_id == uuid.UUID(body["id"]))
+        ).all()
+        # Originalul a fost înregistrat la încărcare; arhiva se adaugă lângă el,
+        # nu în locul lui (§16).
+        assert [v.kind for v in versions] == ["original", "archive"]
+        assert versions[-1].storage_key != versions[0].storage_key
+        assert versions[-1].sha256_hash == body["sha256"]
+
+    def test_a_second_identical_document_gets_a_suffix(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Același client, aceeași lună, aceeași serie și număr → același nume."""
+        login(api_storage, admin.email)
+        first = self._approve(api_storage, db, client_row, types)
+        second = self._approve(
+            api_storage, db, client_row, types, content=PDF + b"altul", name="alta.pdf"
+        )
+
+        assert second["storedFilename"] != first["storedFilename"]
+        assert second["storedFilename"] == first["storedFilename"].replace(".pdf", "_2.pdf")
+
+    def test_the_database_refuses_two_documents_at_the_same_place(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Sufixul se alege în cod, dar unicitatea o garantează un index parțial.
+
+        Fără el, două arhivări simultane ar putea alege același nume: fiecare caută
+        înainte să scrie, și amândouă găsesc liber.
+        """
+        login(api_storage, admin.email)
+        first = self._approve(api_storage, db, client_row, types)
+        second = self._approve(
+            api_storage, db, client_row, types, content=PDF + b"altul", name="alta.pdf"
+        )
+
+        intruder = db.get(Document, uuid.UUID(second["id"]))
+        assert intruder is not None
+        intruder.stored_filename = first["storedFilename"]
+        with pytest.raises(IntegrityError):
+            db.flush()
+        db.rollback()
+
+    def test_a_hostile_client_name_cannot_escape_the_archive_root(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        org: Organization,
+        types: dict[str, DocumentType],
+    ) -> None:
+        hostile = Client(
+            organization_id=org.id,
+            name="..\\..\\windows\\system32",
+            tax_id="RO999",
+        )
+        db.add(hostile)
+        db.flush()
+
+        login(api_storage, admin.email)
+        body = self._approve(api_storage, db, hostile, types)
+
+        document = db.get(Document, uuid.UUID(body["id"]))
+        assert document is not None
+        assert document.archive_path is not None
+        assert ".." not in document.archive_path
+        assert "\\" not in document.archive_path
+        assert len([p for p in document.archive_path.split("/") if p]) == 4
+        assert "\\" not in body["storedFilename"]
+        assert "/" not in body["storedFilename"]
+
+    def test_the_archive_location_never_leaves_through_the_api(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Nici cheia de stocare, nici calea de arhivă nu sunt treaba clientului (§73)."""
+        login(api_storage, admin.email)
+        body = self._approve(api_storage, db, client_row, types)
+
+        serialised = str(body)
+        assert "archivePath" not in serialised
+        assert "archiveKey" not in serialised
+        assert "storageKey" not in serialised
+        assert "organizations/" not in serialised
+
+    def test_the_download_uses_the_standardised_name(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        body = self._approve(api_storage, db, client_row, types)
+
+        response = api_storage.get(f"/api/v1/documents/{body['id']}/download")
+        assert response.status_code == 200
+        assert body["storedFilename"] in response.headers["Content-Disposition"]
+
+    def test_archiving_is_recorded_in_the_audit_trail(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        body = self._approve(api_storage, db, client_row, types)
+
+        entry = db.scalars(
+            select(AuditLog).where(
+                AuditLog.entity_id == body["id"], AuditLog.action == "DOCUMENT_ARCHIVED"
+            )
+        ).one()
+        assert entry.detail == body["storedFilename"]
+        assert entry.user_name == admin.full_name
+
+    def test_an_approved_document_is_no_longer_offered_for_approval(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        body = self._approve(api_storage, db, client_row, types)
+
+        assert "approve" not in body["availableActions"]
+        # Din arhivă se iese doar printr-o cerere explicită de reprocesare (§40).
+        assert body["availableActions"] == ["edit", "assignClient", "reprocess", "download"]
+
+    def test_a_missing_file_rolls_back_the_approval(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+        storage_provider: LocalStorageProvider,
+    ) -> None:
+        """Un document nu are voie să rămână aprobat cu arhiva goală.
+
+        Ce se verifică aici este că cererea eșuează și că **nimic** din arhivă nu a
+        fost scris. Anularea aprobării în sine o face `get_db`, care dă tranzacția
+        înapoi la orice excepție — dar testele împart sesiunea cu aplicația, deci
+        rollback-ul acela nu se poate observa de aici.
+        """
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+        api_storage.post(
+            f"/api/v1/documents/{document_id}/assign-client",
+            json={"clientId": str(client_row.id)},
+        )
+        api_storage.patch(
+            f"/api/v1/documents/{document_id}",
+            json={
+                "updates": [
+                    {"field": "documentType", "value": "FACTURA_INTRARE"},
+                    {"field": "documentDate", "value": "2026-08-14"},
+                    {"field": "documentNumber", "value": "F1"},
+                    {"field": "supplierName", "value": "Furnizor SRL"},
+                    {"field": "totalAmount", "value": "1190.00"},
+                ]
+            },
+        )
+
+        document = db.get(Document, uuid.UUID(document_id))
+        assert document is not None
+        storage_provider.delete(document.storage_key)
+
+        response = api_storage.post(f"/api/v1/documents/{document_id}/approve")
+        assert response.status_code >= 400
+
+        assert document.archive_key is None
+        assert document.archive_path is None
+        assert document.stored_filename is None
+        assert document.archived_at is None
+        assert document.error_code is DocumentErrorCode.ARCHIVE_FAILED

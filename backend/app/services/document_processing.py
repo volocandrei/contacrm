@@ -37,6 +37,7 @@ from app.domain.enums import DocumentErrorCode, DocumentStatus, FieldSource
 from app.models.document import Document, DocumentProcessingJob
 from app.repositories.document import DocumentRepository
 from app.services.audit import AuditService
+from app.services.document_archive import DocumentArchiveService
 from app.services.document_fields import SPEC_BY_NAME, DocumentFieldWriter, FieldUpdate
 from app.services.document_validation import DocumentValidationService, ValidationLevel
 from app.services.extraction.base import (
@@ -244,9 +245,12 @@ class DocumentProcessingService:
             document.status = DocumentStatus.REVIEW_REQUIRED
             document.review_required = True
         else:
+            # Aprobarea automată arhivează pe loc, ca și cea făcută de un om: altfel
+            # documentul ar rămâne aprobat și negăsibil în arhivă.
             document.status = DocumentStatus.APPROVED
             document.review_required = False
             document.approved_at = datetime.now(UTC)
+            DocumentArchiveService(self.session, self.storage).archive(document)
 
         job.status = "SUCCEEDED"
         job.finished_at = datetime.now(UTC)

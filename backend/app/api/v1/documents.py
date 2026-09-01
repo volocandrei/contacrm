@@ -45,6 +45,7 @@ from app.schemas.document import (
     DocumentOcrOut,
     DocumentTypeOut,
 )
+from app.services.document_archive import DocumentArchiveService
 from app.services.document_delivery import (
     SECURITY_HEADERS,
     RangeNotSatisfiableError,
@@ -377,11 +378,23 @@ def assign_client(
 @router.post("/documents/{document_id}/approve", response_model=DocumentDetailOut)
 def approve_document(
     session: DbSession,
+    storage: StorageDep,
     user: DocumentApprover,
     request: Request,
     document_id: uuid.UUID,
 ) -> DocumentDetailOut:
-    DocumentService(session).approve(user.organization_id, document_id, _actor(user, request))
+    """Aprobă **și arhivează** documentul (§10, §11).
+
+    Cele două se întâmplă în aceeași tranzacție: dacă arhivarea eșuează, aprobarea
+    se dă înapoi odată cu ea. Nu există stare intermediară în care documentul este
+    aprobat, dar nu se găsește nicăieri în arhivă.
+    """
+    DocumentService(session).approve(
+        user.organization_id,
+        document_id,
+        _actor(user, request),
+        archiver=DocumentArchiveService(session, storage),
+    )
     return _detail(session, user, document_id)
 
 

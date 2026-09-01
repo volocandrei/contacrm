@@ -29,6 +29,7 @@ from app.models.document import Document, DocumentType
 from app.models.user import User
 from app.repositories.document import DocumentRepository
 from app.services.audit import AuditService
+from app.services.document_archive import DocumentArchiveService
 from app.services.document_fields import (
     DocumentFieldWriter,
     FieldUpdate,
@@ -194,9 +195,20 @@ class DocumentService:
     # ── Aprobare ────────────────────────────────────────────────────────────
 
     def approve(
-        self, organization_id: uuid.UUID, document_id: uuid.UUID, actor: ActorContext
+        self,
+        organization_id: uuid.UUID,
+        document_id: uuid.UUID,
+        actor: ActorContext,
+        *,
+        archiver: DocumentArchiveService,
     ) -> Document:
-        """Aprobă documentul. Arhivarea fizică vine separat, la M5.7."""
+        """Aprobă documentul **și îl arhivează**.
+
+        Cele două sunt un singur act: un document aprobat care nu a ajuns în arhivă
+        nu este nicăieri. `archiver` este obligatoriu tocmai ca să nu existe un drum
+        prin care documentul să rămână `APPROVED` cu arhiva goală — dacă arhivarea
+        eșuează, tranzacția duce înapoi și aprobarea.
+        """
         document = self._get(organization_id, document_id)
 
         # Starea se verifica prima: un document neprocesat nu poate fi aprobat
@@ -221,6 +233,18 @@ class DocumentService:
         self._record(actor, document, "DOCUMENT_APPROVED", detail=document.original_filename)
         self.session.flush()
         logger.info("document_approved", document_id=str(document.id))
+
+        # Aprobarea este decizia omului; arhivarea este actul sistemului. Două
+        # intrări distincte în audit, pentru că sunt două lucruri diferite.
+        archiver.archive(document, actor_id=actor.user.id)
+        self._record(
+            actor,
+            document,
+            "DOCUMENT_ARCHIVED",
+            detail=document.stored_filename,
+            new_value={"archivePath": document.archive_path},
+        )
+        self.session.flush()
         return document
 
     # ── Respingere ──────────────────────────────────────────────────────────

@@ -173,15 +173,14 @@ describe("aprobarea", () => {
     await openReview(documentId);
 
     await user.click(screen.getByRole("button", { name: /Aprobă/ }));
-    await screen.findByText("Document aprobat.");
+    await screen.findByText("Document aprobat și arhivat.");
 
-    // Starea exactă de după aprobare diferă deocamdată între cele două backend-uri:
-    // cel simulat arhivează în același pas (`ARCHIVED`), cel real se oprește la
-    // `APPROVED` până când M5.7 aduce arhivarea fizică. Ce garantează M5.6, în ambele,
-    // este că documentul iese din coada de verificare.
+    // Aprobarea și arhivarea sunt un singur act, în ambele backend-uri: un document
+    // aprobat care nu a ajuns în arhivă nu este nicăieri (§10, §11).
     const approved = store.getDocument(documentId);
-    expect(approved.status).not.toBe("REVIEW_REQUIRED");
+    expect(approved.status).toBe("ARCHIVED");
     expect(approved.reviewRequired).toBe(false);
+    expect(approved.storedFilename).toMatch(/.pdf$|.jpg$/);
     expect(approved.history.at(-1)).toMatchObject({ action: "DOCUMENT_APPROVED" });
   });
 });

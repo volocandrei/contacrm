@@ -33,6 +33,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -146,9 +147,13 @@ class Document(Base, OrganizationMixin, TimestampMixin, SoftDeleteMixin):
             "reference_month IS NULL OR reference_month ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'",
             name="reference_month_format",
         ),
-        # Un document arhivat trebuie să aibă și numele, și momentul arhivării.
+        # Un document arhivat trebuie să aibă tot ce înseamnă „arhivat": momentul,
+        # numele standardizat, calea logică și copia din stocare. Altfel arhiva ar
+        # avea o intrare care nu duce nicăieri.
         CheckConstraint(
-            "(status <> 'ARCHIVED') OR (archived_at IS NOT NULL AND stored_filename IS NOT NULL)",
+            "(status <> 'ARCHIVED') OR ("
+            "archived_at IS NOT NULL AND stored_filename IS NOT NULL "
+            "AND archive_path IS NOT NULL AND archive_key IS NOT NULL)",
             name="archived_has_filename",
         ),
         # Un duplicat trebuie să spună al cui duplicat este.
@@ -168,6 +173,17 @@ class Document(Base, OrganizationMixin, TimestampMixin, SoftDeleteMixin):
         Index("ix_documents_received_at", "received_at"),
         Index("ix_documents_supplier_tax_id_document_number", "supplier_tax_id", "document_number"),
         Index("ix_documents_document_type_id", "document_type_id"),
+        # Două documente nu pot ajunge cu același nume în același dosar de arhivă.
+        # Sufixul anti-coliziune se calculează în cod, dar garanția stă aici: două
+        # arhivări simultane nu pot alege același nume, oricât de bine ar căuta.
+        Index(
+            "uq_documents_archive_location",
+            "organization_id",
+            "archive_path",
+            "stored_filename",
+            unique=True,
+            postgresql_where=text("archive_path IS NOT NULL AND deleted_at IS NULL"),
+        ),
     )
 
     id: Mapped[uuid_pk]
@@ -214,6 +230,11 @@ class Document(Base, OrganizationMixin, TimestampMixin, SoftDeleteMixin):
     # Nu se expune niciodată prin API (§73).
     storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
     archive_key: Mapped[str | None] = mapped_column(String(1024), default=None)
+    # Calea logică din arhivă, lizibilă pentru om: `/ARHIVA/{an}/{lună}/{client}/`.
+    # Nu este o cale de filesystem și nu se folosește ca atare (§74) — este locul
+    # documentului în structura pe care o vede contabilul, și domeniul în care
+    # numele trebuie să fie unic.
+    archive_path: Mapped[str | None] = mapped_column(String(512), default=None)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     sha256_hash: Mapped[str] = mapped_column(String(64), nullable=False)

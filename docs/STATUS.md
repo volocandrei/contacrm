@@ -105,12 +105,12 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  8.549 linii sursă +   654 linii teste   →  55 teste
-backend   7.513 linii sursă + 5.577 linii teste   → 462 teste
-migrări   1.079 linii
+frontend  8.549 linii sursă +   653 linii teste   →  55 teste
+backend   7.959 linii sursă + 6.133 linii teste   → 505 teste
+migrări   1.144 linii
 ```
 
-Toate verificările trec: **517 teste**, lint curat, `mypy --strict` curat, build curat.
+Toate verificările trec: **560 de teste**, lint curat, `mypy --strict` curat, build curat.
 
 ### Frontend — complet, pe backend simulat ✅
 
@@ -138,7 +138,7 @@ Alte lucruri gata: temă light/dark persistată, filtre în URL (o listă filtra
 poate trimite unui coleg), sidebar colapsabil cu contoare live, accesibilitate
 consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 
-### Backend — M2 + M3 + M4 + M5.1–M5.6 ✅
+### Backend — M2 + M3 + M4 + M5.1–M5.7 ✅
 
 **M2 — schelet**
 - FastAPI cu fabrică `create_app()`, fără efecte secundare la import
@@ -226,12 +226,25 @@ exercitate. Un test compară modelele cu schema migrată și cade la primul dera
   - Rute noi: `GET /documents/next-review` (coada, cronologică) și
     `GET /dashboard/counts` (contoarele din bara laterală).
 
+- **M5.7 arhivarea.** `frontend/src/lib/filename.ts` a fost portat identic în
+  `app/domain/filenames.py`. Testul din Python **citește cazurile direct din
+  `filename.test.ts`** și le rulează: dacă specificația se schimbă, portul cade, nu
+  rămâne în urmă în tăcere. Aprobarea și arhivarea sunt un singur act — un document
+  aprobat care nu a ajuns în arhivă nu este nicăieri — și se întâmplă în aceeași
+  tranzacție: dacă scrierea în stocare eșuează, aprobarea se dă înapoi cu ea.
+  Originalul nu se atinge (§16): arhiva este o copie, cu cheie proprie. Coliziunile
+  de nume primesc sufix (`_2`, `_3`, …), dar unicitatea este garantată de un index
+  parțial în baza de date — două arhivări simultane nu pot alege același nume,
+  oricât de bine ar căuta fiecare înainte să scrie. Constrângerea
+  `archived_has_filename` cere acum tot ce înseamnă „arhivat": moment, nume, cale
+  și cheie.
+
 Rute reale existente: 27 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
 documente ×12, `/dashboard/counts`, health ×3).
 
 ### Verificat pe date reale, nu doar în teste
 
-- Toate cele cinci migrări se aplică **și se dau înapoi** curat
+- Toate cele șase migrări se aplică **și se dau înapoi** curat
 - Flux HTTP complet: parolă greșită → 401, login → `CurrentUser`, cookie-uri
   `HttpOnly`, `/me`, `/users` ca ADMIN, refresh, logout, `/me` după logout → 401
 - În baza de date: audit cu `ip` și `request_id`, `timestamptz` cu offset,
@@ -311,7 +324,7 @@ ci portat.**
 | M2 | Schelet backend | ✅ |
 | M3 | Auth, RBAC, audit | ✅ |
 | M4 | CRM: clients, contacts, notes, tags, tasks | ✅ |
-| **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare** | ⏳ **M5.1–M5.6 ✅ · M5.7–M5.8 rămân** |
+| **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare, arhivare** | ⏳ **M5.1–M5.7 ✅ · M5.8 rămâne** |
 | M6 | Coadă persistentă (Celery + Redis), perioade + checklist, dashboard, ecran audit, acțiuni în masă | |
 | M7 | Notificări, rapoarte | |
 | M8 | Teste E2E, CI | |
@@ -321,18 +334,6 @@ ci portat.**
 **MVP = M1–M8.**
 
 ### Ce mai are M5 de făcut
-
-**M5.7 — arhivarea.** `frontend/src/lib/filename.ts` trebuie **portat identic** în
-Python: testele din `filename.test.ts` sunt specificația executabilă, aceleași cazuri
-trebuie să treacă. Aprobarea trebuie să continue până la `ARCHIVED`, cu numele
-standardizat și calea `/ARHIVA/{an}/{lună}/{client}/`, sufix anti-coliziune și audit.
-
-> Deocamdată backendul simulat arhivează în același pas cu aprobarea, iar cel real se
-> oprește la `APPROVED`. M5.7 închide diferența — în Python, nu prin modificarea
-> testelor frontend.
-
-Cea mai mare capcană rămâne aceeași: numele venit de la expeditor nu are voie să
-ajungă nemodificat într-o cale de filesystem (R3, R7).
 
 **M5.8 — întărire.** Teste de integrare capăt-la-capăt, teste de securitate (IDOR,
 traversare de căi, tipuri de fișier ostile), măsurători pe volum, documentație,
