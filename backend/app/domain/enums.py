@@ -73,3 +73,65 @@ TASK_STATUS_ORDER: dict[TaskStatus, int] = {
     TaskStatus.BLOCKED: 2,
     TaskStatus.DONE: 3,
 }
+
+
+class FieldSource(StrEnum):
+    """De unde provine valoarea unui câmp extras (§22).
+
+    Ecranul de verificare o afișează lângă fiecare câmp: operatorul trebuie să vadă
+    dacă se uită la o valoare propusă de model sau la una pe care a corectat-o el.
+    O valoare corectată manual nu mai are scor de încredere.
+    """
+
+    AI = "AI"
+    OCR = "OCR"
+    MANUAL = "MANUAL"
+    EMPTY = "EMPTY"
+
+
+class IntakeStatus(StrEnum):
+    """Ce s-a întâmplat cu un atașament primit, independent de documentul rezultat."""
+
+    RECEIVED = "RECEIVED"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+    DUPLICATE = "DUPLICATE"
+
+
+class DocumentErrorCode(StrEnum):
+    """Motivul structurat al unui eșec de procesare (§53).
+
+    Codul se persistă, nu traceback-ul: un cod se poate filtra, număra și traduce.
+    """
+
+    INVALID_FILE = "INVALID_FILE"
+    UNSUPPORTED_FORMAT = "UNSUPPORTED_FORMAT"
+    FILE_TOO_LARGE = "FILE_TOO_LARGE"
+    OCR_FAILED = "OCR_FAILED"
+    EXTRACTION_FAILED = "EXTRACTION_FAILED"
+    CLASSIFICATION_FAILED = "CLASSIFICATION_FAILED"
+    VALIDATION_FAILED = "VALIDATION_FAILED"
+    DUPLICATE_DETECTED = "DUPLICATE_DETECTED"
+    CLIENT_NOT_FOUND = "CLIENT_NOT_FOUND"
+    STORAGE_FAILED = "STORAGE_FAILED"
+    ARCHIVE_FAILED = "ARCHIVE_FAILED"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
+# Câmpurile extrase, în ordinea de citire a unei facturi. Aceeași ordine ca
+# `DocumentFields` din `frontend/src/types/domain.ts`.
+DOCUMENT_FIELD_NAMES: tuple[str, ...] = (
+    "documentType",
+    "documentDate",
+    "series",
+    "documentNumber",
+    "supplierName",
+    "supplierTaxId",
+    "customerName",
+    "customerTaxId",
+    "currency",
+    "subtotal",
+    "vatAmount",
+    "totalAmount",
+    "referenceMonth",
+)

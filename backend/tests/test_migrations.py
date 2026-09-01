@@ -20,9 +20,15 @@ pytestmark = requires_db
 # Obiecte care există doar în migrări, intenționat: SQLAlchemy nu le poate exprima
 # în metadata, deci autogenerate le raportează ca „în plus" la fiecare rulare.
 _EXPECTED_ONLY_IN_DATABASE = {
-    "ix_clients_name_trgm",  # index GIN pe expresie (app_unaccent(lower(name)))
-    "uq_clients_organization_id_tax_id",  # unic parțial: WHERE tax_id IS NOT NULL
-    "uq_organizations_tax_id",  # idem
+    # Indexuri GIN pe expresie: app_unaccent(lower(...)) gin_trgm_ops
+    "ix_clients_name_trgm",
+    "ix_documents_supplier_name_trgm",
+    "ix_documents_original_filename_trgm",
+    "ix_documents_document_number_trgm",
+    # Indexuri unice parțiale (au clauză WHERE)
+    "uq_clients_organization_id_tax_id",
+    "uq_organizations_tax_id",
+    "uq_document_intakes_external_ref",
 }
 
 

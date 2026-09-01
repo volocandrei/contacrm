@@ -9,6 +9,13 @@ from __future__ import annotations
 from app.models.audit import AuditLog
 from app.models.base import Base
 from app.models.client import Client, ClientNote, Contact, Tag, client_tags
+from app.models.document import (
+    Document,
+    DocumentFieldOverride,
+    DocumentIntake,
+    DocumentType,
+    DocumentVersion,
+)
 from app.models.organization import Organization
 from app.models.task import Task
 from app.models.user import Permission, RefreshToken, Role, User, role_permissions, user_roles
@@ -25,6 +32,11 @@ ALL_MODELS = (
     ClientNote,
     Tag,
     Task,
+    DocumentType,
+    DocumentIntake,
+    Document,
+    DocumentVersion,
+    DocumentFieldOverride,
 )
 
 __all__ = [
@@ -34,6 +46,11 @@ __all__ = [
     "Client",
     "ClientNote",
     "Contact",
+    "Document",
+    "DocumentFieldOverride",
+    "DocumentIntake",
+    "DocumentType",
+    "DocumentVersion",
     "Organization",
     "Permission",
     "RefreshToken",

@@ -67,3 +67,48 @@ def test_every_task_status_has_a_display_order() -> None:
 def test_task_status_order_puts_done_last() -> None:
     assert max(TASK_STATUS_ORDER, key=lambda s: TASK_STATUS_ORDER[s]) is TaskStatus.DONE
     assert min(TASK_STATUS_ORDER, key=lambda s: TASK_STATUS_ORDER[s]) is TaskStatus.TODO
+
+
+def test_field_source_vocabulary_matches_frontend(domain_source: str) -> None:
+    """`FieldSource` alimentează eticheta de proveniență din ecranul de verificare."""
+    match = re.search(r"export type FieldSource =([^;]+);", domain_source, re.DOTALL)
+    assert match is not None, "FieldSource nu a fost găsit în types/domain.ts"
+
+    from app.domain.enums import FieldSource
+
+    frontend = set(re.findall(r'"([A-Z_]+)"', match.group(1)))
+    assert frontend == {member.value for member in FieldSource}
+
+
+def test_default_document_types_match_the_frontend_seed() -> None:
+    """Codurile, etichetele și câmpurile obligatorii trebuie să fie identice.
+
+    Frontend-ul le are în backendul simulat; backendul real le încarcă la crearea
+    organizației. Dacă se despart, ecranul de verificare ar cere alte câmpuri decât
+    validează serverul.
+    """
+    from app.domain.document_types import DEFAULT_DOCUMENT_TYPES
+
+    seed_source = (
+        Path(__file__).resolve().parents[2] / "frontend" / "src" / "api" / "mock" / "seed.ts"
+    ).read_text(encoding="utf-8")
+
+    block = re.search(
+        r"export const DOCUMENT_TYPES: DocumentType\[\] = \[(.*?)\n\];", seed_source, re.DOTALL
+    )
+    assert block is not None, "DOCUMENT_TYPES nu a fost găsit în mock/seed.ts"
+
+    frontend: dict[str, set[str]] = {}
+    for entry in re.finditer(
+        r'code:\s*"([A-Z_]+)".*?requiredFields:\s*\[([^\]]*)\]', block.group(1), re.DOTALL
+    ):
+        frontend[entry.group(1)] = set(re.findall(r'"(\w+)"', entry.group(2)))
+
+    backend = {t.code: set(t.required_fields) for t in DEFAULT_DOCUMENT_TYPES}
+
+    assert set(frontend) == set(backend), (
+        f"doar în frontend: {sorted(set(frontend) - set(backend))}; "
+        f"doar în backend: {sorted(set(backend) - set(frontend))}"
+    )
+    for code, fields in frontend.items():
+        assert backend[code] == fields, f"{code}: câmpuri obligatorii diferite"

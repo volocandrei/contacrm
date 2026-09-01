@@ -21,10 +21,12 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.db import session_scope
 from app.core.security import hash_password
+from app.domain.document_types import DEFAULT_DOCUMENT_TYPES
 from app.domain.enums import ClientStatus, TaskPriority, TaskStatus
 from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS
 from app.domain.permissions import Permission as PermissionCode
 from app.models.client import Client, ClientNote, Contact, Tag
+from app.models.document import DocumentType
 from app.models.organization import Organization
 from app.models.task import Task
 from app.models.user import Permission, Role, User
@@ -108,11 +110,41 @@ def seed_dev() -> None:
             created += 1
 
         session.flush()
+        types_created = sync_document_types(session, organization)
         clients_created = _seed_crm(session, organization)
 
         print(f"organizație: {organization.name}")
         print(f"utilizatori creați: {created} (parolă: {DEV_PASSWORD})")
+        print(f"tipuri de document: {types_created}")
         print(f"clienți creați: {clients_created}")
+
+
+def sync_document_types(session: Session, organization: Organization) -> int:
+    """Încarcă tipurile implicite pentru o organizație (§6).
+
+    Idempotentă, ca `sync_roles`: tipurile se administrează din interfață, dar
+    pornesc de la lista din `app/domain/document_types.py`. Etichetele și câmpurile
+    obligatorii se aduc la zi; `is_active` rămâne cum l-a lăsat administratorul.
+    """
+    existing = {
+        row.code: row
+        for row in session.scalars(
+            select(DocumentType).where(DocumentType.organization_id == organization.id)
+        )
+    }
+
+    created = 0
+    for index, seed in enumerate(DEFAULT_DOCUMENT_TYPES):
+        row = existing.get(seed.code)
+        if row is None:
+            row = DocumentType(organization_id=organization.id, code=seed.code, label=seed.label)
+            session.add(row)
+            created += 1
+        row.label = seed.label
+        row.sort_order = index
+        row.required_fields = list(seed.required_fields)
+
+    return created
 
 
 def _seed_crm(session: Session, organization: Organization) -> int:

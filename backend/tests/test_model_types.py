@@ -134,3 +134,90 @@ def test_the_done_invariant_is_enforced_by_the_database(db: Session) -> None:
         raise AssertionError("DONE fără completed_at ar fi trebuit respins")
     finally:
         savepoint.rollback()
+
+
+def test_document_enums_come_back_as_enums(db: Session) -> None:
+    """Aceeași capcană ca la sarcini: `Mapped[X]` peste String e doar o adnotare."""
+    from app.domain.enums import DocumentSource, DocumentStatus
+    from app.models.document import Document
+
+    org = Organization(name="Cabinet Test SRL")
+    db.add(org)
+    db.flush()
+
+    document = Document(
+        organization_id=org.id,
+        status=DocumentStatus.REVIEW_REQUIRED,
+        source=DocumentSource.WHATSAPP,
+        original_filename="x.pdf",
+        storage_key="k",
+        mime_type="application/pdf",
+        file_size=10,
+        sha256_hash="a" * 64,
+        received_at=datetime(2026, 8, 1, tzinfo=UTC),
+    )
+    db.add(document)
+
+    loaded = _reload(db, document)
+    assert isinstance(loaded.status, DocumentStatus)
+    assert loaded.status is DocumentStatus.REVIEW_REQUIRED
+    assert isinstance(loaded.source, DocumentSource)
+    assert loaded.source is DocumentSource.WHATSAPP
+    assert loaded.received_at.tzinfo is not None
+
+
+def test_document_error_code_round_trips(db: Session) -> None:
+    from app.domain.enums import DocumentErrorCode, DocumentSource, DocumentStatus
+    from app.models.document import Document
+
+    org = Organization(name="Cabinet Test SRL")
+    db.add(org)
+    db.flush()
+
+    document = Document(
+        organization_id=org.id,
+        status=DocumentStatus.ERROR,
+        source=DocumentSource.UPLOAD,
+        original_filename="x.pdf",
+        storage_key="k",
+        mime_type="application/pdf",
+        file_size=10,
+        sha256_hash="b" * 64,
+        received_at=datetime(2026, 8, 1, tzinfo=UTC),
+        error_code=DocumentErrorCode.OCR_FAILED,
+    )
+    db.add(document)
+
+    loaded = _reload(db, document)
+    assert isinstance(loaded.error_code, DocumentErrorCode)
+    assert loaded.error_code is DocumentErrorCode.OCR_FAILED
+
+
+def test_money_columns_come_back_as_decimal_not_float(db: Session) -> None:
+    """Sumele nu trec niciodată printr-un float (§72)."""
+    from decimal import Decimal
+
+    from app.domain.enums import DocumentSource, DocumentStatus
+    from app.models.document import Document
+
+    org = Organization(name="Cabinet Test SRL")
+    db.add(org)
+    db.flush()
+
+    document = Document(
+        organization_id=org.id,
+        status=DocumentStatus.RECEIVED,
+        source=DocumentSource.UPLOAD,
+        original_filename="x.pdf",
+        storage_key="k",
+        mime_type="application/pdf",
+        file_size=10,
+        sha256_hash="c" * 64,
+        received_at=datetime(2026, 8, 1, tzinfo=UTC),
+        total_amount=Decimal("1190.55"),
+    )
+    db.add(document)
+
+    loaded = _reload(db, document)
+    assert isinstance(loaded.total_amount, Decimal)
+    assert loaded.total_amount == Decimal("1190.55")
