@@ -183,6 +183,16 @@ COLLECTION_ROUTES = [
     ("GET", "/api/v1/dashboard/counts"),
     ("GET", "/api/v1/periods"),
     ("GET", "/api/v1/periods/missing?referenceMonth=2026-08"),
+    ("GET", "/api/v1/audit-logs"),
+]
+
+# Rute de colecție care cer un corp.
+BODY_ROUTES = [
+    (
+        "POST",
+        "/api/v1/documents/bulk",
+        {"ids": [str(uuid.uuid4())], "payload": {"action": "approve"}},
+    ),
 ]
 
 # Rute de documente parametrizate pe altceva decât documentul. Granița lor de
@@ -221,7 +231,7 @@ def test_the_list_covers_every_route(api_storage: TestClient) -> None:
         (method, template.split("?")[0].replace("2026-08", "{reference_month}"))
         for method, template in CLIENT_SCOPED_ROUTES
     }
-    covered |= {("POST", "/api/v1/documents/upload")}
+    covered |= {("POST", "/api/v1/documents/upload"), ("POST", "/api/v1/documents/bulk")}
 
     missing = declared - covered
     assert not missing, f"rute neacoperite de revizuirea de securitate: {sorted(missing)}"
@@ -238,7 +248,12 @@ def _declared_routes(api: TestClient) -> set[tuple[str, str]]:
         (method.upper(), path)
         for path, operations in schema["paths"].items()
         for method in operations
-        if ("/documents" in path or "/dashboard" in path or "/periods" in path)
+        if (
+            "/documents" in path
+            or "/dashboard" in path
+            or "/periods" in path
+            or "/audit-logs" in path
+        )
         and method.upper() not in {"HEAD", "OPTIONS"}
     }
 
@@ -267,6 +282,11 @@ class TestEveryRouteRequiresASession:
         for method, template in CLIENT_SCOPED_ROUTES:
             path = template.format(client_id=uuid.uuid4())
             body: dict[str, object] | None = {} if method == "POST" else None
+            response = call(api_storage, method, path, body)
+            assert response.status_code == 401, f"{method} {path}"
+
+    def test_routes_with_a_body(self, api_storage: TestClient) -> None:
+        for method, path, body in BODY_ROUTES:
             response = call(api_storage, method, path, body)
             assert response.status_code == 401, f"{method} {path}"
 

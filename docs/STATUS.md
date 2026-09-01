@@ -86,6 +86,7 @@ previzualizarea documentului. Un token în URL nu este o alternativă (§27).
 ```bash
 cd frontend && npm test && npm run lint && npm run build
 cd backend  && uv run pytest && uv run ruff check . && uv run mypy app
+uv run python -m app.worker --once   # un tur al cozii de procesare
 ```
 
 ### Ce NU este în repo (și de ce)
@@ -105,12 +106,12 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  8.591 linii sursă +   672 linii teste   →  57 teste
-backend   8.756 linii sursă + 7.640 linii teste   → 577 teste
-migrări   1.229 linii
+frontend  8.606 linii sursă +   672 linii teste   →  57 teste
+backend  10.325 linii sursă + 9.052 linii teste   → 650 teste
+migrări   1.372 linii
 ```
 
-Toate verificările trec: **634 de teste**, lint curat, `mypy --strict` curat, build curat.
+Toate verificările trec: **707 teste**, lint curat, `mypy --strict` curat, build curat.
 
 ### Frontend — complet, pe backend simulat ✅
 
@@ -324,8 +325,40 @@ Rute noi: `GET /periods`, `GET /periods/missing`, `GET /clients/:id/periods`,
 `POST /clients/:id/periods/:month/{close,reopen}`. Panoul principal are acum
 perioade reale, iar lunile incomplete apar la „necesită atenție".
 
-Rute reale existente: 33 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
-documente ×12, `/dashboard` ×2, perioade ×5, health ×3).
+**M6 (a doua parte) — coada, acțiunile în masă, jurnalul**
+
+**Workerul rulează separat de API.** `python -m app.worker` ia din coadă și
+procesează; `--once` face un tur și iese, pentru cron sau verificări. Oprirea la
+`SIGTERM` este ordonată — jobul în lucru se termină. La pornire repune în coadă ce a
+rămas de la o rulare moartă, pentru că foarte probabil chiar el a fost cel care a
+murit la mijloc.
+
+**Fără Celery și fără Redis, deliberat.** Coada există deja și este durabilă:
+`document_processing_jobs` este un outbox tranzacțional, revendicat cu
+`FOR UPDATE SKIP LOCKED`. Un broker ar aduce încă un serviciu de rulat, monitorizat
+și repornit, ca să facă exact ce face deja baza de date pe care oricum o avem. La
+volumul unui cabinet — sute de documente pe zi, nu sute pe secundă — Postgres este
+coada potrivită. Dacă vreodată devine strâmt, `process(document_id)` are deja
+semnătura unui task de worker: se schimbă transportul, nu logica.
+
+Selecția din coadă **nu** revendică: jobul rămâne `PENDING` până chiar înainte de
+muncă. Marcat `RUNNING` prea devreme, un worker care moare între selecție și
+extracție l-ar bloca până la pragul de vechime.
+
+**Acțiuni în masă** (`POST /documents/bulk`): fiecare document este propria
+tranzacție. Un lot de cincizeci în care al treilea eșuează nu are voie să anuleze
+primele două — operatorul a apăsat un buton, dar a luat cincizeci de decizii.
+Rezultatul spune ce a mers și ce nu, **cu motivul concret**: „au eșuat 7 documente"
+fără să spună care și de ce este inutilizabil. Permisiunea se verifică pe acțiune,
+nu pe rută: un OPERATOR poate reprocesa în masă, dar nu poate aproba.
+
+**Jurnalul de audit** (`GET /audit-logs`) este doar citire, doar cu `audit:read`.
+Vechile și noile valori nu ies prin API: auditul răspunde la „cine, ce, când", nu la
+„ce scria pe factură". Cine are nevoie de conținut deschide documentul, iar acea
+deschidere se auditează la rândul ei.
+
+Rute reale existente: 35 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
+documente ×13, `/dashboard` ×2, perioade ×5, audit, health ×3).
 
 ### Verificat pe date reale, nu doar în teste
 
@@ -380,8 +413,8 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 
 ### Golul concret
 
-Frontend-ul consumă **31 de rute**. Backendul real implementează **28** dintre ele
-(plus `/auth/refresh` și health). **Rămân 3.**
+Frontend-ul consumă **31 de rute**. Backendul real implementează **30** dintre ele
+(plus `/auth/refresh` și health). **Rămâne 1** — `GET /messages`, din Faza 2.
 
 | Rută | Milestone |
 |---|---|
@@ -393,8 +426,7 @@ Frontend-ul consumă **31 de rute**. Backendul real implementează **28** dintre
 | ~~`GET /documents/next-review`, `GET /dashboard/counts`~~ | ✅ M5.6 |
 | ~~`GET /dashboard`~~ | ✅ |
 | ~~`GET /periods`, `GET /periods/missing`, `GET /clients/:id/periods`~~ | ✅ M6 |
-| `POST /documents/bulk` | M6 (ecranul de listă) |
-| `GET /audit-logs` | M6 (ecran) |
+| ~~`POST /documents/bulk`, `GET /audit-logs`~~ | ✅ M6 |
 | `GET /messages`, `GET /clients/:id/messages` | Faza 2 |
 
 Contractul fiecăreia este deja definit: `frontend/src/types/domain.ts` spune exact
@@ -413,7 +445,7 @@ ci portat.**
 | M3 | Auth, RBAC, audit | ✅ |
 | M4 | CRM: clients, contacts, notes, tags, tasks | ✅ |
 | **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare, arhivare, întărire** | ✅ |
-| **M6** | Coadă persistentă (Celery + Redis), perioade + checklist, dashboard, ecran audit, acțiuni în masă | ⏳ perioade + dashboard ✅ |
+| **M6** | Coadă durabilă + worker separat, perioade + checklist, dashboard, ecran audit, acțiuni în masă | ✅ |
 | M7 | Notificări, rapoarte | |
 | M8 | Teste E2E, CI | |
 | Faza 2 | Microsoft Graph, WhatsApp, OCR/AI real, remindere, export ZIP | |
@@ -484,4 +516,3 @@ Niciuna nu blochează M5.7.
 | lipsă `.gitattributes` | Git raportează conversii LF↔CRLF; un `* text=auto eol=lf` previne diff-uri false dacă intră cineva pe Linux/Mac |
 | `oxlint`: 2 warning-uri | `only-export-components` pe fișiere shadcn generate — cosmetic |
 | `POST /documents/bulk` | declarat în `api/endpoints.ts`, fără rută în backend și fără apelant în interfață — se leagă la M6, odată cu acțiunile în masă din ecranul de listă |
-| execuția procesării rulează încă în procesul API | cererea **nu se mai pierde** (outbox tranzacțional), ce rămâne pe drum se reia cu `app.cli recover-processing`, iar documentele înțepenite apar pe panou ca "Procesare întreruptă". Lipsește doar un worker separat care s-o ruleze singur, periodic — infrastructură, nu logică (M6) |

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import (
     APIRouter,
@@ -24,11 +24,12 @@ from fastapi import (
     status,
 )
 from fastapi.responses import StreamingResponse
+from pydantic import Field
 from sqlalchemy import select
 
 from app.api.deps import DbSession, StorageDep, client_ip, require_permission
 from app.core.config import settings
-from app.core.errors import AppError, ErrorCode, NotFoundError
+from app.core.errors import AppError, ErrorCode, ForbiddenError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.domain.document_actions import available_actions, reprocess_check
 from app.domain.permissions import Permission, permissions_for
@@ -76,6 +77,11 @@ DocumentApprover = Annotated[User, require_permission(Permission.DOCUMENTS_APPRO
 # Câte caractere din textul OCR ajung în ecranul de verificare. Textul complet nu
 # se trimite niciodată la deschiderea unui document (§64).
 OCR_PREVIEW_CHARS = 600
+
+# Cât de mare poate fi un lot. O acțiune în masă rămâne o cerere HTTP: peste
+# atâtea documente, cererea durează mai mult decât are răbdare cineva, iar
+# operatorul nu mai știe ce s-a întâmplat.
+MAX_BULK_IDS = 200
 
 # Peste acest prag, un job rămas `RUNNING` aparține unui proces care a murit;
 # o cerere nouă de reprocesare îl readuce în coadă.
@@ -438,6 +444,158 @@ def mark_duplicate(
         user.organization_id, document_id, payload.duplicate_of_id, _actor(user, request)
     )
     return _detail(session, user, document_id)
+
+
+# ── Acțiuni în masă (§26) ────────────────────────────────────────────────────
+
+
+class BulkPayloadIn(ApiModel):
+    """Ce se face cu fiecare document din listă."""
+
+    action: Literal["approve", "reject", "assignClient", "markDuplicate", "reprocess"]
+    reason: str | None = None
+    client_id: uuid.UUID | None = None
+
+
+class BulkIn(ApiModel):
+    ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_BULK_IDS)
+    payload: BulkPayloadIn
+
+
+class BulkFailureOut(ApiModel):
+    id: uuid.UUID
+    message: str
+
+
+class BulkResultOut(ApiModel):
+    succeeded: list[uuid.UUID]
+    failed: list[BulkFailureOut]
+
+
+@router.post("/documents/bulk", response_model=BulkResultOut)
+def bulk_documents(
+    session: DbSession,
+    storage: StorageDep,
+    user: DocumentWriter,
+    request: Request,
+    background: BackgroundTasks,
+    payload: BulkIn,
+) -> BulkResultOut:
+    """Aceeași acțiune peste mai multe documente.
+
+    **Fiecare document este propria tranzacție.** Un lot de cincizeci în care al
+    treilea eșuează nu are voie să anuleze primele două: operatorul a apăsat un
+    buton, dar a luat cincizeci de decizii. Rezultatul spune exact ce a mers și ce
+    nu, cu motivul — un „au eșuat 7 documente" fără să spună care este inutilizabil.
+
+    Permisiunea se verifică pe acțiune, nu pe rută: `approve` și `reject` cer
+    `documents:approve`, pe care un OPERATOR nu îl are.
+    """
+    _assert_may(user, payload.payload.action)
+
+    succeeded: list[uuid.UUID] = []
+    failed: list[BulkFailureOut] = []
+    to_process: list[tuple[uuid.UUID, str]] = []
+
+    for document_id in payload.ids:
+        savepoint = session.begin_nested()
+        try:
+            job_key = _apply_bulk(session, storage, user, request, document_id, payload.payload)
+            savepoint.commit()
+            succeeded.append(document_id)
+            if job_key is not None:
+                to_process.append((document_id, job_key))
+        except AppError as exc:
+            savepoint.rollback()
+            failed.append(BulkFailureOut(id=document_id, message=_describe(exc)))
+        except Exception:
+            savepoint.rollback()
+            logger.exception("bulk_action_crashed", document_id=str(document_id))
+            failed.append(
+                BulkFailureOut(id=document_id, message="Eroare neașteptată la procesare.")
+            )
+
+    if to_process:
+        session.commit()
+        for document_id, job_key in to_process:
+            background.add_task(
+                run_processing,
+                user.organization_id,
+                document_id,
+                storage,
+                idempotency_key=job_key,
+                triggered_by=user.id,
+            )
+
+    return BulkResultOut(succeeded=succeeded, failed=failed)
+
+
+def _describe(error: AppError) -> str:
+    """Mesajul plus motivele concrete.
+
+    „Documentul nu poate fi aprobat" nu ajută pe nimeni: exact detaliile spun *ce*
+    lipsește, iar într-un lot de cincizeci ele sunt singurul mod în care operatorul
+    poate repara ceva.
+    """
+    details = getattr(error, "details", None)
+    if not details:
+        return error.message
+    reasons = [reason for values in details.values() for reason in values]
+    if not reasons:
+        return error.message
+    return f"{error.message} " + " ".join(reasons)
+
+
+def _assert_may(user: User, action: str) -> None:
+    needed = (
+        Permission.DOCUMENTS_APPROVE
+        if action in {"approve", "reject"}
+        else Permission.DOCUMENTS_WRITE
+    )
+    if needed not in permissions_for(user.primary_role):
+        raise ForbiddenError()
+
+
+def _apply_bulk(
+    session: DbSession,
+    storage: StorageDep,
+    user: User,
+    request: Request,
+    document_id: uuid.UUID,
+    payload: BulkPayloadIn,
+) -> str | None:
+    """Execută o acțiune. Întoarce cheia jobului dacă a fost programată o procesare."""
+    service = DocumentService(session)
+    actor = _actor(user, request)
+    row = _fetch(session, user, document_id)
+
+    match payload.action:
+        case "approve":
+            service.approve(
+                user.organization_id,
+                document_id,
+                actor,
+                archiver=DocumentArchiveService(session, storage),
+            )
+        case "reject":
+            if not (payload.reason or "").strip():
+                raise ValidationError(
+                    "Motivul respingerii este obligatoriu.", {"reason": ["Câmp obligatoriu."]}
+                )
+            service.reject(user.organization_id, document_id, payload.reason or "", actor)
+        case "assignClient":
+            if payload.client_id is None:
+                raise ValidationError(
+                    "Clientul este obligatoriu.", {"clientId": ["Câmp obligatoriu."]}
+                )
+            service.assign_client(user.organization_id, document_id, payload.client_id, actor)
+        case "markDuplicate":
+            service.mark_duplicate(user.organization_id, document_id, None, actor)
+        case "reprocess":
+            service.begin_reprocessing(user.organization_id, document_id, actor)
+            job = enqueue_processing(session, row.document, stale_after=STALE_AFTER)
+            return job.idempotency_key
+    return None
 
 
 # ── Preview și download (§27-§30) ────────────────────────────────────────────

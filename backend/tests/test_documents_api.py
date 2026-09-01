@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.domain.document_types import DEFAULT_DOCUMENT_TYPES
-from app.domain.enums import DocumentErrorCode, DocumentStatus
+from app.domain.enums import DocumentErrorCode, DocumentSource, DocumentStatus
 from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS, RoleCode
 from app.models.audit import AuditLog
 from app.models.client import Client
@@ -1824,3 +1824,302 @@ class TestAuditOrdering:
         moments = [entry["at"] for entry in history]
         assert moments == sorted(moments)
         assert len(set(moments)) == len(moments), "două intrări nu pot avea același moment"
+
+
+# ── Acțiuni în masă (§26) ────────────────────────────────────────────────────
+
+
+class TestBulkActions:
+    def _ready(self, api: TestClient, db: Session, client_row: Client, *, number: str) -> str:
+        document_id = upload(api, content=PDF + number.encode(), name=f"{number}.pdf")["id"]
+        _to_review(db, document_id)
+        api.post(
+            f"/api/v1/documents/{document_id}/assign-client",
+            json={"clientId": str(client_row.id)},
+        )
+        api.patch(
+            f"/api/v1/documents/{document_id}",
+            json={
+                "updates": [
+                    {"field": "documentType", "value": "FACTURA_INTRARE"},
+                    {"field": "documentDate", "value": "2026-08-14"},
+                    {"field": "documentNumber", "value": number},
+                    {"field": "supplierName", "value": "Furnizor SRL"},
+                    {"field": "totalAmount", "value": "1190.00"},
+                ]
+            },
+        )
+        return document_id
+
+    def test_one_failure_does_not_undo_the_others(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Operatorul a apăsat un buton, dar a luat trei decizii."""
+        login(api_storage, admin.email)
+        good = self._ready(api_storage, db, client_row, number="B1")
+        other = self._ready(api_storage, db, client_row, number="B2")
+        # Al treilea nu are client, deci aprobarea lui va eșua.
+        broken = upload(api_storage, content=PDF + b"fara-client", name="fara.pdf")["id"]
+        _to_review(db, broken)
+
+        body = api_storage.post(
+            "/api/v1/documents/bulk",
+            json={"ids": [good, broken, other], "payload": {"action": "approve"}},
+        ).json()
+
+        assert set(body["succeeded"]) == {good, other}
+        assert [f["id"] for f in body["failed"]] == [broken]
+        # Motivul, nu doar numărul: „au eșuat 7 documente" este inutilizabil.
+        assert "client" in body["failed"][0]["message"].lower()
+
+        assert api_storage.get(f"/api/v1/documents/{good}").json()["status"] == "ARCHIVED"
+        assert api_storage.get(f"/api/v1/documents/{broken}").json()["status"] == "REVIEW_REQUIRED"
+
+    def test_rejecting_in_bulk_requires_a_reason(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = self._ready(api_storage, db, client_row, number="B3")
+
+        body = api_storage.post(
+            "/api/v1/documents/bulk",
+            json={"ids": [document_id], "payload": {"action": "reject"}},
+        ).json()
+        assert body["succeeded"] == []
+        assert len(body["failed"]) == 1
+
+        body = api_storage.post(
+            "/api/v1/documents/bulk",
+            json={"ids": [document_id], "payload": {"action": "reject", "reason": "Ilizibil."}},
+        ).json()
+        assert body["succeeded"] == [document_id]
+
+    def test_assigning_a_client_in_bulk(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        first = upload(api_storage, content=PDF + b"a", name="a.pdf")["id"]
+        second = upload(api_storage, content=PDF + b"b", name="b.pdf")["id"]
+
+        body = api_storage.post(
+            "/api/v1/documents/bulk",
+            json={
+                "ids": [first, second],
+                "payload": {"action": "assignClient", "clientId": str(client_row.id)},
+            },
+        ).json()
+
+        assert set(body["succeeded"]) == {first, second}
+        assert api_storage.get(f"/api/v1/documents/{first}").json()["clientId"] == str(
+            client_row.id
+        )
+
+    def test_an_operator_may_reprocess_but_not_approve(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        org: Organization,
+        roles: dict[RoleCode, Role],
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Permisiunea se verifică pe acțiune, nu pe rută."""
+        operator = make_user(
+            db, org, roles, email="operator-bulk@contacrm.test", role=RoleCode.OPERATOR
+        )
+        login(api_storage, operator.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+
+        refused = api_storage.post(
+            "/api/v1/documents/bulk",
+            json={"ids": [document_id], "payload": {"action": "approve"}},
+        )
+        assert refused.status_code == 403
+
+        allowed = api_storage.post(
+            "/api/v1/documents/bulk",
+            json={"ids": [document_id], "payload": {"action": "reprocess"}},
+        )
+        assert allowed.status_code == 200
+        assert allowed.json()["succeeded"] == [document_id]
+
+    def test_an_empty_batch_is_refused(
+        self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
+    ) -> None:
+        login(api_storage, admin.email)
+        response = api_storage.post(
+            "/api/v1/documents/bulk", json={"ids": [], "payload": {"action": "approve"}}
+        )
+        assert response.status_code == 422
+
+    def test_a_document_from_another_organization_simply_fails(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        roles: dict[RoleCode, Role],
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Nu 404 pe tot lotul: restul documentelor sunt ale utilizatorului."""
+        login(api_storage, admin.email)
+        mine = self._ready(api_storage, db, client_row, number="B4")
+
+        other_org = Organization(name="Alt birou")
+        db.add(other_org)
+        db.flush()
+        stranger = Document(
+            organization_id=other_org.id,
+            status=DocumentStatus.REVIEW_REQUIRED,
+            source=DocumentSource.UPLOAD,
+            original_filename="strain.pdf",
+            storage_key=f"organizations/{other_org.id}/documents/{uuid.uuid4()}/original/source.pdf",
+            mime_type="application/pdf",
+            file_size=10,
+            sha256_hash="f" * 64,
+            received_at=datetime.now(UTC),
+        )
+        db.add(stranger)
+        db.flush()
+
+        body = api_storage.post(
+            "/api/v1/documents/bulk",
+            json={"ids": [mine, str(stranger.id)], "payload": {"action": "approve"}},
+        ).json()
+
+        assert body["succeeded"] == [mine]
+        assert [f["id"] for f in body["failed"]] == [str(stranger.id)]
+
+
+# ── Jurnalul de audit (§33) ──────────────────────────────────────────────────
+
+
+class TestAuditLogApi:
+    def test_it_lists_what_happened(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        upload(api_storage)
+
+        body = api_storage.get("/api/v1/audit-logs").json()
+        actions = [entry["action"] for entry in body["items"]]
+        assert "DOCUMENT_UPLOADED" in actions
+        assert body["total"] >= 2  # login + upload
+
+    def test_it_is_newest_first(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        upload(api_storage, name="prima.pdf")
+        upload(api_storage, content=PDF + b"a doua", name="a-doua.pdf")
+
+        moments = [entry["at"] for entry in api_storage.get("/api/v1/audit-logs").json()["items"]]
+        assert moments == sorted(moments, reverse=True)
+
+    def test_filters_narrow_the_list(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        upload(api_storage)
+
+        filtered = api_storage.get("/api/v1/audit-logs?action=DOCUMENT_UPLOADED").json()
+        assert filtered["total"] == 1
+        assert filtered["items"][0]["action"] == "DOCUMENT_UPLOADED"
+
+        by_entity = api_storage.get("/api/v1/audit-logs?entityType=Document").json()
+        assert all(e["entityType"] == "Document" for e in by_entity["items"])
+
+    def test_search_treats_percent_as_text(
+        self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
+    ) -> None:
+        """Un `%` scris de utilizator înseamnă procent, nu „orice"."""
+        login(api_storage, admin.email)
+        upload(api_storage)
+
+        assert api_storage.get("/api/v1/audit-logs?q=%25").json()["total"] == 0
+
+    def test_values_never_leave_through_the_api(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Auditul răspunde la „cine, ce, când", nu la „ce scria pe factură"."""
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+        api_storage.patch(
+            f"/api/v1/documents/{document_id}",
+            json={"updates": [{"field": "supplierName", "value": "Furnizor Secret SRL"}]},
+        )
+
+        body = api_storage.get("/api/v1/audit-logs").text
+        assert "Furnizor Secret SRL" not in body
+        assert "oldValue" not in body
+        assert "newValue" not in body
+
+    def test_it_stops_at_the_organization_boundary(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        roles: dict[RoleCode, Role],
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        upload(api_storage)
+
+        other_org = Organization(name="Alt birou")
+        db.add(other_org)
+        db.flush()
+        intruder = make_user(
+            db, other_org, roles, email="strain-audit@contacrm.test", role=RoleCode.ADMIN
+        )
+        api_storage.post("/api/v1/auth/logout")
+        login(api_storage, intruder.email)
+
+        actions = [e["action"] for e in api_storage.get("/api/v1/audit-logs").json()["items"]]
+        assert actions == ["USER_LOGIN"]
+
+    def test_an_operator_cannot_read_the_audit_log(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        org: Organization,
+        roles: dict[RoleCode, Role],
+    ) -> None:
+        operator = make_user(
+            db, org, roles, email="operator-audit@contacrm.test", role=RoleCode.OPERATOR
+        )
+        login(api_storage, operator.email)
+        assert api_storage.get("/api/v1/audit-logs").status_code == 403
