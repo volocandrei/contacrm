@@ -240,3 +240,18 @@ describe("reprocesarea", () => {
     expect(screen.getByText(/Recunoașterea textului a eșuat/)).toBeInTheDocument();
   });
 });
+
+describe("documentele arhivate", () => {
+  it("nu se mai pot corecta, iar ecranul spune de ce", async () => {
+    await openReview(documentInStatus("ARCHIVED"));
+
+    expect(screen.getByLabelText(/^Furnizor/)).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Salvează/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Cere o reprocesare dacă trebuie corectate/)).toBeInTheDocument();
+  });
+
+  it("nu oferă atribuirea clientului", async () => {
+    await openReview(documentInStatus("ARCHIVED"));
+    expect(screen.queryByText("Atribuie client")).not.toBeInTheDocument();
+  });
+});

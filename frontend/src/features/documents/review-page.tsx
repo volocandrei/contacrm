@@ -8,6 +8,7 @@ import {
   History,
   Inbox,
   LoaderCircle,
+  Lock,
   RefreshCw,
   Save,
   Sparkles,
@@ -381,6 +382,17 @@ function ReviewScreen({
               </span>
             }
           >
+            {/* Un formular blocat fără explicație pare stricat. */}
+            {document.status === "ARCHIVED" && (
+              <p className="mb-3 flex items-start gap-1.5 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-gray-800/60 dark:text-gray-400">
+                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  Documentul este arhivat, iar numele fișierului este format din datele de
+                  mai jos. Cere o reprocesare dacă trebuie corectate.
+                </span>
+              </p>
+            )}
+
             <div className="space-y-3">
               {FIELD_ORDER.map(({ name, label, type }) => (
                 <FieldRow

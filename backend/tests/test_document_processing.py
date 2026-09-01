@@ -85,14 +85,31 @@ class TestMockProvider:
         assert all(0 <= f.confidence <= 1 for f in present if f.confidence is not None)
 
     def test_does_not_invent_fields_a_receipt_does_not_have(self) -> None:
-        """Bonurile fiscale nu au serie; providerul nu completează gol."""
+        """Bonurile fiscale nu au serie; providerul nu completează gol.
+
+        Providerul este determinist pe conținut, deci căutăm o intrare care produce
+        fiecare tip fără serie și verificăm toate — un test care se poate sări
+        singur este un test care poate înceta tăcut să verifice ceva.
+        """
         provider = MockDocumentExtractionProvider()
-        for suffix in range(40):
-            result = provider.extract(_input(PDF + str(suffix).encode()))
-            if result.document_type_code in {"BON_FISCAL", "EXTRAS_CONT", "CHITANTA"}:
-                assert not result.fields["series"].is_present
-                return
-        pytest.skip("Setul sintetic nu a produs un bon fiscal în 40 de încercări.")
+        without_series = {"BON_FISCAL", "EXTRAS_CONT", "CHITANTA"}
+
+        seen: dict[str, bool] = {}
+        for suffix in range(200):
+            try:
+                result = provider.extract(_input(PDF + str(suffix).encode()))
+            except ExtractionError:
+                # Providerul simulează și eșecuri de OCR; aici ne interesează
+                # documentele pe care le-a putut citi.
+                continue
+            code = result.document_type_code
+            if code in without_series and code not in seen:
+                seen[code] = result.fields["series"].is_present
+
+        assert seen, "setul determinist nu produce niciun tip fără serie"
+        assert not any(seen.values()), (
+            f"serie inventată pentru: {sorted(k for k, v in seen.items() if v)}"
+        )
 
     def test_aggregate_confidence_ignores_empty_fields(self) -> None:
         """Absența unei serii nu înseamnă că extracția a mers prost."""

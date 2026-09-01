@@ -212,7 +212,7 @@ Praguri (configurabile în `system_settings`, valori inițiale propuse):
 | **M2** | Backend skeleton: FastAPI, settings, Postgres, Alembic, health, error handling, logging structurat | ✅ |
 | **M3** | Auth: users/roles/permissions, JWT + refresh rotativ, Argon2id, RBAC, audit log | ✅ |
 | **M4** | CRM: clients, contacts, tags, note, tasks | ✅ |
-| **M5** | Documente: încărcare, StorageProvider, SHA-256, duplicate, API, preview securizat, procesare, interfața de verificare, arhivare | M5.1–M5.7 ✅ |
+| **M5** | Documente: încărcare, StorageProvider, SHA-256, duplicate, API, preview securizat, procesare, interfața de verificare, arhivare, întărire | ✅ |
 | **M6** | Coadă persistentă (Celery+Redis), perioade + checklist, dashboard KPI, ecran audit, acțiuni în masă |  |
 | **M7** | Notificări (abstracție + email), rapoarte |  |
 | **M8** | Teste E2E, Docker compose, CI |  |

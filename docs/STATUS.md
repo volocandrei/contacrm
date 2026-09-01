@@ -105,12 +105,12 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  8.577 linii sursă +   653 linii teste   →  55 teste
-backend   8.756 linii sursă + 7.625 linii teste   → 577 teste
+frontend  8.591 linii sursă +   672 linii teste   →  57 teste
+backend   8.756 linii sursă + 7.640 linii teste   → 577 teste
 migrări   1.229 linii
 ```
 
-Toate verificările trec: **632 de teste**, lint curat, `mypy --strict` curat, build curat.
+Toate verificările trec: **634 de teste**, lint curat, `mypy --strict` curat, build curat.
 
 ### Frontend — complet, pe backend simulat ✅
 
@@ -138,7 +138,7 @@ Alte lucruri gata: temă light/dark persistată, filtre în URL (o listă filtra
 poate trimite unui coleg), sidebar colapsabil cu contoare live, accesibilitate
 consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 
-### Backend — M2 + M3 + M4 + M5.1–M5.7 ✅ (plus întărirea din M5.8)
+### Backend — M2 + M3 + M4 + M5 complet (M5.1–M5.8) ✅
 
 **M2 — schelet**
 - FastAPI cu fabrică `create_app()`, fără efecte secundare la import
@@ -380,7 +380,7 @@ ci portat.**
 | M2 | Schelet backend | ✅ |
 | M3 | Auth, RBAC, audit | ✅ |
 | M4 | CRM: clients, contacts, notes, tags, tasks | ✅ |
-| **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare, arhivare** | ⏳ **M5.1–M5.7 ✅ · M5.8 rămâne** |
+| **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare, arhivare, întărire** | ✅ |
 | M6 | Coadă persistentă (Celery + Redis), perioade + checklist, dashboard, ecran audit, acțiuni în masă | |
 | M7 | Notificări, rapoarte | |
 | M8 | Teste E2E, CI | |
@@ -389,11 +389,30 @@ ci portat.**
 
 **MVP = M1–M8.**
 
-### Ce mai are M5 de făcut
+### De ce M6 este următorul
 
-**M5.8 — întărire.** Teste de integrare capăt-la-capăt, teste de securitate (IDOR,
-traversare de căi, tipuri de fișier ostile), măsurători pe volum, documentație,
-revizuire finală.
+M5 este complet: un document intră, se procesează singur, ajunge la un om, se
+corectează, se aprobă și se arhivează cu numele standardizat — verificat capăt la
+capăt pe server real, nu doar în teste.
+
+Ce cere M6, în ordinea în care doare lipsa lor:
+
+1. **Coadă persistentă (Celery + Redis).** Outbox-ul există deja și cererea nu se
+   mai pierde; ce lipsește este un proces separat care să consume coada și să ruleze
+   recuperarea periodic, în loc de `app.cli recover-processing` chemat de mână.
+   `process(document_id)` are deja semnătura potrivită.
+2. **Perioade contabile + checklist.** Sunt singurul lucru care lipsește din panoul
+   principal (`periods`, `clientsComplete`, `clientsMissingDocs`) și din ecranele de
+   contabilitate. Contractul este definit până la ultimul câmp în
+   `frontend/src/api/mock/store.ts`, inclusiv regula de progres: o factură în plus nu
+   compensează un extras de cont lipsă.
+3. **`POST /documents/bulk`** — acțiunile în masă din ecranul de listă. Funcția
+   există în `api/endpoints.ts` și nu are încă rută.
+4. **`GET /audit-logs`** — ecranul de jurnal există, ruta nu.
+
+Înainte de oricare: **decizia de business despre `reference_period`** (§4.1). Fără
+ea, perioadele se pot construi, dar nu se poate spune corect în ce lună intră un
+document a cărui dată cade în alta.
 
 ---
 
