@@ -12,6 +12,7 @@ import {
   communication,
   dashboard,
   documents,
+  drive,
   periods,
   reports,
   tasks,
@@ -40,6 +41,8 @@ export const queryKeys = {
   auditLogs: (params: QueryParams) => ["audit-logs", params] as const,
   users: ["users"] as const,
   settings: ["settings"] as const,
+  driveStatus: ["drive", "status"] as const,
+  driveBrowse: (parentId?: string) => ["drive", "browse", parentId ?? null] as const,
 };
 
 /* ─── Interogări ───────────────────────────────────────────────────────────── */
@@ -145,6 +148,71 @@ export function useUsers() {
 
 export function useSettings() {
   return useQuery({ queryKey: queryKeys.settings, queryFn: administration.settings });
+}
+
+/* ─── OneDrive (M9) ────────────────────────────────────────────────────────── */
+
+export function useDriveStatus() {
+  return useQuery({ queryKey: queryKeys.driveStatus, queryFn: drive.status });
+}
+
+/**
+ * Dosarele de pe drive, la răsfoire.
+ *
+ * `enabled` pe conexiune: fără cont conectat, cererea ar întoarce 409 la fiecare
+ * randare, iar ecranul ar clipi cu o eroare care nu este a utilizatorului.
+ */
+export function useDriveBrowse(parentId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.driveBrowse(parentId),
+    queryFn: () => drive.browse(parentId),
+    enabled,
+    // Structura dosarelor cuiva nu se schimbă cât ține un dialog deschis.
+    staleTime: 60_000,
+  });
+}
+
+/** Orice atingere a integrării schimbă starea afișată. */
+function useDriveMutation<TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["drive"] });
+      // Documentele aduse din OneDrive apar în liste și în contoare.
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+export function useConnectDrive() {
+  return useDriveMutation(({ code, state }: { code: string; state: string }) =>
+    drive.connect(code, state),
+  );
+}
+
+export function useDisconnectDrive() {
+  return useDriveMutation(() => drive.disconnect());
+}
+
+export function useTrackFolder() {
+  return useDriveMutation(drive.trackFolder);
+}
+
+export function useUpdateDriveFolder() {
+  return useDriveMutation(
+    ({ id, ...input }: { id: string; clientId?: string | null; isActive?: boolean }) =>
+      drive.updateFolder(id, input),
+  );
+}
+
+export function useUntrackFolder() {
+  return useDriveMutation((id: string) => drive.untrackFolder(id));
+}
+
+export function useSyncDrive() {
+  return useDriveMutation(() => drive.sync());
 }
 
 /* ─── Mutații ──────────────────────────────────────────────────────────────── */

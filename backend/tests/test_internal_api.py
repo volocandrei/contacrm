@@ -187,7 +187,9 @@ class TestRunning:
             "/api/v1/internal/run-queue", headers={"Authorization": f"Bearer {SECRET}"}
         )
         assert response.status_code == 200
-        assert response.json() == {"requeued": 0, "executed": 0}
+        # `ingested` este partea de OneDrive: fără niciun drive conectat, bătaia
+        # nu are ce aduce, dar tot raportează — zero este un răspuns, nu o lipsă.
+        assert response.json() == {"requeued": 0, "executed": 0, "ingested": 0}
 
     def test_a_beat_processes_what_the_queue_holds(
         self,

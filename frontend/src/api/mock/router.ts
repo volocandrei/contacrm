@@ -141,6 +141,59 @@ const routes: Route[] = [
   },
   { method: "GET", pattern: "/document-types", handler: () => store.listDocumentTypes() },
 
+  /* Integrare OneDrive (M9). Rutele fixe stau înaintea celor cu parametru. */
+  { method: "GET", pattern: "/integrations/onedrive", handler: () => store.getDriveStatus() },
+  {
+    method: "POST",
+    pattern: "/integrations/onedrive/authorize",
+    handler: () => store.driveAuthorizeUrl(),
+  },
+  {
+    method: "POST",
+    pattern: "/integrations/onedrive/connect",
+    handler: () => store.connectDrive(),
+  },
+  {
+    method: "DELETE",
+    pattern: "/integrations/onedrive",
+    handler: () => store.disconnectDrive(),
+  },
+  {
+    method: "GET",
+    pattern: "/integrations/onedrive/browse",
+    handler: ({ query }) => store.browseDrive(query.parentId),
+  },
+  {
+    method: "POST",
+    pattern: "/integrations/onedrive/sync",
+    handler: () => store.syncDrive(),
+  },
+  {
+    method: "POST",
+    pattern: "/integrations/onedrive/folders",
+    handler: ({ body }) =>
+      store.trackDriveFolder({
+        driveId: str(body, "driveId"),
+        itemId: str(body, "itemId"),
+        path: str(body, "path"),
+        clientId: (body.clientId as string | null | undefined) ?? null,
+      }),
+  },
+  {
+    method: "PATCH",
+    pattern: "/integrations/onedrive/folders/:id",
+    handler: ({ params, body }) =>
+      store.updateDriveFolder(params.id!, {
+        clientId: (body.clientId as string | null | undefined) ?? null,
+        isActive: body.isActive as boolean | undefined,
+      }),
+  },
+  {
+    method: "DELETE",
+    pattern: "/integrations/onedrive/folders/:id",
+    handler: ({ params }) => store.untrackDriveFolder(params.id!),
+  },
+
   /* Contabilitate */
   { method: "GET", pattern: "/periods", handler: ({ query }) => store.listPeriods(query) },
   {

@@ -54,6 +54,9 @@ class DocumentSource(StrEnum):
     WHATSAPP = "WHATSAPP"
     UPLOAD = "UPLOAD"
     API = "API"
+    # Dosarul din OneDrive/SharePoint al unui client, citit automat. Sursa nu spune
+    # cine a pus fișierul acolo — spune de unde l-am luat noi.
+    ONEDRIVE = "ONEDRIVE"
 
 
 class PeriodStatus(StrEnum):

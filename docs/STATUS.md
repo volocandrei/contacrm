@@ -116,18 +116,18 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend   9.558 linii sursă +  1.147 linii teste  →   99 teste
-backend   12.208 linii sursă + 11.765 linii teste  →  877 teste
+frontend  10.570 linii sursă +  1.410 linii teste  →  113 teste
+backend   14.616 linii sursă + 12.894 linii teste  →  927 teste
 end-to-end   728 linii                             →   22 teste (browser real)
-migrări    1.307 linii
+migrări    1.543 linii
 ```
 
-Toate verificările trec: **998 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.062 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
 
-Toate cele **22 de rute** sunt ecrane reale, nu placeholdere:
+Toate cele **23 de rute** sunt ecrane reale, nu placeholdere:
 
 | Zonă | Ecrane |
 |---|---|
@@ -137,7 +137,7 @@ Toate cele **22 de rute** sunt ecrane reale, nu placeholdere:
 | Contabilitate | perioade cu checklist, documente lipsă |
 | Comunicare | mesaje, șabloane, remindere |
 | Rapoarte | agregări calculate în backend, cu filtre pe lună și client |
-| Administrare | utilizatori, roluri, setări, jurnal audit |
+| Administrare | utilizatori, roluri, setări, **surse documente (OneDrive)**, jurnal audit |
 
 Piesa centrală este **ecranul de verificare**: facsimilul documentului lângă
 câmpurile extrase, fiecare câmp cu proveniența lui (`AI 81%`, „corectat manual",
@@ -151,7 +151,7 @@ Alte lucruri gata: temă light/dark persistată, filtre în URL (o listă filtra
 poate trimite unui coleg), sidebar colapsabil cu contoare live, accesibilitate
 consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 
-### Backend — M2–M8 complet ✅
+### Backend — M2–M9 complet ✅
 
 **M2 — schelet**
 - FastAPI cu fabrică `create_app()`, fără efecte secundare la import
@@ -450,6 +450,7 @@ din Faza 2.
 | ~~`GET /periods`, `GET /periods/missing`, `GET /clients/:id/periods`~~ | ✅ M6 |
 | ~~`POST /documents/bulk`, `GET /audit-logs`~~ | ✅ M6 |
 | ~~`GET /reports/summary`, `GET /settings`, `POST /documents/upload`~~ | ✅ M7 |
+| ~~`/integrations/onedrive/*` — 9 rute~~ | ✅ M9 |
 | `GET /messages`, `GET /clients/:id/messages` | Faza 2 |
 
 Contractul fiecăreia este deja definit: `frontend/src/types/domain.ts` spune exact
@@ -471,6 +472,7 @@ ci portat.**
 | **M6** | Coadă durabilă + worker separat, perioade + checklist, dashboard, ecran audit, acțiuni în masă | ✅ |
 | **M7** | Rapoarte în SQL, setări reale, extracție din PDF, factura electronică, identificarea clientului, încărcare | ✅ (notificările au trecut în Faza 2 — cer un provider de email sau WhatsApp) |
 | **M8** | CI + teste E2E | ✅ |
+| **M9** | **Preluare automată din OneDrive/SharePoint, un dosar per client** | ✅ |
 | Faza 2 | Microsoft Graph, WhatsApp, sincronizare ANAF (descărcare/trimitere e-Factura), OCR real pentru scanuri, remindere, export ZIP | |
 | Faza 3 | Integrare software contabil, rapoarte avansate, detecție anomalii | |
 
@@ -646,6 +648,67 @@ nu există niciun document, nu se inventează niciuna.
 
 Distincția merită reținută, pentru că exact confuzia ei a produs defectul: **un
 filtru alege de unde să pornească; un titlu afirmă ceva despre niște numere.**
+
+**M9 — preluarea automată din OneDrive**
+
+Cererea cabinetului, în cuvintele lui: *„în principiu mă interesa să îmi preia
+automat ce documente trimit domnii clienți, să nu mai stau eu să le descarc și să
+le numesc manual. Dacă merge să se conecteze direct librării din OneDrive exact
+cum am eu făcute frumos pentru fiecare client ar fi perfect."*
+
+Amândouă jumătățile erau deja pe jumătate rezolvate: numele standardizat există
+din M5.7, iar `DocumentIntake` avea din M5.1 idempotență pe id-uri externe,
+scrisă atunci pentru email și WhatsApp. Ce lipsea era cine aduce fișierele.
+
+**Dosarul dă clientul, și asta este piesa cea mai valoroasă.** Contabilul are
+deja un dosar per client; maparea aceea, făcută o singură dată, e mai sigură
+decât orice citire de CUI — merge și pentru o poză neclară, fără text. Extracția
+rămâne să spună *ce* este documentul; *al cui* este se știe de la intrare. Un
+dosar nemapat nu ghicește nimic: fișierele intră și ajung la verificare
+neatribuite, ca oricare altele.
+
+**Ce nu face, deliberat:** nu scrie nimic înapoi în OneDrive. Documentele
+clienților rămân exact cum le-au pus ei — un sistem care umblă în fișierele
+altcuiva le strică într-o zi. Scope-ul cerut la consimțământ este `Files.Read.All`,
+doar citire.
+
+Trei proprietăți pe care se sprijină restul, fiecare cu testele ei:
+
+- **Nimic nu intră de două ori.** Fiecare fișier lasă un intake cu id-ul lui din
+  Graph, iar întrebarea se pune *înainte* de descărcare: un fișier deja preluat
+  nu trece prin rețea. Peste asta lucrează și detecția pe SHA-256, pentru cazul
+  în care același document apare în două dosare.
+- **Un fișier stricat nu oprește dosarul.** Un `.txt`, un PDF corupt, o
+  descărcare picată: se notează cu motivul și se trece mai departe.
+- **Tokenul delta se salvează abia după ce fișierele au intrat.** Salvat înainte,
+  o cădere la mijloc ar face ca fișierele nepreluate să nu mai fie văzute
+  niciodată — cea mai urâtă formă de pierdere, pentru că e tăcută.
+
+**Securitate.** Refresh tokenul Microsoft nu poate fi stocat hash-uit — trebuie
+folosit — iar ce se citește înapoi dintr-un dump de bază de date dă acces la
+OneDrive-ul cabinetului. Se criptează cu `DRIVE_TOKEN_KEY`, **separată de
+`SECRET_KEY`**: aceea se rotește exact după o scurgere, adică exact când nimeni
+nu vrea să afle că a pierdut și legăturile cu OneDrive. Fără cheie, conectarea
+este refuzată cu un mesaj explicit — nu se scrie niciun token în clar „doar de
+data asta". Un sweep peste toate răspunsurile rutei verifică faptul că tokenul nu
+iese nici întreg, nici trunchiat (§73).
+
+`state`-ul consimțământului este **semnat și legat de organizație**. Fără asta,
+un link pregătit de altcineva ar conecta cabinetului un OneDrive străin, din care
+ar citi apoi tot ce intră.
+
+**Ce rămâne neverificat, spus pe față.** Microsoft nu poate fi chemat dintr-un
+test. Tot ce contează — sincronizarea, idempotența, erorile, granița organizației
+— se exercită prin protocolul din `services/drive/base.py`, cu un client fals.
+Ce nu se poate testa este clientul HTTP real, care e deliberat subțire:
+construiește URL-uri și citește JSON. Prima conectare cu credențiale adevărate
+rămâne singura care îl atinge.
+
+**Un defect găsit rulând serverul:** `?parentId=` nu se lega. Un parametru de
+query nu trece prin `ApiModel`, deci nu primește aliasul camelCase de la sine;
+FastAPI căuta `parent_id`, nu găsea nimic și răspundea tăcut cu rădăcina.
+Răsfoirea *părea* că merge, dar nu cobora niciodată într-un subdosar. Aceeași
+clasă de defect ca „filtrele de listă nu se legau deloc", din M6.
 
 **M8 — CI**
 

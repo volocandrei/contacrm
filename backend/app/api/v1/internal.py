@@ -36,6 +36,7 @@ from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
 from app.schemas.common import ApiModel
+from app.services.drive.runner import run_drive_sync
 from app.services.processing_recovery import recover
 from app.worker import run_once
 
@@ -47,12 +48,18 @@ router = APIRouter(prefix="/internal", tags=["internal"], include_in_schema=Fals
 # chiar dacă fiecare document merge prost.
 CRON_BATCH = 5
 
+# Câte cabinete se sincronizează într-o bătaie. Fiecare dosar își ține propriul
+# token delta, deci ce nu apucă acum se ia la următoarea — nimic nu se pierde.
+DRIVE_BATCH = 3
+
 
 class QueueRunOut(ApiModel):
     """Ce a făcut bătaia. Se citește din logurile planificatorului, deci e scurt."""
 
     requeued: int
     executed: int
+    #: Documente aduse din OneDrive în bătaia asta.
+    ingested: int
 
 
 def _authorized(authorization: str | None) -> bool:
@@ -88,7 +95,15 @@ def run_queue(
         stale_after=timedelta(minutes=settings.processing_stale_after_minutes),
         execute=False,
     )
+    # Întâi aducem ce e nou în dosarele urmărite, apoi procesăm coada: altfel un
+    # fișier apărut acum ar aștepta degeaba bătaia următoare.
+    drive = run_drive_sync(storage, limit=DRIVE_BATCH)
     executed = run_once(storage, limit=CRON_BATCH)
 
-    logger.info("cron_queue_run", requeued=report.requeued, executed=executed)
-    return QueueRunOut(requeued=report.requeued, executed=executed)
+    logger.info(
+        "cron_queue_run",
+        requeued=report.requeued,
+        executed=executed,
+        ingested=drive.ingested,
+    )
+    return QueueRunOut(requeued=report.requeued, executed=executed, ingested=drive.ingested)

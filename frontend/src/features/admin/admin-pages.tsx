@@ -290,6 +290,7 @@ const SETTING_LABEL: Record<string, string> = {
   NOTIFICATIONS_ENABLED: "Trimitere notificări",
   RETENTION_ENABLED: "Ștergere automată",
   TRUSTED_PROXY_COUNT: "Proxy-uri de încredere în față",
+  ONEDRIVE: "Integrare OneDrive",
 };
 
 const GROUP_LABEL: Record<SettingGroup, string> = {

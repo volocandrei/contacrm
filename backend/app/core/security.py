@@ -164,3 +164,47 @@ def token_permissions(token: str) -> list[str]:
 def hash_token(token: str) -> str:
     """Refresh tokenurile se stochează hash-uite, niciodată în clar."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+# ── Stare semnată pentru fluxuri OAuth (M9) ──────────────────────────────────
+
+#: Tipul pus în `typ`, ca o stare să nu poată fi folosită drept token de sesiune
+#: și invers. Aceeași grijă ca la access/refresh.
+STATE_TYPE: Final = "oauth-state"
+
+
+def encode_state(claims: dict[str, str], *, expires_in: timedelta) -> str:
+    """Un `state` OAuth semnat, cu expirare.
+
+    Un șir aleatoriu ținut minte pe server ar fi cerut încă un tabel și încă o
+    curățare. Semnătura face același lucru fără stare: dacă se întoarce
+    nemodificat și neexpirat, l-am emis noi.
+
+    Ce se pune aici ajunge la Microsoft și înapoi prin URL-ul browserului, deci
+    **nimic secret**: doar identificatori care oricum apar în interfață.
+    """
+    now = datetime.now(UTC)
+    payload: dict[str, Any] = {
+        **claims,
+        "typ": STATE_TYPE,
+        "iat": now,
+        "exp": now + expires_in,
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def decode_state(state: str) -> dict[str, str]:
+    """Verifică semnătura și expirarea. Aruncă `TokenError` dacă nu e a noastră."""
+    try:
+        payload = jwt.decode(
+            state,
+            settings.secret_key,
+            algorithms=[ALGORITHM],
+            options={"require": ["exp", "typ"]},
+        )
+    except jwt.PyJWTError as exc:
+        raise TokenError(str(exc)) from exc
+
+    if payload.get("typ") != STATE_TYPE:
+        raise TokenError(f"tip de stare neașteptat: {payload.get('typ')!r}")
+    return {key: str(value) for key, value in payload.items()}

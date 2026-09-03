@@ -7,6 +7,7 @@
  */
 import { ApiError, type Paginated } from "@/api/types";
 import {
+  ACTIVE_CLIENTS,
   AUDIT_LOGS,
   CLIENTS,
   CLIENT_NOTES,
@@ -38,6 +39,10 @@ import type {
   DocumentFieldName,
   DocumentListItem,
   DocumentStatus,
+  DriveBrowseItem,
+  DriveFolder,
+  DriveStatus,
+  DriveSyncResult,
   Permission,
   ReportBucket,
   ReportSummary,
@@ -1035,6 +1040,206 @@ export function listUsers(): UserSummary[] {
  * Lista este albă și aici: nu există nicio valoare sensibilă de scăpat, pentru
  * că nu se citește nimic dintr-un mediu.
  */
+/* ─── OneDrive (M9) ────────────────────────────────────────────────────────── */
+
+/**
+ * Integrarea, simulată.
+ *
+ * Aici nu există Microsoft, deci „conectarea" nu cere consimțământ: butonul duce
+ * înapoi în aplicație cu un cod inventat. Ce contează pentru demonstrație este
+ * **forma**: dosare care se răsfoiesc, se leagă de clienți, aduc documente și
+ * arată când au sincronizat ultima dată.
+ *
+ * Structura de dosare de mai jos este cea pe care o descrie cabinetul — una per
+ * client, sub un dosar comun.
+ */
+const MOCK_DRIVE_ID = "drive-demo";
+
+const MOCK_DRIVE_TREE: Record<string, Array<{ itemId: string; name: string }>> = {
+  root: [
+    { itemId: "d-clienti", name: "Clienți" },
+    { itemId: "d-arhiva", name: "Arhivă 2025" },
+  ],
+  "d-clienti": ACTIVE_CLIENTS.map((client) => ({
+    itemId: `d-${client.id}`,
+    name: client.name,
+  })),
+};
+
+type MockDriveState = {
+  connected: boolean;
+  accountEmail: string | null;
+  connectedAt: string | null;
+  lastSyncAt: string | null;
+  folders: DriveFolder[];
+};
+
+const driveState: MockDriveState = {
+  connected: false,
+  accountEmail: null,
+  connectedAt: null,
+  lastSyncAt: null,
+  folders: [],
+};
+
+let driveFolderCounter = 0;
+
+export function getDriveStatus(): DriveStatus {
+  requirePermission("admin:settings");
+  return {
+    // În demonstrație integrarea este întotdeauna „configurată": nu există server
+    // pe care să lipsească ceva. Ecranul real citește valorile adevărate.
+    configured: true,
+    encryptionReady: true,
+    connected: driveState.connected,
+    accountEmail: driveState.accountEmail,
+    accountName: driveState.connected ? "Cabinet Contabil Demo SRL" : null,
+    connectedAt: driveState.connectedAt,
+    lastSyncAt: driveState.lastSyncAt,
+    lastError: null,
+    folders: driveState.folders,
+  };
+}
+
+export function driveAuthorizeUrl(): { authorizeUrl: string } {
+  requirePermission("admin:settings");
+  // Fără Microsoft, „consimțământul" este o întoarcere imediată în aplicație cu
+  // un cod inventat — exact drumul pe care îl face și cel real.
+  return {
+    authorizeUrl: "/administrare/surse?code=cod-simulat&state=stare-simulata",
+  };
+}
+
+export function connectDrive(): DriveStatus {
+  requirePermission("admin:settings");
+  driveState.connected = true;
+  driveState.accountEmail = "contabil@cabinet-demo.ro";
+  driveState.connectedAt = MOCK_NOW;
+  recordAudit("DRIVE_CONNECTED", "DriveConnection", "drive-demo", driveState.accountEmail);
+  return getDriveStatus();
+}
+
+export function disconnectDrive(): void {
+  requirePermission("admin:settings");
+  recordAudit("DRIVE_DISCONNECTED", "DriveConnection", "drive-demo", driveState.accountEmail);
+  driveState.connected = false;
+  driveState.accountEmail = null;
+  driveState.connectedAt = null;
+  driveState.lastSyncAt = null;
+  // Dosarele nu au ce căuta fără conexiunea prin care se citeau.
+  driveState.folders = [];
+}
+
+export function browseDrive(parentId?: string): DriveBrowseItem[] {
+  requirePermission("admin:settings");
+  if (!driveState.connected) {
+    throw new ApiError("CONFLICT", "Niciun cont Microsoft conectat.", 409);
+  }
+
+  const children = MOCK_DRIVE_TREE[parentId ?? "root"] ?? [];
+  const tracked = new Set(driveState.folders.map((folder) => folder.itemId));
+  return children.map((child) => ({
+    driveId: MOCK_DRIVE_ID,
+    itemId: child.itemId,
+    name: child.name,
+    path: `/${parentId === "d-clienti" ? "Clienți/" : ""}${child.name}`,
+    isTracked: tracked.has(child.itemId),
+  }));
+}
+
+export function trackDriveFolder(input: {
+  driveId: string;
+  itemId: string;
+  path: string;
+  clientId?: string | null;
+}): DriveFolder {
+  requirePermission("admin:settings");
+  if (driveState.folders.some((folder) => folder.itemId === input.itemId)) {
+    throw new ApiError("CONFLICT", "Dosarul este deja urmărit.", 409);
+  }
+
+  driveFolderCounter += 1;
+  // Numele dosarului este numele clientului: în demonstrație îl legăm singuri,
+  // ca ecranul să arate ce ar arăta după ce contabilul face maparea o dată.
+  const guessed = state.clients.find((client) => input.path.endsWith(client.name));
+  const folder: DriveFolder = {
+    id: `drive-folder-${driveFolderCounter}`,
+    driveId: input.driveId,
+    itemId: input.itemId,
+    path: input.path,
+    clientId: input.clientId ?? guessed?.id ?? null,
+    clientName: input.clientId
+      ? (state.clients.find((c) => c.id === input.clientId)?.name ?? null)
+      : (guessed?.name ?? null),
+    lastSyncedAt: null,
+    lastError: null,
+    filesIngested: 0,
+    isActive: true,
+  };
+  driveState.folders.push(folder);
+  recordAudit("DRIVE_FOLDER_TRACKED", "DriveFolder", folder.id, folder.path);
+  return folder;
+}
+
+export function updateDriveFolder(
+  id: string,
+  input: { clientId?: string | null; isActive?: boolean },
+): DriveFolder {
+  requirePermission("admin:settings");
+  const folder = driveState.folders.find((row) => row.id === id) ?? notFound("DriveFolder", id);
+
+  folder.clientId = input.clientId ?? null;
+  folder.clientName = input.clientId
+    ? (state.clients.find((client) => client.id === input.clientId)?.name ?? null)
+    : null;
+  if (input.isActive !== undefined) folder.isActive = input.isActive;
+
+  recordAudit("DRIVE_FOLDER_UPDATED", "DriveFolder", folder.id, folder.path);
+  return folder;
+}
+
+export function untrackDriveFolder(id: string): void {
+  requirePermission("admin:settings");
+  const folder = driveState.folders.find((row) => row.id === id) ?? notFound("DriveFolder", id);
+  driveState.folders = driveState.folders.filter((row) => row.id !== id);
+  recordAudit("DRIVE_FOLDER_UNTRACKED", "DriveFolder", id, folder.path);
+}
+
+export function syncDrive(): DriveSyncResult {
+  requirePermission("admin:settings");
+  if (!driveState.connected) {
+    throw new ApiError("CONFLICT", "Niciun cont Microsoft conectat.", 409);
+  }
+
+  const active = driveState.folders.filter((folder) => folder.isActive);
+  let ingested = 0;
+
+  for (const folder of active) {
+    // Un document nou per dosar, la fiecare tur: destul cât demonstrația să arate
+    // documentele apărând singure, fără să umple setul sintetic.
+    const document = uploadDocument({
+      filename: `${randomDay()}.08 scan.pdf`,
+      size: 180_000,
+      mimeType: "application/pdf",
+    });
+    document.source = "ONEDRIVE";
+    document.clientId = folder.clientId;
+    document.clientName = folder.clientName;
+
+    folder.filesIngested += 1;
+    folder.lastSyncedAt = MOCK_NOW;
+    ingested += 1;
+  }
+
+  driveState.lastSyncAt = MOCK_NOW;
+  return { ingested, failed: 0, hasMore: false, folders: active.map((f) => f.path) };
+}
+
+/** Ziua din numele fișierului. Doar ca documentele simulate să nu arate identic. */
+function randomDay(): number {
+  return 1 + Math.floor(Math.random() * 28);
+}
+
 export function listSettings(): SettingEntry[] {
   requirePermission("admin:settings");
   return [
@@ -1059,6 +1264,7 @@ export function listSettings(): SettingEntry[] {
     { key: "NOTIFICATIONS_ENABLED", group: "NOTIFICATIONS", value: "false" },
     { key: "RETENTION_ENABLED", group: "RETENTION", value: "false" },
     { key: "TRUSTED_PROXY_COUNT", group: "SECURITY", value: "0" },
+    { key: "ONEDRIVE", group: "SECURITY", value: "true" },
   ];
 }
 

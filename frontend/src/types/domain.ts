@@ -32,7 +32,7 @@ export const PERIOD_STATUS = [
 ] as const;
 export type PeriodStatus = (typeof PERIOD_STATUS)[number];
 
-export const DOCUMENT_SOURCE = ["EMAIL", "WHATSAPP", "UPLOAD", "API"] as const;
+export const DOCUMENT_SOURCE = ["EMAIL", "WHATSAPP", "UPLOAD", "API", "ONEDRIVE"] as const;
 export type DocumentSource = (typeof DOCUMENT_SOURCE)[number];
 
 /** Motivul structurat al unui eșec de procesare — se afișează, nu se aruncă (§53). */
@@ -439,6 +439,59 @@ export type ReportSummary = {
   /** Doar primii; `clientCount` spune câți sunt de fapt. */
   byClient: ReportBucket[];
   clientCount: number;
+};
+
+/* ─── Integrare OneDrive / SharePoint (M9) ─────────────────────────────────── */
+
+/**
+ * Un dosar urmărit din OneDrive, legat de clientul căruia îi aparțin documentele.
+ *
+ * Maparea asta este piesa care scutește identificarea clientului: contabilul are
+ * deja un dosar per client, iar un fișier apărut acolo aparține acelui client —
+ * mai sigur decât orice citire de CUI, pentru că merge și pentru o poză neclară.
+ */
+export type DriveFolder = {
+  id: string;
+  driveId: string;
+  itemId: string;
+  path: string;
+  clientId: string | null;
+  clientName: string | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  filesIngested: number;
+  isActive: boolean;
+};
+
+/** Starea integrării, într-un singur răspuns. Tokenul nu apare niciodată (§73). */
+export type DriveStatus = {
+  /** Lipsesc MS_CLIENT_ID / MS_CLIENT_SECRET? Ecranul o spune, nu oferă un buton care cade. */
+  configured: boolean;
+  /** Lipsește DRIVE_TOKEN_KEY? Fără ea nu stocăm tokenul, deci nu conectăm. */
+  encryptionReady: boolean;
+  connected: boolean;
+  accountEmail: string | null;
+  accountName: string | null;
+  connectedAt: string | null;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  folders: DriveFolder[];
+};
+
+/** Un dosar de pe drive, la răsfoire. */
+export type DriveBrowseItem = {
+  driveId: string;
+  itemId: string;
+  name: string;
+  path: string;
+  isTracked: boolean;
+};
+
+export type DriveSyncResult = {
+  ingested: number;
+  failed: number;
+  hasMore: boolean;
+  folders: string[];
 };
 
 /* ─── Setări (§16, §73) ────────────────────────────────────────────────────── */

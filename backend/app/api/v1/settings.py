@@ -121,6 +121,14 @@ EXPOSED: Final[tuple[tuple[str, SettingGroup, Callable[[Settings], str]], ...]] 
     # mare, notează o adresă pe care clientul și-o poate alege singur. Un audit
     # despre care nu se știe în ce caz se află nu se poate folosi într-o dispută.
     ("TRUSTED_PROXY_COUNT", SettingGroup.SECURITY, lambda s: str(s.trusted_proxy_count)),
+    # Doar dacă integrarea este configurată, nu și cu ce. Client id-ul nu este un
+    # secret, dar nu are ce căuta pe un ecran: nu spune nimic util și adaugă o
+    # valoare în plus de scăpat.
+    (
+        "ONEDRIVE",
+        SettingGroup.SECURITY,
+        lambda s: _yes_no(bool(s.ms_client_id and s.ms_client_secret)),
+    ),
 )
 
 

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/app-shell";
 import { AuditLogPage, RolesPage, SettingsPage, UsersPage } from "@/features/admin/admin-pages";
+import { DrivePage } from "@/features/admin/drive-page";
 import { LoginPage } from "@/features/auth/login-page";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { ClientDetailPage, ContactsPage } from "@/features/clients/client-detail-page";
@@ -93,6 +94,7 @@ function App() {
           <Route path="/administrare/utilizatori" element={<UsersPage />} />
           <Route path="/administrare/roluri" element={<RolesPage />} />
           <Route path="/administrare/setari" element={<SettingsPage />} />
+          <Route path="/administrare/surse" element={<DrivePage />} />
           <Route path="/administrare/audit" element={<AuditLogPage />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />

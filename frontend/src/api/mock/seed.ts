@@ -192,7 +192,7 @@ export const CLIENTS: Client[] = CLIENT_NAMES.map((name, i) => {
   } satisfies Client;
 });
 
-const ACTIVE_CLIENTS = CLIENTS.filter((c) => c.status === "ACTIVE");
+export const ACTIVE_CLIENTS = CLIENTS.filter((c) => c.status === "ACTIVE");
 
 /* ─── Contacte ─────────────────────────────────────────────────────────────── */
 
@@ -340,7 +340,8 @@ function statusFor(monthIndex: number): DocumentStatus {
 
 function sourceFor(): DocumentSource {
   const roll = rand();
-  if (roll < 0.45) return "EMAIL";
+  if (roll < 0.35) return "ONEDRIVE";
+  if (roll < 0.6) return "EMAIL";
   if (roll < 0.8) return "WHATSAPP";
   if (roll < 0.97) return "UPLOAD";
   return "API";
@@ -349,6 +350,9 @@ function sourceFor(): DocumentSource {
 function filenameFor(source: DocumentSource, typeCode: string): string {
   if (source === "WHATSAPP") return `IMG_${randInt(1000, 9999)}.jpg`;
   if (source === "UPLOAD") return `scan_${String(randInt(1, 99)).padStart(3, "0")}.pdf`;
+  // Numele pe care le pun clienții în dosarele lor din OneDrive. Sunt exact
+  // motivul pentru care cineva le redenumea manual, una câte una.
+  if (source === "ONEDRIVE") return `${randInt(1, 28)}.${randInt(1, 12)} scan.pdf`;
   if (typeCode === "EXTRAS_CONT") return `extras_${randInt(1, 12)}.pdf`;
   return `factura-${randInt(1000, 9999)}.pdf`;
 }
@@ -366,6 +370,7 @@ function buildDocument(
   client: Client | null,
   monthIndex: number,
   typeCode: string,
+  forcedStatus?: DocumentStatus,
 ): StoredDocument {
   documentCounter += 1;
   const referenceMonth = MONTHS[monthIndex]!;
@@ -375,7 +380,7 @@ function buildDocument(
   const receivedHour = randInt(7, 19);
   const receivedAt = `${date}T${String(receivedHour).padStart(2, "0")}:${String(randInt(0, 59)).padStart(2, "0")}:00+03:00`;
 
-  const status = client === null ? "UNMATCHED" : statusFor(monthIndex);
+  const status = forcedStatus ?? (client === null ? "UNMATCHED" : statusFor(monthIndex));
   const source = sourceFor();
   const originalFilename = filenameFor(source, typeCode);
   const extension = originalFilename.split(".").pop() ?? "pdf";
@@ -545,6 +550,28 @@ for (const client of ACTIVE_CLIENTS) {
 // Documente sosite fără client identificabil (§14).
 for (let i = 0; i < 5; i += 1) {
   DOCUMENTS.push(buildDocument(null, 2, pick(TYPE_WEIGHTS)));
+}
+
+// Setul sintetic trebuie să **acopere** fiecare stare, nu să spere că iese la zar.
+// Testele interfeței deschid câte un document din fiecare stare; o distribuție
+// nefericită le-ar face să cadă din motive care nu au nicio legătură cu codul —
+// exact ce s-a întâmplat când a fost adăugată sursa OneDrive și s-a mutat firul
+// generatorului determinist.
+for (const status of [
+  "REVIEW_REQUIRED",
+  "PROCESSING",
+  "RECEIVED",
+  "ERROR",
+  "DUPLICATE",
+  "APPROVED",
+  "ARCHIVED",
+] as const) {
+  // **Două**, nu unul: testele care modifică un document iau al doilea, ca să nu
+  // se influențeze prin starea partajată a backendului simulat.
+  const existing = DOCUMENTS.filter((doc) => doc.status === status).length;
+  for (let i = existing; i < 2; i += 1) {
+    DOCUMENTS.push(buildDocument(ACTIVE_CLIENTS[0]!, 2, "FACTURA_INTRARE", status));
+  }
 }
 
 // Marcăm duplicatele către un document arhivat al aceluiași client.

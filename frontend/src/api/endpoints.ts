@@ -15,6 +15,10 @@ import type {
   DocumentFieldName,
   DocumentListItem,
   DocumentType,
+  DriveBrowseItem,
+  DriveFolder,
+  DriveStatus,
+  DriveSyncResult,
   ReportSummary,
   SettingEntry,
   Task,
@@ -116,4 +120,28 @@ export const administration = {
   auditLogs: (params: QueryParams) => api.get<Paginated<AuditLogEntry>>("/audit-logs", params),
   users: () => api.get<UserSummary[]>("/users"),
   settings: () => api.get<SettingEntry[]>("/settings"),
+};
+
+/** Integrarea OneDrive (M9). Tokenul nu circulă niciodată pe aici (§73). */
+export const drive = {
+  status: () => api.get<DriveStatus>("/integrations/onedrive"),
+  authorize: () => api.post<{ authorizeUrl: string }>("/integrations/onedrive/authorize"),
+  connect: (code: string, state: string) =>
+    api.post<DriveStatus>("/integrations/onedrive/connect", { code, state }),
+  disconnect: () => api.delete<void>("/integrations/onedrive"),
+  browse: (parentId?: string) =>
+    api.get<DriveBrowseItem[]>(
+      "/integrations/onedrive/browse",
+      parentId ? { parentId } : undefined,
+    ),
+  trackFolder: (input: {
+    driveId: string;
+    itemId: string;
+    path: string;
+    clientId?: string | null;
+  }) => api.post<DriveFolder>("/integrations/onedrive/folders", { ...input }),
+  updateFolder: (id: string, input: { clientId?: string | null; isActive?: boolean }) =>
+    api.patch<DriveFolder>(`/integrations/onedrive/folders/${id}`, { ...input }),
+  untrackFolder: (id: string) => api.delete<void>(`/integrations/onedrive/folders/${id}`),
+  sync: () => api.post<DriveSyncResult>("/integrations/onedrive/sync"),
 };

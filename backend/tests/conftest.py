@@ -29,6 +29,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 CONNECT_TIMEOUT = 3
 
+# Cheia cu care se criptează tokenurile de drive. Se pune aici, la import, pentru
+# că `app.core.crypto` o citește o singură dată și o ține în cache — setată dintr-o
+# fixture, ar ajunge prea târziu. Este o cheie de test, generată o dată și scrisă
+# aici pe față: nu deschide nimic real.
+if not settings.drive_token_key:
+    settings.drive_token_key = "cCPQjIQqRAo3mm7d1u_ehSTzWpEHRe1XoHZM9lyoO_M="
+
 
 def _test_database_url() -> URL:
     """Baza de test, una per proces.

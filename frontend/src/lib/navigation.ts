@@ -4,6 +4,7 @@ import {
   Building2,
   CalendarRange,
   ChartColumn,
+  Cloud,
   ClipboardList,
   Contact,
   FileSearch,
@@ -181,6 +182,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Setări",
         path: "/administrare/setari",
         Icon: Settings,
+        permission: "admin:settings",
+      },
+      {
+        label: "Surse documente",
+        path: "/administrare/surse",
+        Icon: Cloud,
         permission: "admin:settings",
       },
       {

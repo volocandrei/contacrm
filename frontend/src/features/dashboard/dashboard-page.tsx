@@ -23,6 +23,7 @@ const SOURCE_LABEL: Record<DocumentSource, string> = {
   WHATSAPP: "WhatsApp",
   UPLOAD: "Încărcare",
   API: "API",
+  ONEDRIVE: "OneDrive",
 };
 
 const ATTENTION_TONE: Record<AttentionReason, "danger" | "warning"> = {

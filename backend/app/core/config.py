@@ -79,6 +79,26 @@ class Settings(BaseSettings):
     # să știm cine l-a scris înseamnă că oricine își poate alege IP-ul din audit.
     trusted_proxy_count: int = 0
 
+    # ── Microsoft OneDrive / SharePoint (M9) ─────────────────────────────────
+    # Aplicația înregistrată în Entra ID prin care se citesc dosarele clienților.
+    # Fără `ms_client_id`, ecranul de administrare spune că integrarea nu este
+    # configurată — nu o oferă și apoi eșuează.
+    ms_client_id: str = ""
+    ms_client_secret: str = ""
+    # `common` acceptă orice cont Microsoft (personal sau de firmă). Un cabinet cu
+    # tenant propriu pune id-ul lui și restrânge accesul la propriii utilizatori.
+    ms_tenant_id: str = "common"
+    # Unde trimite Microsoft browserul înapoi. Trebuie să fie identic cu ce e
+    # înregistrat în Entra ID, altfel consimțământul eșuează cu o eroare opacă.
+    ms_redirect_uri: str = "http://localhost:5173/administrare/surse"
+    # Cheia cu care se criptează refresh tokenul înainte de a atinge baza de date.
+    # Separată de SECRET_KEY: aceea se rotește, iar rotirea ei nu are voie să rupă
+    # tăcut legăturile cu OneDrive. Vezi `app/core/crypto.py`.
+    drive_token_key: str = ""
+    # Câte fișiere ia un tur de sincronizare, per dosar. Un dosar cu un an de
+    # documente nu trebuie să blocheze coada la prima conectare.
+    drive_sync_batch: int = 50
+
     # ── Bază de date ─────────────────────────────────────────────────────────
     database_url: str = (
         "postgresql+psycopg://contacrm:contacrm_dev_password@localhost:5432/contacrm"

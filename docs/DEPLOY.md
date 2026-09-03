@@ -148,6 +148,74 @@ de ordinul secundelor.
 
 ---
 
+## 6. OneDrive / SharePoint — preluarea automată a documentelor
+
+Cabinetul are deja un dosar per client în OneDrive, unde clienții își pun
+documentele. Integrarea le citește singură, le atribuie clientului dosarului și
+le arhivează cu numele standardizat — adică exact munca de descărcat și
+redenumit, făcută de sistem.
+
+**Se cere acces doar la citire.** Nimic nu se scrie și nimic nu se redenumește în
+dosarele clienților: un sistem care umblă în fișierele altcuiva le strică
+într-o zi.
+
+### Înregistrarea aplicației (o singură dată)
+
+În [Microsoft Entra ID](https://entra.microsoft.com) → *App registrations* →
+*New registration*:
+
+| Câmp | Valoare |
+|---|---|
+| Name | ContaCRM |
+| Supported account types | *Accounts in any organizational directory and personal Microsoft accounts* |
+| Redirect URI | **Web** → `https://<domeniul-tău>/administrare/surse` |
+
+Apoi, în aplicația creată:
+
+1. *Certificates & secrets* → *New client secret* → copiază **valoarea** (nu id-ul);
+   se afișează o singură dată.
+2. *API permissions* → *Microsoft Graph* → *Delegated* → adaugă `Files.Read.All`,
+   `User.Read`, `offline_access`. Pentru un cont de firmă, apasă și
+   *Grant admin consent*.
+3. *Overview* → copiază **Application (client) ID**.
+
+### Variabile
+
+| Variabilă | Valoare |
+|---|---|
+| `MS_CLIENT_ID` | Application (client) ID |
+| `MS_CLIENT_SECRET` | valoarea secretului |
+| `MS_TENANT_ID` | `common`, sau id-ul tenantului pentru a restrânge accesul |
+| `MS_REDIRECT_URI` | **identic** cu cel din Entra ID |
+| `DRIVE_TOKEN_KEY` | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+
+`MS_REDIRECT_URI` trebuie să fie caracter cu caracter același cu cel înregistrat;
+o diferență de slash final produce o eroare Microsoft care nu spune care este
+problema.
+
+**`DRIVE_TOKEN_KEY` este separată de `SECRET_KEY`, deliberat.** Refresh tokenul
+Microsoft nu poate fi stocat hash-uit — trebuie folosit, deci trebuie citit
+înapoi — iar ce se citește înapoi dintr-un dump de bază de date dă acces la
+OneDrive-ul cabinetului. `SECRET_KEY` se rotește exact după o scurgere, adică
+exact când nimeni nu vrea să descopere că a pierdut și legăturile cu OneDrive.
+Fără cheie, conectarea este refuzată cu un mesaj explicit: nu se scrie niciun
+token în clar „doar de data asta".
+
+**Rotirea cheii invalidează conexiunile existente.** Nu se pierde niciun
+document; ecranul spune că trebuie reconectat contul.
+
+### Punerea în funcțiune
+
+Din aplicație: *Administrare → Surse documente* → **Conectează OneDrive** →
+răsfoiește până la dosarul fiecărui client → **Urmărește** → alege clientul.
+Maparea se face o singură dată.
+
+De atunci, fiecare bătaie de cron aduce ce e nou. Un dosar rămas fără client
+atribuit nu blochează nimic: documentele intră și ajung la verificare
+neatribuite, ca oricare altele.
+
+---
+
 ## Alternativa: un singur serviciu cu proces continuu
 
 Railway, Render, Fly.io sau un VPS cu `docker compose` rulează API, worker și
