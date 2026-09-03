@@ -28,6 +28,8 @@ from app.core.logging import get_logger
 from app.models.document import DocumentType
 from app.services.document_processing import DocumentProcessingService
 from app.services.extraction.base import DocumentExtractionProvider
+from app.services.extraction.efactura import EFacturaExtractionProvider
+from app.services.extraction.local import LocalExtractionProvider
 from app.services.extraction.mock import MockDocumentExtractionProvider
 from app.services.extraction.pdf_text import PdfTextExtractionProvider
 from app.services.storage import StorageProvider
@@ -44,6 +46,10 @@ def build_extractor(known_type_codes: frozenset[str] = frozenset()) -> DocumentE
     nu are voie să propună un cod pe care cabinetul nu îl are definit: scrierea l-ar
     respinge cu `ValidationError` și ar opri procesarea unui document altfel valid.
     """
+    if settings.ocr_provider == "local":
+        return LocalExtractionProvider(known_type_codes=known_type_codes)
+    if settings.ocr_provider == "efactura":
+        return EFacturaExtractionProvider(known_type_codes=known_type_codes)
     if settings.ocr_provider == "pdf_text":
         return PdfTextExtractionProvider(known_type_codes=known_type_codes)
     if settings.ocr_provider != "mock":  # pragma: no cover — pana la Faza 2

@@ -24,9 +24,9 @@ from dataclasses import dataclass
 from typing import Final
 from urllib.parse import quote
 
+from app.domain.filenames import extension_by_mime
 from app.models.document import Document
 from app.services.storage import StorageProvider
-from app.services.storage.keys import EXTENSION_BY_MIME
 
 CHUNK_SIZE: Final = 64 * 1024
 
@@ -106,7 +106,7 @@ def safe_filename(document: Document) -> str:
     candidate = candidate.replace("\\", "/").split("/")[-1]
     cleaned = _UNSAFE_IN_HEADER.sub("", candidate).strip()
     if not cleaned:
-        extension = EXTENSION_BY_MIME.get(document.mime_type, "bin")
+        extension = extension_by_mime(document.mime_type) or "bin"
         return f"document-{document.id}.{extension}"
     return cleaned[:200]
 

@@ -54,7 +54,9 @@ export async function uploadAndOpen(page: Page, filename: string, content: Buffe
   await page.goto("/documente/inbox");
   await page.locator('input[type="file"]').setInputFiles({
     name: filename,
-    mimeType: filename.endsWith(".pdf") ? "application/pdf" : "application/octet-stream",
+    // Ce declarăm aici nu contează pentru server: tipul îl stabilește din primii
+    // octeți (§50). Este doar ce ar trimite un browser real.
+    mimeType: filename.endsWith(".xml") ? "application/xml" : "application/pdf",
     buffer: content,
   });
 
@@ -122,6 +124,52 @@ export function makePdf(lines: string[]): Buffer {
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
 
   return Buffer.from(pdf, "latin1");
+}
+
+/* ─── O factură electronică sintetică (UBL 2.1) ────────────────────────────── */
+
+const UBL_NAMESPACES = [
+  'xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"',
+  'xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"',
+  'xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"',
+].join(" ");
+
+/**
+ * O factură electronică în care clientul cabinetului este **cumpărătorul**.
+ *
+ * Spre deosebire de PDF, aici valorile stau în câmpuri cu nume: testul poate cere
+ * exact ce a scris, iar diacriticele nu sunt o problemă — XML-ul este UTF-8.
+ */
+export function electronicInvoice(options: {
+  number: string;
+  subtotal: string;
+  vat: string;
+  total: string;
+  issueDate?: string;
+}): Buffer {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice ${UBL_NAMESPACES}>
+  <cbc:ID>${options.number}</cbc:ID>
+  <cbc:IssueDate>${options.issueDate ?? "2026-08-14"}</cbc:IssueDate>
+  <cbc:DueDate>2026-09-13</cbc:DueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>RON</cbc:DocumentCurrencyCode>
+  <cac:AccountingSupplierParty><cac:Party><cac:PartyLegalEntity>
+    <cbc:RegistrationName>Șerbănescu Impex SRL</cbc:RegistrationName>
+    <cbc:CompanyID>RO99887766</cbc:CompanyID>
+  </cac:PartyLegalEntity></cac:Party></cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty><cac:Party><cac:PartyLegalEntity>
+    <cbc:RegistrationName>${SEED_CLIENT.name}</cbc:RegistrationName>
+    <cbc:CompanyID>${SEED_CLIENT.taxId}</cbc:CompanyID>
+  </cac:PartyLegalEntity></cac:Party></cac:AccountingCustomerParty>
+  <cac:TaxTotal><cbc:TaxAmount currencyID="RON">${options.vat}</cbc:TaxAmount></cac:TaxTotal>
+  <cac:LegalMonetaryTotal>
+    <cbc:TaxExclusiveAmount currencyID="RON">${options.subtotal}</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="RON">${options.total}</cbc:TaxInclusiveAmount>
+  </cac:LegalMonetaryTotal>
+</Invoice>
+`;
+  return Buffer.from(xml, "utf8");
 }
 
 /** O factură în care clientul cabinetului este cumpărătorul — deci una de intrare. */

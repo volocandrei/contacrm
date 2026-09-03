@@ -16,7 +16,7 @@ import pytest
 from moto import mock_aws
 from pydantic import ValidationError
 
-from app.core.config import Settings
+from app.core.config import Settings, settings
 from app.services.storage import (
     InvalidStorageKeyError,
     LocalStorageProvider,
@@ -55,6 +55,19 @@ class TestKeyGeneration:
     def test_unknown_content_type_has_no_key(self) -> None:
         with pytest.raises(InvalidStorageKeyError):
             extension_for("application/x-msdownload")
+
+    def test_every_accepted_type_can_be_stored(self) -> None:
+        """Ce trece de validarea la încărcare trebuie să poată primi o cheie.
+
+        Aici a fost defectul: extensiile erau scrise de trei ori — în
+        `domain/filenames.py`, în `lib/filename.ts` și încă o dată aici. Când s-a
+        adăugat factura electronică, două au fost aduse la zi și a treia nu, iar
+        încărcarea unui XML cădea cu 500 **după** ce fișierul trecuse validarea.
+        Testul citește lista acceptată din configurare, nu una ținută minte, ca
+        următorul tip adăugat să nu poată repeta povestea.
+        """
+        for mime_type in settings.allowed_mime_type_set:
+            assert extension_for(mime_type), mime_type
 
     def test_archive_key_is_separate_from_the_original(self) -> None:
         """Originalul nu se suprascrie la arhivare (§16)."""

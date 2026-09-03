@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "boto3>=1.35",
     "pypdf>=6.16.2",
+    "defusedxml>=0.7.1",
 ]
 
 [dependency-groups]
@@ -27,6 +28,7 @@ dev = [
     "mypy>=1.13",
     "boto3-stubs[s3]>=1.35",
     "moto[s3]>=5.0",
+    "types-defusedxml>=0.7.0.20260504",
 ]
 
 [tool.ruff]

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import BinaryIO, Final
 
 from app.core.config import settings
+from app.domain.efactura import looks_like_xml
 from app.domain.enums import DocumentErrorCode
 
 READ_CHUNK: Final = 64 * 1024
@@ -57,6 +58,11 @@ def sniff_mime_type(head: bytes) -> str | None:
     # RIFF....WEBP — cei patru octeți dintre marcaje sunt dimensiunea.
     if head.startswith(b"RIFF") and head[8:12] == b"WEBP":
         return "image/webp"
+    # Factura electronică. Se cere declarația explicită `<?xml`, nu orice fișier
+    # care începe cu `<`: altfel un HTML ar trece drept document contabil și ar fi
+    # respins abia la extracție, cu un mesaj despre altceva.
+    if looks_like_xml(head):
+        return "application/xml"
     return None
 
 

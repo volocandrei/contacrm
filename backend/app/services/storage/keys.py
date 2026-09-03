@@ -21,21 +21,14 @@ import re
 import uuid
 from typing import Final
 
+from app.domain.filenames import extension_by_mime
+
 # Segmentele permise: litere mici, cifre, cratimă, underscore, punct. Fără spații,
 # fără separatori de cale, fără nimic ce ar putea fi interpretat de un filesystem.
 _SEGMENT = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 MAX_KEY_LENGTH: Final = 1024
 MAX_SEGMENTS: Final = 12
-
-# Extensiile pe care le poate purta o cheie. Extensia nu se ia din numele trimis de
-# client, ci se derivă din tipul de conținut verificat.
-EXTENSION_BY_MIME: Final[dict[str, str]] = {
-    "application/pdf": "pdf",
-    "image/jpeg": "jpg",
-    "image/png": "png",
-    "image/webp": "webp",
-}
 
 ORIGINAL = "original"
 ARCHIVE = "archive"
@@ -46,13 +39,18 @@ class InvalidStorageKeyError(ValueError):
 
 
 def extension_for(mime_type: str) -> str:
-    """Extensia care corespunde unui tip de conținut deja validat."""
-    try:
-        return EXTENSION_BY_MIME[mime_type]
-    except KeyError as exc:
-        raise InvalidStorageKeyError(
-            f"Tip de conținut fără extensie cunoscută: {mime_type}"
-        ) from exc
+    """Extensia care corespunde unui tip de conținut deja validat.
+
+    Harta este cea din `app.domain.filenames`, nu una proprie. Aici a existat o a
+    treia copie a acelorași perechi, iar când s-a adăugat factura electronică
+    două dintre ele au fost aduse la zi și a treia nu: încărcarea unui XML cădea
+    cu 500 la scrierea cheii de stocare, după ce fișierul trecuse validarea.
+    Defectul s-a văzut abia în suita end-to-end.
+    """
+    extension = extension_by_mime(mime_type)
+    if extension is None:
+        raise InvalidStorageKeyError(f"Tip de conținut fără extensie cunoscută: {mime_type}")
+    return extension
 
 
 def validate_key(key: str) -> str:

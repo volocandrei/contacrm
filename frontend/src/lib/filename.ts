@@ -27,7 +27,7 @@ const RESERVED_NAMES = new Set([
 const MAX_SEGMENT_LENGTH = 60;
 const MAX_FILENAME_LENGTH = 180;
 
-const ALLOWED_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", "webp", "tif", "tiff"]);
+const ALLOWED_EXTENSIONS = new Set(["pdf", "xml", "jpg", "jpeg", "png", "webp", "tif", "tiff"]);
 const DEFAULT_EXTENSION = "pdf";
 
 /**
@@ -66,6 +66,11 @@ export function sanitizeSegment(value: string, maxLength = MAX_SEGMENT_LENGTH): 
 export function normalizeExtension(filename: string, mimeType?: string): string {
   const fromMime: Record<string, string> = {
     "application/pdf": "pdf",
+    // Factura electronică rămâne XML în arhivă: este documentul original, iar §16
+    // spune că originalul nu se transformă. Un PDF „frumos" generat din el ar fi
+    // altceva decât ce s-a depus la ANAF.
+    "application/xml": "xml",
+    "text/xml": "xml",
     "image/jpeg": "jpg",
     "image/png": "png",
     "image/webp": "webp",

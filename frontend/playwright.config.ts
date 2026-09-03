@@ -32,10 +32,11 @@ const DATABASE_URL =
 
 const backendEnv = {
   DATABASE_URL,
-  // `pdf_text` citește ce scrie chiar în fișierul urcat de test, deci aserțiunile
-  // pot fi despre conținut, nu despre valori inventate. `mock` ar fi făcut suita
-  // să verifice generatorul de date sintetice.
-  OCR_PROVIDER: "pdf_text",
+  // `local` citește ce scrie chiar în fișierul urcat de test — XML sau PDF —
+  // deci aserțiunile pot fi despre conținut, nu despre valori inventate. `mock`
+  // ar fi făcut suita să verifice generatorul de date sintetice. Este și
+  // valoarea recomandată în producție, deci se verifică exact ce se și rulează.
+  OCR_PROVIDER: "local",
   STORAGE_PROVIDER: "local",
   STORAGE_PATH: "./storage/e2e",
   ARCHIVE_ROOT: "./storage/e2e/ARHIVA",

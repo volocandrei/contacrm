@@ -36,11 +36,15 @@ _RESERVED_NAMES = frozenset(
 MAX_SEGMENT_LENGTH = 60
 MAX_FILENAME_LENGTH = 180
 
-_ALLOWED_EXTENSIONS = frozenset({"pdf", "jpg", "jpeg", "png", "webp", "tif", "tiff"})
+_ALLOWED_EXTENSIONS = frozenset({"pdf", "xml", "jpg", "jpeg", "png", "webp", "tif", "tiff"})
 DEFAULT_EXTENSION = "pdf"
 
 _EXTENSION_BY_MIME = {
     "application/pdf": "pdf",
+    # Factura electronică rămâne XML în arhivă: este documentul original, iar §16
+    # spune că originalul nu se transformă.
+    "application/xml": "xml",
+    "text/xml": "xml",
     "image/jpeg": "jpg",
     "image/png": "png",
     "image/webp": "webp",
@@ -89,6 +93,16 @@ def sanitize_segment(value: str, max_length: int = MAX_SEGMENT_LENGTH) -> str:
     if truncated == "" or truncated.lower() in _RESERVED_NAMES:
         return f"_{truncated}"
     return truncated
+
+
+def extension_by_mime(mime_type: str) -> str | None:
+    """Extensia unui tip de conținut deja verificat, sau `None` dacă nu îl știm.
+
+    Sursa unică a perechilor. Stocarea o folosește ca să compună cheia, numele de
+    arhivă ca să compună fișierul — și trebuie să fie aceeași: o a doua copie a
+    listei s-a despărțit tăcut de prima când a apărut factura electronică.
+    """
+    return _EXTENSION_BY_MIME.get(mime_type)
 
 
 def normalize_extension(filename: str, mime_type: str | None = None) -> str:

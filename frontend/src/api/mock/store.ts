@@ -419,6 +419,10 @@ const MOCK_PROCESSING_MS = 2500;
 const MOCK_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const MOCK_ACCEPTED_MIME = new Set([
   "application/pdf",
+  // Factura electronică (e-Factura, UBL 2.1). Serverul adevărat o recunoaște din
+  // declarația `<?xml`, nu din ce spune browserul — aici nu avem octeți.
+  "application/xml",
+  "text/xml",
   "image/jpeg",
   "image/png",
   "image/webp",
@@ -503,7 +507,7 @@ export function uploadDocument(input: UploadInput): StoredDocument {
   if (!MOCK_ACCEPTED_MIME.has(input.mimeType)) {
     throw new ApiError(
       "VALIDATION_ERROR",
-      "Tip de fișier neacceptat. Se acceptă PDF, JPEG, PNG și WEBP.",
+      "Tip de fișier neacceptat. Se acceptă PDF, XML (e-Factura), JPEG, PNG și WEBP.",
       422,
       { file: ["Tip neacceptat."] },
     );

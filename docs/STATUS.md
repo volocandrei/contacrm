@@ -116,13 +116,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend   9.455 linii sursă +  1.147 linii teste  →   99 teste
-backend   11.663 linii sursă + 11.275 linii teste  →  836 teste
-end-to-end   556 linii                             →   17 teste (browser real)
+frontend   9.558 linii sursă +  1.147 linii teste  →   99 teste
+backend   11.725 linii sursă + 11.301 linii teste  →  875 teste
+end-to-end   728 linii                             →   22 teste (browser real)
 migrări    1.307 linii
 ```
 
-Toate verificările trec: **952 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **996 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -424,6 +424,7 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 | Ecranul de autentificare declara „parola nu este verificată" pe orice instalare, cu parola `demo` deja completată — în modul `http` parola este verificată, iar `demo` nu merge | scriind testul E2E de autentificare |
 | Un byte NUL brut în `store.ts` făcea fișierul binar pentru git, iar verificarea de igienă din CI îl **sărea** (`git grep -I`) | căutând altceva prin `grep` |
 | Testele frontend își făceau propriul `QueryClient`, cu alte valori decât aplicația: întreaga clasă de defecte de cache era invizibilă prin construcție | investigând un eșec din E2E |
+| Extensiile pe tip de conținut erau scrise în **trei** locuri; la adăugarea facturii electronice două au fost aduse la zi și a treia nu, iar încărcarea unui XML cădea cu 500 după ce fișierul trecuse validarea | **suita E2E**, la prima rulare cu e-Factura |
 
 ---
 
@@ -466,9 +467,9 @@ ci portat.**
 | M4 | CRM: clients, contacts, notes, tags, tasks | ✅ |
 | **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare, arhivare, întărire** | ✅ |
 | **M6** | Coadă durabilă + worker separat, perioade + checklist, dashboard, ecran audit, acțiuni în masă | ✅ |
-| **M7** | Rapoarte în SQL, setări reale, extracție reală din PDF, identificarea clientului, încărcare | ✅ (notificările au trecut în Faza 2 — cer un provider de email sau WhatsApp) |
+| **M7** | Rapoarte în SQL, setări reale, extracție din PDF, factura electronică, identificarea clientului, încărcare | ✅ (notificările au trecut în Faza 2 — cer un provider de email sau WhatsApp) |
 | **M8** | CI + teste E2E | ✅ |
-| Faza 2 | Microsoft Graph, WhatsApp, OCR/AI real, remindere, export ZIP | |
+| Faza 2 | Microsoft Graph, WhatsApp, sincronizare ANAF (descărcare/trimitere e-Factura), OCR real pentru scanuri, remindere, export ZIP | |
 | Faza 3 | Integrare software contabil, rapoarte avansate, detecție anomalii | |
 
 **MVP = M1–M8.**
@@ -577,6 +578,53 @@ Interfața **nu verifică nimic**: tipul îl stabilește serverul din primii oct
 nu din ce declară browserul (§50), iar limita din configurarea lui. O a doua
 copie a regulilor aici s-ar despărți tăcut de cea adevărată, și atunci ecranul ar
 refuza fișiere pe care serverul le acceptă — sau, mai rău, invers.
+
+**M7 — factura electronică (e-Factura, UBL 2.1)**
+
+De la 1 iulie 2024, între firme din România factura electronică este obligatorie.
+Pentru un cabinet asta înseamnă că partea covârșitoare a facturilor vine ca XML,
+nu ca PDF scanat — și că, pentru ele, verificarea umană poate deveni o citire în
+loc de o completare.
+
+Un XML schimbă complet regula sub care e scris restul extracției. `pdf_text`
+lucrează pe text și are o singură lege: *nu ghici*. Aici nu are ce să ghicească —
+fiecare valoare stă într-un element cu nume. Nu se caută un total într-un text, se
+citește câmpul „total". Nu există încredere parțială: elementul e acolo sau nu e.
+De aceea valorile ies cu **100%**, marcate „citit", iar ecranul spune adevărul.
+
+Se citește tot ce un PDF nu putea da: numele furnizorului și al cumpărătorului,
+care într-un PDF stau într-un bloc de adresă fără etichetă și pe care extracția
+din text refuza, corect, să le ghicească.
+
+**Ce nu face, deliberat.** Nu vorbește cu ANAF: nu descarcă, nu trimite, nu
+verifică semnătura. Sunt trei lucruri diferite, cu credențiale și implicații
+proprii (Faza 2). Aici se citește un fișier care a ajuns deja la noi — local,
+fără rețea, exact ca `pdf_text`. Și nu decide direcția facturii: știe cine e
+furnizorul și cine cumpărătorul, dar nu pentru cine lucrează cabinetul. Aceea
+rămâne treaba potrivirii de client, care funcționează neschimbată.
+
+O **notă de credit** (storno) nu este propusă ca factură obișnuită: are semn
+invers, iar trecută drept factură ar dubla suma în registru. Rămâne neclasificată,
+adică se uită un om la ea.
+
+**Securitate.** XML-ul vine din afară, iar parsarea XML este un vector clasic:
+„billion laughs" (o entitate care se expandează până umple memoria) și XXE (un
+document care citește `/etc/passwd`). Se parsează prin `defusedxml`, care refuză
+DTD-urile și entitățile. Un fișier care conține așa ceva este **respins, nu
+curățat** — o factură reală nu are DOCTYPE, deci refuzul nu costă niciun caz
+legitim. Ambele atacuri au propriul test.
+
+**Alegerea providerului se face după conținut, nu după configurare.**
+`OCR_PROVIDER` este o singură valoare pentru tot procesul, dar un cabinet
+primește în aceeași zi XML-uri, PDF-uri digitale și poze de bonuri. `local` le
+rutează după ce sunt: XML la cititorul de e-Factura, restul la cel de PDF. Este
+valoarea recomandată în producție, și cea pe care rulează suita E2E — deci se
+verifică exact ce se rulează.
+
+**Originalul rămâne XML în arhivă.** Un PDF „frumos" generat din el ar fi altceva
+decât ce s-a depus la ANAF, iar §16 spune că originalul nu se transformă. Ecranul
+de verificare arată în locul facsimilului factura redată din câmpurile ei —
+spusă ca atare, cu documentul original la un clic distanță.
 
 **M8 — CI**
 

@@ -21,18 +21,23 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # disc local, exact acolo unde documentele s-ar pierde la prima repornire.
 STORAGE_PROVIDERS = frozenset({"local", "s3"})
 
-# Providerii de extracție care există. `mock` produce date sintetice; `pdf_text`
-# citește stratul de text al PDF-ului, local, fără ca documentul să plece nicăieri.
+# Providerii de extracție care există, toți locali:
+#   `mock`      — date sintetice, pentru demonstrație
+#   `pdf_text`  — stratul de text al PDF-ului
+#   `efactura`  — facturi electronice UBL 2.1 (e-Factura ANAF)
+#   `local`     — alege între cele două de mai sus după conținutul fișierului
+# `local` este valoarea potrivită pentru un cabinet real: primește în aceeași zi
+# XML-uri și PDF-uri, iar `OCR_PROVIDER` este o singură valoare pentru tot procesul.
 # Un nume neimplementat trebuie să oprească pornirea, nu să eșueze abia în worker,
 # la primul document — adică după ce cineva a crezut că sistemul funcționează.
-EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text"})
+EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text", "efactura", "local"})
 
 # Dintre ei, cei care nu trimit nimic nicăieri și nu au un model în spate. Astăzi
 # sunt toți — distincția există pentru verificarea de producție, care trebuie să
 # prindă momentul în care apare primul provider extern (Faza 2) fără să dea alarme
 # false pentru unul local. `pdf_text` citește text; nu ghicește și nu întreabă pe
 # nimeni, deci nu are ce să fie „inconsistent" cu `AI_PROVIDER=mock`.
-LOCAL_EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text"})
+LOCAL_EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text", "efactura", "local"})
 
 
 class Environment(StrEnum):
@@ -95,7 +100,10 @@ class Settings(BaseSettings):
     storage_path: str = "./storage"
     archive_root: str = "./storage/ARHIVA"
     max_upload_size_mb: int = 25
-    allowed_mime_types: str = "application/pdf,image/jpeg,image/png,image/webp"
+    # `application/xml` este factura electronică (e-Factura, UBL 2.1) — de la 1
+    # iulie 2024 forma obligatorie între firme, deci partea covârșitoare a
+    # facturilor unui cabinet.
+    allowed_mime_types: str = "application/pdf,application/xml,image/jpeg,image/png,image/webp"
 
     # Folosite doar când STORAGE_PROVIDER=s3. Endpoint-ul gol înseamnă AWS; pentru
     # Supabase Storage, Cloudflare R2 sau MinIO se pune adresa lor.
