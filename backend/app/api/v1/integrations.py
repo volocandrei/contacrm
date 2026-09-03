@@ -33,19 +33,20 @@ from sqlalchemy import select
 
 from app.api.deps import DbSession, StorageDep, client_ip, require_permission
 from app.core.config import settings
-from app.core.crypto import encrypt, encryption_available
+from app.core.crypto import decrypt, encrypt, encryption_available
 from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
 from app.core.security import TokenError, decode_state, encode_state
 from app.domain.permissions import Permission
 from app.models.client import Client
-from app.models.drive import DriveConnection, DriveFolder
+from app.models.microsoft import DriveFolder, MailFolder, MicrosoftConnection
 from app.models.user import User
 from app.schemas.common import ApiModel
 from app.services.audit import AuditService
-from app.services.drive import DriveError, DriveSyncService
-from app.services.drive.deps import DriveClientDep
-from app.services.drive.microsoft import authorize_url
+from app.services.microsoft import DriveError, DriveSyncService
+from app.services.microsoft.deps import DriveClientDep
+from app.services.microsoft.graph import authorize_url
+from app.services.microsoft.mail_sync import MailSyncService
 
 logger = get_logger(__name__)
 
@@ -94,6 +95,36 @@ class DriveStatusOut(ApiModel):
     last_sync_at: datetime | None
     last_error: str | None
     folders: list[DriveFolderOut]
+    #: Dosarele de email urmărite. Lista e separată de cea de dosare pentru că
+    #: sunt lucruri diferite: acolo dosarul dă clientul, aici îl dă expeditorul.
+    mail_folders: list[MailFolderOut]
+
+
+class MailFolderOut(ApiModel):
+    id: uuid.UUID
+    folder_id: str
+    display_name: str
+    last_synced_at: datetime | None
+    last_error: str | None
+    files_ingested: int
+    is_active: bool
+
+
+class MailBrowseItemOut(ApiModel):
+    folder_id: str
+    display_name: str
+    total_items: int
+    #: Este deja urmărit? Ca administratorul să nu îl adauge de două ori.
+    is_tracked: bool
+
+
+class TrackMailFolderIn(ApiModel):
+    folder_id: str = Field(min_length=1, max_length=255)
+    display_name: str = Field(min_length=1, max_length=255)
+
+
+class UpdateMailFolderIn(ApiModel):
+    is_active: bool
 
 
 class BrowseItemOut(ApiModel):
@@ -138,16 +169,16 @@ class SyncResultOut(ApiModel):
 # ── Ajutoare ─────────────────────────────────────────────────────────────────
 
 
-def _connection(session: DbSession, organization_id: uuid.UUID) -> DriveConnection | None:
+def _connection(session: DbSession, organization_id: uuid.UUID) -> MicrosoftConnection | None:
     return session.scalars(
-        select(DriveConnection).where(
-            DriveConnection.organization_id == organization_id,
-            DriveConnection.is_active.is_(True),
+        select(MicrosoftConnection).where(
+            MicrosoftConnection.organization_id == organization_id,
+            MicrosoftConnection.is_active.is_(True),
         )
     ).first()
 
 
-def _folders(session: DbSession, connection: DriveConnection) -> list[DriveFolderOut]:
+def _folders(session: DbSession, connection: MicrosoftConnection) -> list[DriveFolderOut]:
     rows = session.execute(
         select(DriveFolder, Client.name)
         .outerjoin(Client, Client.id == DriveFolder.client_id)
@@ -172,7 +203,27 @@ def _folders(session: DbSession, connection: DriveConnection) -> list[DriveFolde
     ]
 
 
-def _require_connection(session: DbSession, organization_id: uuid.UUID) -> DriveConnection:
+def _mail_folders(session: DbSession, connection: MicrosoftConnection) -> list[MailFolderOut]:
+    rows = session.scalars(
+        select(MailFolder)
+        .where(MailFolder.connection_id == connection.id)
+        .order_by(MailFolder.display_name)
+    ).all()
+    return [
+        MailFolderOut(
+            id=folder.id,
+            folder_id=folder.folder_id,
+            display_name=folder.display_name,
+            last_synced_at=folder.last_synced_at,
+            last_error=folder.last_error,
+            files_ingested=folder.files_ingested,
+            is_active=folder.is_active,
+        )
+        for folder in rows
+    ]
+
+
+def _require_connection(session: DbSession, organization_id: uuid.UUID) -> MicrosoftConnection:
     connection = _connection(session, organization_id)
     if connection is None:
         raise AppError(
@@ -216,6 +267,7 @@ def drive_status(session: DbSession, user: SettingsAdmin) -> DriveStatusOut:
         last_sync_at=connection.last_sync_at if connection else None,
         last_error=connection.last_error if connection else None,
         folders=_folders(session, connection) if connection else [],
+        mail_folders=_mail_folders(session, connection) if connection else [],
     )
 
 
@@ -295,7 +347,7 @@ def connect(
         existing.last_error = None
         connection = existing
     else:
-        connection = DriveConnection(
+        connection = MicrosoftConnection(
             organization_id=user.organization_id,
             provider=PROVIDER,
             account_email=account.email[:320],
@@ -311,7 +363,7 @@ def connect(
     AuditService(session).record(
         organization_id=user.organization_id,
         action="DRIVE_CONNECTED",
-        entity_type="DriveConnection",
+        entity_type="MicrosoftConnection",
         entity_id=str(connection.id),
         user_id=user.id,
         user_name=user.full_name,
@@ -335,7 +387,7 @@ def disconnect(session: DbSession, user: SettingsAdmin, request: Request) -> Non
     AuditService(session).record(
         organization_id=user.organization_id,
         action="DRIVE_DISCONNECTED",
-        entity_type="DriveConnection",
+        entity_type="MicrosoftConnection",
         entity_id=str(connection.id),
         user_id=user.id,
         user_name=user.full_name,
@@ -357,8 +409,6 @@ def browse(
 ) -> list[BrowseItemOut]:
     """Subdosarele unui dosar, ca administratorul să aleagă ce urmărim."""
     connection = _require_connection(session, user.organization_id)
-
-    from app.core.crypto import decrypt
 
     try:
         items = drive.list_folders(decrypt(connection.refresh_token), parent_id=parent_id)
@@ -491,12 +541,134 @@ def sync_now(
     """Un tur cerut de om. Automatul rulează oricum, prin `/internal/run-queue`."""
     _require_connection(session, user.organization_id)
 
-    result = DriveSyncService(session, storage, drive).sync_organization(user.organization_id)
+    drive_result = DriveSyncService(session, storage, drive).sync_organization(user.organization_id)
+    mail_result = MailSyncService(session, storage, drive).sync_organization(user.organization_id)
     return SyncResultOut(
-        ingested=result.ingested,
-        failed=result.failed,
-        has_more=result.has_more,
-        folders=[folder.path for folder in result.folders],
+        ingested=drive_result.ingested + mail_result.ingested,
+        failed=drive_result.failed + mail_result.failed,
+        has_more=drive_result.has_more or mail_result.has_more,
+        folders=[folder.path for folder in drive_result.folders]
+        + [folder.display_name for folder in mail_result.folders],
+    )
+
+
+@router.get("/onedrive/mail-folders", response_model=list[MailBrowseItemOut])
+def browse_mail(
+    session: DbSession, user: SettingsAdmin, drive: DriveClientDep
+) -> list[MailBrowseItemOut]:
+    """Dosarele din cutia poștală, ca administratorul să aleagă ce citim.
+
+    Cele mai multe cabinete au o regulă care mută mesajele clienților într-un
+    dosar anume; acela este cel de urmărit, nu Inbox-ul întreg.
+    """
+    connection = _require_connection(session, user.organization_id)
+
+    try:
+        folders = drive.list_mail_folders(decrypt(connection.refresh_token))
+    except DriveError as exc:
+        raise _as_app_error(exc) from exc
+
+    tracked = {
+        row.folder_id
+        for row in session.scalars(
+            select(MailFolder).where(MailFolder.connection_id == connection.id)
+        )
+    }
+    return [
+        MailBrowseItemOut(
+            folder_id=folder.id,
+            display_name=folder.display_name,
+            total_items=folder.total_items,
+            is_tracked=folder.id in tracked,
+        )
+        for folder in folders
+    ]
+
+
+@router.post(
+    "/onedrive/mail-folders", response_model=MailFolderOut, status_code=status.HTTP_201_CREATED
+)
+def track_mail_folder(
+    session: DbSession, user: SettingsAdmin, request: Request, payload: TrackMailFolderIn
+) -> MailFolderOut:
+    connection = _require_connection(session, user.organization_id)
+
+    duplicate = session.scalars(
+        select(MailFolder).where(
+            MailFolder.organization_id == user.organization_id,
+            MailFolder.folder_id == payload.folder_id,
+        )
+    ).first()
+    if duplicate is not None:
+        raise AppError(
+            ErrorCode.CONFLICT,
+            "Dosarul de email este deja urmărit.",
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+    folder = MailFolder(
+        organization_id=user.organization_id,
+        connection_id=connection.id,
+        folder_id=payload.folder_id,
+        display_name=payload.display_name[:255],
+    )
+    session.add(folder)
+    session.flush()
+
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="MAIL_FOLDER_TRACKED",
+        entity_type="MailFolder",
+        entity_id=str(folder.id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=folder.display_name,
+        ip=client_ip(request),
+    )
+    return _one_mail(folder)
+
+
+@router.patch("/onedrive/mail-folders/{folder_id}", response_model=MailFolderOut)
+def update_mail_folder(
+    session: DbSession,
+    user: SettingsAdmin,
+    request: Request,
+    folder_id: uuid.UUID,
+    payload: UpdateMailFolderIn,
+) -> MailFolderOut:
+    folder = _mail_folder(session, user.organization_id, folder_id)
+    folder.is_active = payload.is_active
+
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="MAIL_FOLDER_UPDATED",
+        entity_type="MailFolder",
+        entity_id=str(folder.id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=folder.display_name,
+        ip=client_ip(request),
+    )
+    return _one_mail(folder)
+
+
+@router.delete("/onedrive/mail-folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+def untrack_mail_folder(
+    session: DbSession, user: SettingsAdmin, request: Request, folder_id: uuid.UUID
+) -> None:
+    folder = _mail_folder(session, user.organization_id, folder_id)
+    name = folder.display_name
+
+    session.delete(folder)
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="MAIL_FOLDER_UNTRACKED",
+        entity_type="MailFolder",
+        entity_id=str(folder_id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=name,
+        ip=client_ip(request),
     )
 
 
@@ -547,6 +719,37 @@ def _one(session: DbSession, folder: DriveFolder) -> DriveFolderOut:
         path=folder.path,
         client_id=folder.client_id,
         client_name=client_name,
+        last_synced_at=folder.last_synced_at,
+        last_error=folder.last_error,
+        files_ingested=folder.files_ingested,
+        is_active=folder.is_active,
+    )
+
+
+def _mail_folder(
+    session: DbSession, organization_id: uuid.UUID, folder_id: uuid.UUID
+) -> MailFolder:
+    folder = session.scalars(
+        select(MailFolder).where(
+            MailFolder.id == folder_id,
+            # Granița organizației, în interogare, nu după (R10, §72).
+            MailFolder.organization_id == organization_id,
+        )
+    ).first()
+    if folder is None:
+        raise AppError(
+            ErrorCode.NOT_FOUND,
+            "Dosarul de email nu există.",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return folder
+
+
+def _one_mail(folder: MailFolder) -> MailFolderOut:
+    return MailFolderOut(
+        id=folder.id,
+        folder_id=folder.folder_id,
+        display_name=folder.display_name,
         last_synced_at=folder.last_synced_at,
         last_error=folder.last_error,
         files_ingested=folder.files_ingested,

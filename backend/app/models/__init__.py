@@ -17,7 +17,7 @@ from app.models.document import (
     DocumentType,
     DocumentVersion,
 )
-from app.models.drive import DriveConnection, DriveFolder
+from app.models.microsoft import DriveFolder, MailFolder, MicrosoftConnection
 from app.models.organization import Organization
 from app.models.period import AccountingPeriod, ClientExpectation
 from app.models.task import Task
@@ -43,8 +43,9 @@ ALL_MODELS = (
     DocumentVersion,
     DocumentFieldOverride,
     DocumentProcessingJob,
-    DriveConnection,
     DriveFolder,
+    MailFolder,
+    MicrosoftConnection,
 )
 
 __all__ = [
@@ -62,8 +63,9 @@ __all__ = [
     "DocumentProcessingJob",
     "DocumentType",
     "DocumentVersion",
-    "DriveConnection",
     "DriveFolder",
+    "MailFolder",
+    "MicrosoftConnection",
     "Organization",
     "Permission",
     "RefreshToken",

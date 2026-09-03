@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     # Câte fișiere ia un tur de sincronizare, per dosar. Un dosar cu un an de
     # documente nu trebuie să blocheze coada la prima conectare.
     drive_sync_batch: int = 50
+    # Cate mesaje ia un tur, per dosar de email. Mai mic decat la drive: fiecare
+    # mesaj cu atasamente costa inca o cerere pentru metadatele lor.
+    mail_sync_batch: int = 25
 
     # ── Bază de date ─────────────────────────────────────────────────────────
     database_url: str = (

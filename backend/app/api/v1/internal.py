@@ -36,7 +36,7 @@ from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
 from app.schemas.common import ApiModel
-from app.services.drive.runner import run_drive_sync
+from app.services.microsoft.runner import run_drive_sync
 from app.services.processing_recovery import recover
 from app.worker import run_once
 

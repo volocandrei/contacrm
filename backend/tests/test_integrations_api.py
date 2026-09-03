@@ -26,10 +26,10 @@ from app.core import config as core_config
 from app.core.crypto import decrypt, encrypt
 from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS, RoleCode
 from app.models.client import Client
-from app.models.drive import DriveConnection, DriveFolder
+from app.models.microsoft import DriveFolder, MicrosoftConnection
 from app.models.organization import Organization
 from app.models.user import Permission, Role, User
-from app.services.drive.deps import get_drive_client
+from app.services.microsoft.deps import get_drive_client
 from app.services.storage.local import LocalStorageProvider
 from tests.conftest import requires_db
 from tests.drive_fake import VALID_CODE, VALID_REFRESH, FakeDriveClient, file_item, folder_item
@@ -236,7 +236,7 @@ class TestConsent:
         assert body["connected"] is True
         assert body["accountEmail"] == "contabil@cabinet.test"
 
-        stored = db.scalars(select(DriveConnection)).one()
+        stored = db.scalars(select(MicrosoftConnection)).one()
         # Criptat în bază, dar folosibil: un dump nu dă acces la OneDrive.
         assert stored.refresh_token != VALID_REFRESH
         assert decrypt(stored.refresh_token) == VALID_REFRESH
@@ -532,15 +532,15 @@ class TestDisconnecting:
 
         assert api_drive.delete(URL).status_code == 204
 
-        assert db.scalars(select(DriveConnection)).all() == []
+        assert db.scalars(select(MicrosoftConnection)).all() == []
         # Cascadă: dosarele nu au ce căuta fără conexiunea prin care se citeau.
         assert db.scalars(select(DriveFolder)).all() == []
 
 
 def test_the_fake_and_the_real_client_speak_the_same_protocol() -> None:
     """Altfel testele ar valida un contract pe care implementarea reală nu îl are."""
-    from app.services.drive.base import DriveClient
-    from app.services.drive.microsoft import MicrosoftGraphClient
+    from app.services.microsoft.base import DriveClient
+    from app.services.microsoft.graph import MicrosoftGraphClient
 
     assert isinstance(FakeDriveClient(), DriveClient)
     assert isinstance(

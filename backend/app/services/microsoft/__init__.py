@@ -5,7 +5,7 @@
 `DriveClient` și `DriveSyncService`.
 """
 
-from app.services.drive.base import (
+from app.services.microsoft.base import (
     DeltaPage,
     DriveAccount,
     DriveAuthError,
@@ -14,7 +14,7 @@ from app.services.drive.base import (
     DriveItem,
     DriveTokens,
 )
-from app.services.drive.sync import DriveSyncService, FolderResult, SyncResult
+from app.services.microsoft.drive_sync import DriveSyncService, FolderResult, SyncResult
 
 __all__ = [
     "DeltaPage",

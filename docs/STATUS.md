@@ -80,7 +80,7 @@ previzualizarea documentului. Un token în URL nu este o alternativă (§27).
 > În modul `http` funcționează **tot**, cu o singură excepție: autentificarea,
 > administrarea, CRM-ul, fluxul complet de documente, panoul principal,
 > perioadele, jurnalul de audit, rapoartele și ecranul de setări. Rămâne doar
-> `Comunicare → Mesaje`, care are nevoie de Microsoft Graph și WhatsApp (Faza 2).
+> `Comunicare → Mesaje`, care are nevoie de WhatsApp (Faza 2).
 
 ### Verificări
 
@@ -116,13 +116,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  10.570 linii sursă +  1.410 linii teste  →  113 teste
-backend   14.616 linii sursă + 12.894 linii teste  →  927 teste
+frontend  10.855 linii sursă +  1.410 linii teste  →  113 teste
+backend   15.378 linii sursă + 13.459 linii teste  →  948 teste
 end-to-end   728 linii                             →   22 teste (browser real)
-migrări    1.543 linii
+migrări    1.685 linii
 ```
 
-Toate verificările trec: **1.062 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.083 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -137,7 +137,7 @@ Toate cele **23 de rute** sunt ecrane reale, nu placeholdere:
 | Contabilitate | perioade cu checklist, documente lipsă |
 | Comunicare | mesaje, șabloane, remindere |
 | Rapoarte | agregări calculate în backend, cu filtre pe lună și client |
-| Administrare | utilizatori, roluri, setări, **surse documente (OneDrive)**, jurnal audit |
+| Administrare | utilizatori, roluri, setări, **surse documente (OneDrive + email)**, jurnal audit |
 
 Piesa centrală este **ecranul de verificare**: facsimilul documentului lângă
 câmpurile extrase, fiecare câmp cu proveniența lui (`AI 81%`, „corectat manual",
@@ -151,7 +151,7 @@ Alte lucruri gata: temă light/dark persistată, filtre în URL (o listă filtra
 poate trimite unui coleg), sidebar colapsabil cu contoare live, accesibilitate
 consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 
-### Backend — M2–M9 complet ✅
+### Backend — M2–M10 complet ✅
 
 **M2 — schelet**
 - FastAPI cu fabrică `create_app()`, fără efecte secundare la import
@@ -450,7 +450,7 @@ din Faza 2.
 | ~~`GET /periods`, `GET /periods/missing`, `GET /clients/:id/periods`~~ | ✅ M6 |
 | ~~`POST /documents/bulk`, `GET /audit-logs`~~ | ✅ M6 |
 | ~~`GET /reports/summary`, `GET /settings`, `POST /documents/upload`~~ | ✅ M7 |
-| ~~`/integrations/onedrive/*` — 9 rute~~ | ✅ M9 |
+| ~~`/integrations/onedrive/*` — 13 rute~~ | ✅ M9, M10 |
 | `GET /messages`, `GET /clients/:id/messages` | Faza 2 |
 
 Contractul fiecăreia este deja definit: `frontend/src/types/domain.ts` spune exact
@@ -473,7 +473,8 @@ ci portat.**
 | **M7** | Rapoarte în SQL, setări reale, extracție din PDF, factura electronică, identificarea clientului, încărcare | ✅ (notificările au trecut în Faza 2 — cer un provider de email sau WhatsApp) |
 | **M8** | CI + teste E2E | ✅ |
 | **M9** | **Preluare automată din OneDrive/SharePoint, un dosar per client** | ✅ |
-| Faza 2 | Microsoft Graph, WhatsApp, sincronizare ANAF (descărcare/trimitere e-Factura), OCR real pentru scanuri, remindere, export ZIP | |
+| **M10** | **Preluare automată din email; expeditorul identifică clientul** | ✅ |
+| Faza 2 | WhatsApp, sincronizare ANAF (descărcare/trimitere e-Factura), OCR real pentru scanuri, remindere, export ZIP | |
 | Faza 3 | Integrare software contabil, rapoarte avansate, detecție anomalii | |
 
 **MVP = M1–M8.**
@@ -709,6 +710,40 @@ query nu trece prin `ApiModel`, deci nu primește aliasul camelCase de la sine;
 FastAPI căuta `parent_id`, nu găsea nimic și răspundea tăcut cu rădăcina.
 Răsfoirea *părea* că merge, dar nu cobora niciodată într-un subdosar. Aceeași
 clasă de defect ca „filtrele de listă nu se legau deloc", din M6.
+
+**M10 — preluarea din email**
+
+Cealaltă jumătate a lui *„ce documente trimit domnii clienți"*: unii le pun în
+dosarul lor din OneDrive, ceilalți le trimit pe email. Acum amândouă drumurile
+duc în același loc, pe **aceeași conexiune Microsoft** — un singur consimțământ,
+două surse.
+
+**Aici clientul îl dă expeditorul, nu dosarul.** Este singura diferență de fond
+față de M9, și ea decide restul: într-o cutie poștală intră toți clienții
+deodată, deci maparea trebuie făcută pe mesaj. Adresa de pe email se caută
+printre contactele din CRM (`contacts.email`), care există de la M4. Consecința
+practică pentru cabinet: ce trebuie ținut la zi sunt **adresele de contact**, nu
+o mapare de dosare.
+
+Un expeditor necunoscut nu oprește nimic — atașamentul intră și rămâne
+neatribuit. Mai bine să ajungă la un om decât să nu intre deloc: atunci nimeni nu
+ar ști că a venit. Iar o adresă care apare la doi clienți — un contabil care e
+contact la două firme — nu se ghicește: se scoate din hartă și decide omul.
+
+**Ce nu este un document.** Logo-ul din semnătura expeditorului este tot un
+atașament. Se sar cele marcate `inline` și cele sub 8 KB; altfel fiecare email ar
+produce trei „documente" de respins manual, iar o listă plină de gunoi se citește
+la fel de prost ca una goală.
+
+**O redenumire, făcută acum cât nu costă.** `drive_connections` ținea deja un
+cont Microsoft, nu un drive: același token deschide și OneDrive, și cutia
+poștală. Numele devenea o minciună în momentul în care emailul se adaugă pe
+aceeași conexiune. Tabela este acum `microsoft_connections`, iar pachetul
+`app/services/microsoft/`.
+
+**Ce rămâne neverificat, la fel ca la M9:** clientul HTTP care chiar vorbește cu
+Graph. Restul — potrivirea expeditorului, idempotența, filtrarea semnăturilor,
+erorile, granița organizației — se exercită cu un client fals, prin protocol.
 
 **M8 — CI**
 

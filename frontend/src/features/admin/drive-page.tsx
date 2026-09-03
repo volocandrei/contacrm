@@ -1,5 +1,5 @@
 /**
- * Surse de documente — legătura cu OneDrive/SharePoint (M9).
+ * Surse de documente — OneDrive/SharePoint (M9) și cutia poștală (M10).
  *
  * Ecranul rezolvă cererea cabinetului: *„să îmi preia automat ce documente
  * trimit clienții, să nu mai stau eu să le descarc și să le numesc manual"*.
@@ -25,6 +25,7 @@ import {
   CloudOff,
   FolderOpen,
   FolderPlus,
+  Mail,
   LoaderCircle,
   RefreshCw,
   Trash2,
@@ -36,7 +37,10 @@ import {
   useDisconnectDrive,
   useDriveBrowse,
   useDriveStatus,
+  useMailFolders,
   useSyncDrive,
+  useTrackMailFolder,
+  useUntrackMailFolder,
   useTrackFolder,
   useUntrackFolder,
   useUpdateDriveFolder,
@@ -58,11 +62,12 @@ export function DrivePage() {
     <div className="space-y-6">
       <PageHeader
         title="Surse de documente"
-        description="Dosarele din OneDrive din care documentele sunt preluate automat"
+        description="Dosarele din OneDrive și din email din care documentele sunt preluate automat"
       />
       <ConnectionPanel status={data} />
       {data.connected && <FoldersPanel status={data} />}
       {data.connected && <BrowsePanel status={data} />}
+      {data.connected && <MailPanel status={data} />}
     </div>
   );
 }
@@ -156,7 +161,10 @@ function ConnectionPanel({ status }: { status: DriveStatus }) {
             <button
               type="button"
               onClick={() => sync.mutate(undefined)}
-              disabled={sync.isPending || status.folders.length === 0}
+              disabled={
+                sync.isPending ||
+                (status.folders.length === 0 && status.mailFolders.length === 0)
+              }
               className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               <RefreshCw
@@ -396,6 +404,109 @@ function BrowsePanel({ status }: { status: DriveStatus }) {
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           {track.error instanceof ApiError ? track.error.message : "Dosarul nu a putut fi adăugat."}
         </p>
+      )}
+    </Panel>
+  );
+}
+
+/* ─── Cutia poștală ────────────────────────────────────────────────────────── */
+
+/**
+ * Dosarele de email urmărite.
+ *
+ * Diferența față de dosarele de drive este spusă pe ecran, nu presupusă: aici nu
+ * există coloană „Client", pentru că într-o cutie poștală intră toți clienții
+ * deodată. Clientul îl dă **expeditorul**, potrivit pe contactele din CRM — deci
+ * ce trebuie ținut la zi sunt adresele de contact, nu o mapare de dosare.
+ */
+function MailPanel({ status }: { status: DriveStatus }) {
+  const { data: available, isLoading, error } = useMailFolders(status.connected);
+  const track = useTrackMailFolder();
+  const untrack = useUntrackMailFolder();
+
+  return (
+    <Panel title="Dosare de email urmărite">
+      <p className="mb-4 flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:bg-blue-900/20 dark:text-blue-200">
+        <Mail className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>
+          Aici clientul îl dă <strong>expeditorul</strong>, nu dosarul: adresa de pe mesaj se
+          caută printre contactele clienților. Un expeditor necunoscut nu oprește nimic —
+          atașamentul intră și ajunge la verificare neatribuit.
+        </span>
+      </p>
+
+      {status.mailFolders.length > 0 && (
+        <ul className="mb-4 divide-y divide-gray-100 dark:divide-gray-800">
+          {status.mailFolders.map((folder) => (
+            <li key={folder.id} className="flex items-center gap-3 py-2">
+              <Mail className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {folder.displayName}
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {folder.filesIngested} documente ·{" "}
+                  {folder.lastSyncedAt
+                    ? `ultima sincronizare ${formatDateTime(folder.lastSyncedAt)}`
+                    : "încă nesincronizat"}
+                </span>
+                {folder.lastError && (
+                  <span role="alert" className="block text-xs text-red-600 dark:text-red-400">
+                    {folder.lastError}
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => untrack.mutate(folder.id)}
+                disabled={untrack.isPending}
+                aria-label={`Nu mai urmări ${folder.displayName}`}
+                className="rounded-md p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {error ? (
+        <ErrorState error={error} />
+      ) : isLoading ? (
+        <p className="flex items-center gap-2 py-4 text-sm text-gray-500">
+          <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+          Se citesc dosarele…
+        </p>
+      ) : (
+        <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          {(available ?? []).map((item) => (
+            <li key={item.folderId} className="flex items-center gap-3 py-2">
+              <Mail className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-sm text-gray-900 dark:text-gray-100">
+                {item.displayName}
+                <span className="ml-2 text-xs text-gray-500">{item.totalItems} mesaje</span>
+              </span>
+              {item.isTracked ? (
+                <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                  <CircleCheck className="h-4 w-4" aria-hidden="true" />
+                  urmărit
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() =>
+                    track.mutate({ folderId: item.folderId, displayName: item.displayName })
+                  }
+                  disabled={track.isPending}
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                >
+                  <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Urmărește
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </Panel>
   );

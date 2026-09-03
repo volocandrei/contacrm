@@ -1,10 +1,11 @@
-"""Legătura cu OneDrive/SharePoint (M9).
+"""Legătura cu contul Microsoft al cabinetului (M9, M10).
 
 Două tabele, cu roluri clar despărțite:
 
-`drive_connections` — **contul** prin care citim. Unul singur activ per
+`microsoft_connections` — **contul** prin care citim. Unul singur activ per
 organizație: cabinetul se conectează cu contul lui Microsoft, iar de acolo vede
-tot ce vede și în browser, inclusiv dosarele partajate de clienți.
+tot ce vede și în browser — dosarele partajate de clienți **și** cutia poștală.
+Un singur consimțământ, două surse de documente.
 
 `drive_folders` — **dosarele urmărite**, fiecare legat de un client. Asta este
 piesa care rezolvă cererea: contabilul are deja un dosar per client, iar
@@ -38,16 +39,16 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, OrganizationMixin, TimestampMixin, uuid_pk
 
 
-class DriveConnection(Base, OrganizationMixin, TimestampMixin):
-    """Contul Microsoft prin care cabinetul citește dosarele."""
+class MicrosoftConnection(Base, OrganizationMixin, TimestampMixin):
+    """Contul Microsoft prin care cabinetul citește dosarele și emailurile."""
 
-    __tablename__ = "drive_connections"
+    __tablename__ = "microsoft_connections"
     __table_args__ = (
         CheckConstraint("provider IN ('microsoft')", name="provider"),
         # O singură conexiune activă per organizație și provider. Index **parțial**:
         # o conexiune veche, dezactivată, nu trebuie să blocheze reconectarea.
         Index(
-            "uq_drive_connections_active",
+            "uq_microsoft_connections_active",
             "organization_id",
             "provider",
             unique=True,
@@ -80,9 +81,12 @@ class DriveConnection(Base, OrganizationMixin, TimestampMixin):
     folders: Mapped[list[DriveFolder]] = relationship(
         back_populates="connection", cascade="all, delete-orphan"
     )
+    mail_folders: Mapped[list[MailFolder]] = relationship(
+        back_populates="connection", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
-        return f"<DriveConnection {self.provider} {self.account_email!r}>"
+        return f"<MicrosoftConnection {self.provider} {self.account_email!r}>"
 
 
 class DriveFolder(Base, OrganizationMixin, TimestampMixin):
@@ -99,7 +103,7 @@ class DriveFolder(Base, OrganizationMixin, TimestampMixin):
 
     id: Mapped[uuid_pk]
     connection_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("drive_connections.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("microsoft_connections.id", ondelete="CASCADE"), nullable=False
     )
     #: Clientul căruia îi aparțin documentele din dosar. `NULL` înseamnă „încă
     #: nemapat": fișierele intră, dar rămân `UNMATCHED` și așteaptă un om — la fel
@@ -123,7 +127,47 @@ class DriveFolder(Base, OrganizationMixin, TimestampMixin):
     files_ingested: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    connection: Mapped[DriveConnection] = relationship(back_populates="folders")
+    connection: Mapped[MicrosoftConnection] = relationship(back_populates="folders")
 
     def __repr__(self) -> str:
         return f"<DriveFolder {self.path!r}>"
+
+
+class MailFolder(Base, OrganizationMixin, TimestampMixin):
+    """Un dosar din cutia poștală, din ale cărui mesaje luăm atașamentele.
+
+    **Diferența de fond față de `DriveFolder`: cine dă clientul.** La drive,
+    dosarul — contabilul l-a mapat o dată și gata. La email, dosarul nu spune
+    nimic: într-o cutie poștală intră toți clienții deodată. Clientul îl dă
+    **expeditorul**, potrivit pe adresele de contact din CRM (`contacts.email`).
+
+    Consecința practică: aici nu există `client_id`. Un mesaj de la o adresă
+    necunoscută intră oricum, dar rămâne neatribuit și așteaptă un om — mai bine
+    decât să nu intre deloc, pentru că atunci nimeni nu ar ști că a venit.
+    """
+
+    __tablename__ = "mail_folders"
+    __table_args__ = (
+        # Același dosar citit de două ori ar produce două intake-uri per atașament.
+        UniqueConstraint("organization_id", "folder_id", name="uq_mail_folders_folder"),
+        Index("ix_mail_folders_connection_id", "connection_id"),
+    )
+
+    id: Mapped[uuid_pk]
+    connection_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("microsoft_connections.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Identificatorul dosarului la Graph. `inbox` este un nume rezervat pe care
+    #: îl acceptă direct, deci merge și fără să răsfoim întâi.
+    folder_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    delta_token: Mapped[str | None] = mapped_column(Text, default=None)
+    last_synced_at: Mapped[datetime | None] = mapped_column(default=None)
+    last_error: Mapped[str | None] = mapped_column(String(512), default=None)
+    files_ingested: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    connection: Mapped[MicrosoftConnection] = relationship(back_populates="mail_folders")
+
+    def __repr__(self) -> str:
+        return f"<MailFolder {self.display_name!r}>"

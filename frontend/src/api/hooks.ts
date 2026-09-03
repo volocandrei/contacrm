@@ -43,6 +43,7 @@ export const queryKeys = {
   settings: ["settings"] as const,
   driveStatus: ["drive", "status"] as const,
   driveBrowse: (parentId?: string) => ["drive", "browse", parentId ?? null] as const,
+  driveMailFolders: ["drive", "mail-folders"] as const,
 };
 
 /* ─── Interogări ───────────────────────────────────────────────────────────── */
@@ -209,6 +210,29 @@ export function useUpdateDriveFolder() {
 
 export function useUntrackFolder() {
   return useDriveMutation((id: string) => drive.untrackFolder(id));
+}
+
+export function useMailFolders(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.driveMailFolders,
+    queryFn: drive.browseMail,
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+export function useTrackMailFolder() {
+  return useDriveMutation(drive.trackMailFolder);
+}
+
+export function useUpdateMailFolder() {
+  return useDriveMutation(({ id, isActive }: { id: string; isActive: boolean }) =>
+    drive.updateMailFolder(id, isActive),
+  );
+}
+
+export function useUntrackMailFolder() {
+  return useDriveMutation((id: string) => drive.untrackMailFolder(id));
 }
 
 export function useSyncDrive() {

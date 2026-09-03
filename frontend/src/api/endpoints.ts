@@ -19,6 +19,8 @@ import type {
   DriveFolder,
   DriveStatus,
   DriveSyncResult,
+  MailBrowseItem,
+  MailFolder,
   ReportSummary,
   SettingEntry,
   Task,
@@ -144,4 +146,12 @@ export const drive = {
     api.patch<DriveFolder>(`/integrations/onedrive/folders/${id}`, { ...input }),
   untrackFolder: (id: string) => api.delete<void>(`/integrations/onedrive/folders/${id}`),
   sync: () => api.post<DriveSyncResult>("/integrations/onedrive/sync"),
+  // Cutia poștală: aceeași conexiune, alt fel de sursă.
+  browseMail: () => api.get<MailBrowseItem[]>("/integrations/onedrive/mail-folders"),
+  trackMailFolder: (input: { folderId: string; displayName: string }) =>
+    api.post<MailFolder>("/integrations/onedrive/mail-folders", { ...input }),
+  updateMailFolder: (id: string, isActive: boolean) =>
+    api.patch<MailFolder>(`/integrations/onedrive/mail-folders/${id}`, { isActive }),
+  untrackMailFolder: (id: string) =>
+    api.delete<void>(`/integrations/onedrive/mail-folders/${id}`),
 };

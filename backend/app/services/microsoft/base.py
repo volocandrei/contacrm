@@ -64,6 +64,50 @@ class DeltaPage:
 
 
 @dataclass(frozen=True, slots=True)
+class MailFolderInfo:
+    """Un dosar din cutia poștală, la răsfoire."""
+
+    id: str
+    display_name: str
+    #: Câte mesaje are. Se afișează ca administratorul să recunoască dosarul.
+    total_items: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class MailAttachment:
+    """Un atașament. Conținutul vine separat, ca fluxul să nu stea în memorie."""
+
+    id: str
+    name: str
+    size: int
+    content_type: str | None = None
+    #: Logo-ul din semnătura expeditorului este tot un atașament. Nu este document.
+    is_inline: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class MailMessage:
+    """Un mesaj, redus la ce contează pentru intake."""
+
+    id: str
+    #: Adresa expeditorului — **cheia identificării clientului** (`contacts.email`).
+    sender: str
+    subject: str
+    received_at: datetime | None = None
+    attachments: tuple[MailAttachment, ...] = ()
+    deleted: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class MailPage:
+    """Ce s-a schimbat în dosarul de email de la ultima citire."""
+
+    messages: tuple[MailMessage, ...] = ()
+    delta_token: str | None = None
+    has_more: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class DriveTokens:
     """Ce întoarce Microsoft după consimțământ."""
 
@@ -125,4 +169,22 @@ class DriveClient(Protocol):
         calculează dimensiunea și hash-ul în timp ce trece. Un PDF de 20 MB nu
         are de ce să existe întreg în memorie.
         """
+        ...
+
+    # ── Cutia poștală (M10) ─────────────────────────────────────────────────
+
+    def list_mail_folders(self, refresh_token: str) -> tuple[MailFolderInfo, ...]:
+        """Dosarele din cutia poștală, ca administratorul să aleagă ce citim."""
+        ...
+
+    def mail_delta(
+        self, refresh_token: str, *, folder_id: str, token: str | None, limit: int
+    ) -> MailPage:
+        """Mesajele apărute în dosar de la `token` încoace, cu atașamentele lor."""
+        ...
+
+    def download_attachment(
+        self, refresh_token: str, *, message_id: str, attachment_id: str
+    ) -> BinaryIO:
+        """Conținutul unui atașament."""
         ...

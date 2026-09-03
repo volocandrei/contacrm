@@ -26,10 +26,10 @@ from app.core.crypto import encrypt
 from app.domain.enums import DocumentSource, DocumentStatus, IntakeStatus
 from app.models.client import Client
 from app.models.document import Document, DocumentIntake, DocumentProcessingJob
-from app.models.drive import DriveConnection, DriveFolder
+from app.models.microsoft import DriveFolder, MicrosoftConnection
 from app.models.organization import Organization
-from app.services.drive.base import DeltaPage
-from app.services.drive.sync import DriveSyncService
+from app.services.microsoft.base import DeltaPage
+from app.services.microsoft.drive_sync import DriveSyncService
 from app.services.storage.local import LocalStorageProvider
 from tests.conftest import requires_db
 from tests.drive_fake import (
@@ -73,10 +73,10 @@ def drive() -> FakeDriveClient:
 
 
 @pytest.fixture
-def connection(db: Session, org: Organization) -> DriveConnection:
+def connection(db: Session, org: Organization) -> MicrosoftConnection:
     from datetime import UTC, datetime
 
-    row = DriveConnection(
+    row = MicrosoftConnection(
         organization_id=org.id,
         provider="microsoft",
         account_email="contabil@cabinet.test",
@@ -89,7 +89,7 @@ def connection(db: Session, org: Organization) -> DriveConnection:
 
 
 @pytest.fixture
-def folder(db: Session, org: Organization, connection: DriveConnection, client_row: Client):
+def folder(db: Session, org: Organization, connection: MicrosoftConnection, client_row: Client):
     row = DriveFolder(
         organization_id=org.id,
         connection_id=connection.id,

@@ -13,8 +13,8 @@ from typing import Annotated
 from fastapi import Depends
 
 from app.core.config import settings
-from app.services.drive.base import DriveClient
-from app.services.drive.microsoft import MicrosoftGraphClient
+from app.services.microsoft.base import DriveClient
+from app.services.microsoft.graph import MicrosoftGraphClient
 
 
 @lru_cache

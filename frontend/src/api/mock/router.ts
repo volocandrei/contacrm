@@ -169,6 +169,30 @@ const routes: Route[] = [
     handler: () => store.syncDrive(),
   },
   {
+    method: "GET",
+    pattern: "/integrations/onedrive/mail-folders",
+    handler: () => store.browseMailFolders(),
+  },
+  {
+    method: "POST",
+    pattern: "/integrations/onedrive/mail-folders",
+    handler: ({ body }) =>
+      store.trackMailFolder({
+        folderId: str(body, "folderId"),
+        displayName: str(body, "displayName"),
+      }),
+  },
+  {
+    method: "PATCH",
+    pattern: "/integrations/onedrive/mail-folders/:id",
+    handler: ({ params, body }) => store.updateMailFolder(params.id!, body.isActive as boolean),
+  },
+  {
+    method: "DELETE",
+    pattern: "/integrations/onedrive/mail-folders/:id",
+    handler: ({ params }) => store.untrackMailFolder(params.id!),
+  },
+  {
     method: "POST",
     pattern: "/integrations/onedrive/folders",
     handler: ({ body }) =>

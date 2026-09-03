@@ -43,6 +43,8 @@ import type {
   DriveFolder,
   DriveStatus,
   DriveSyncResult,
+  MailBrowseItem,
+  MailFolder,
   Permission,
   ReportBucket,
   ReportSummary,
@@ -1066,12 +1068,20 @@ const MOCK_DRIVE_TREE: Record<string, Array<{ itemId: string; name: string }>> =
   })),
 };
 
+/** Dosarele din cutia poștală, ca într-un Outlook obișnuit. */
+const MOCK_MAIL_FOLDERS: Array<{ folderId: string; displayName: string; totalItems: number }> = [
+  { folderId: "inbox", displayName: "Inbox", totalItems: 1284 },
+  { folderId: "m-documente", displayName: "Documente clienți", totalItems: 213 },
+  { folderId: "m-facturi", displayName: "Facturi primite", totalItems: 97 },
+];
+
 type MockDriveState = {
   connected: boolean;
   accountEmail: string | null;
   connectedAt: string | null;
   lastSyncAt: string | null;
   folders: DriveFolder[];
+  mailFolders: MailFolder[];
 };
 
 const driveState: MockDriveState = {
@@ -1080,6 +1090,7 @@ const driveState: MockDriveState = {
   connectedAt: null,
   lastSyncAt: null,
   folders: [],
+  mailFolders: [],
 };
 
 let driveFolderCounter = 0;
@@ -1098,6 +1109,7 @@ export function getDriveStatus(): DriveStatus {
     lastSyncAt: driveState.lastSyncAt,
     lastError: null,
     folders: driveState.folders,
+    mailFolders: driveState.mailFolders,
   };
 }
 
@@ -1128,6 +1140,7 @@ export function disconnectDrive(): void {
   driveState.lastSyncAt = null;
   // Dosarele nu au ce căuta fără conexiunea prin care se citeau.
   driveState.folders = [];
+  driveState.mailFolders = [];
 }
 
 export function browseDrive(parentId?: string): DriveBrowseItem[] {
@@ -1205,6 +1218,59 @@ export function untrackDriveFolder(id: string): void {
   recordAudit("DRIVE_FOLDER_UNTRACKED", "DriveFolder", id, folder.path);
 }
 
+let mailFolderCounter = 0;
+
+export function browseMailFolders(): MailBrowseItem[] {
+  requirePermission("admin:settings");
+  if (!driveState.connected) {
+    throw new ApiError("CONFLICT", "Niciun cont Microsoft conectat.", 409);
+  }
+
+  const tracked = new Set(driveState.mailFolders.map((folder) => folder.folderId));
+  return MOCK_MAIL_FOLDERS.map((folder) => ({
+    ...folder,
+    isTracked: tracked.has(folder.folderId),
+  }));
+}
+
+export function trackMailFolder(input: { folderId: string; displayName: string }): MailFolder {
+  requirePermission("admin:settings");
+  if (driveState.mailFolders.some((folder) => folder.folderId === input.folderId)) {
+    throw new ApiError("CONFLICT", "Dosarul de email este deja urmărit.", 409);
+  }
+
+  mailFolderCounter += 1;
+  const folder: MailFolder = {
+    id: `mail-folder-${mailFolderCounter}`,
+    folderId: input.folderId,
+    displayName: input.displayName,
+    lastSyncedAt: null,
+    lastError: null,
+    filesIngested: 0,
+    isActive: true,
+  };
+  driveState.mailFolders.push(folder);
+  recordAudit("MAIL_FOLDER_TRACKED", "MailFolder", folder.id, folder.displayName);
+  return folder;
+}
+
+export function updateMailFolder(id: string, isActive: boolean): MailFolder {
+  requirePermission("admin:settings");
+  const folder =
+    driveState.mailFolders.find((row) => row.id === id) ?? notFound("MailFolder", id);
+  folder.isActive = isActive;
+  recordAudit("MAIL_FOLDER_UPDATED", "MailFolder", folder.id, folder.displayName);
+  return folder;
+}
+
+export function untrackMailFolder(id: string): void {
+  requirePermission("admin:settings");
+  const folder =
+    driveState.mailFolders.find((row) => row.id === id) ?? notFound("MailFolder", id);
+  driveState.mailFolders = driveState.mailFolders.filter((row) => row.id !== id);
+  recordAudit("MAIL_FOLDER_UNTRACKED", "MailFolder", id, folder.displayName);
+}
+
 export function syncDrive(): DriveSyncResult {
   requirePermission("admin:settings");
   if (!driveState.connected) {
@@ -1212,6 +1278,7 @@ export function syncDrive(): DriveSyncResult {
   }
 
   const active = driveState.folders.filter((folder) => folder.isActive);
+  const activeMail = driveState.mailFolders.filter((folder) => folder.isActive);
   let ingested = 0;
 
   for (const folder of active) {
@@ -1231,8 +1298,30 @@ export function syncDrive(): DriveSyncResult {
     ingested += 1;
   }
 
+  // Emailul: clientul il da expeditorul, deci in demonstratie atribuim unul
+  // dintre clientii activi — ca pe ecran sa se vada cazul identificat.
+  for (const folder of activeMail) {
+    const sender = ACTIVE_CLIENTS[Math.floor(Math.random() * ACTIVE_CLIENTS.length)];
+    const document = uploadDocument({
+      filename: `factura-${randomDay()}.pdf`,
+      size: 210_000,
+      mimeType: "application/pdf",
+    });
+    document.source = "EMAIL";
+    document.clientId = sender?.id ?? null;
+    document.clientName = sender?.name ?? null;
+    folder.filesIngested += 1;
+    folder.lastSyncedAt = MOCK_NOW;
+    ingested += 1;
+  }
+
   driveState.lastSyncAt = MOCK_NOW;
-  return { ingested, failed: 0, hasMore: false, folders: active.map((f) => f.path) };
+  return {
+    ingested,
+    failed: 0,
+    hasMore: false,
+    folders: [...active.map((f) => f.path), ...activeMail.map((f) => f.displayName)],
+  };
 }
 
 /** Ziua din numele fișierului. Doar ca documentele simulate să nu arate identic. */

@@ -42,11 +42,11 @@ from app.core.crypto import TokenDecryptionError, decrypt
 from app.core.logging import get_logger
 from app.domain.enums import DocumentSource, IntakeStatus
 from app.models.document import DocumentIntake
-from app.models.drive import DriveConnection, DriveFolder
+from app.models.microsoft import DriveFolder, MicrosoftConnection
 from app.services.audit import AuditService
 from app.services.document_upload import DocumentUploadService
-from app.services.drive.base import DriveAuthError, DriveClient, DriveError, DriveItem
 from app.services.files import FileValidationError
+from app.services.microsoft.base import DriveAuthError, DriveClient, DriveError, DriveItem
 from app.services.processing_queue import enqueue as enqueue_processing
 from app.services.storage import StorageProvider
 
@@ -111,9 +111,9 @@ class DriveSyncService:
         result = SyncResult()
 
         connection = self.session.scalars(
-            select(DriveConnection).where(
-                DriveConnection.organization_id == organization_id,
-                DriveConnection.is_active.is_(True),
+            select(MicrosoftConnection).where(
+                MicrosoftConnection.organization_id == organization_id,
+                MicrosoftConnection.is_active.is_(True),
             )
         ).first()
         if connection is None:
@@ -146,7 +146,7 @@ class DriveSyncService:
         return result
 
     def _sync_folder(
-        self, connection: DriveConnection, folder: DriveFolder, refresh_token: str
+        self, connection: MicrosoftConnection, folder: DriveFolder, refresh_token: str
     ) -> FolderResult:
         outcome = FolderResult(folder_id=folder.id, path=folder.path)
 
@@ -182,7 +182,7 @@ class DriveSyncService:
 
     def _take(
         self,
-        connection: DriveConnection,
+        connection: MicrosoftConnection,
         folder: DriveFolder,
         item: DriveItem,
         refresh_token: str,

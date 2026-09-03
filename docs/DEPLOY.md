@@ -214,6 +214,22 @@ De atunci, fiecare bătaie de cron aduce ce e nou. Un dosar rămas fără client
 atribuit nu blochează nimic: documentele intră și ajung la verificare
 neatribuite, ca oricare altele.
 
+### Emailul, pe aceeași conexiune
+
+Același consimțământ acoperă și cutia poștală (scope-ul `Mail.Read`, tot doar
+citire). În aceeași pagină, secțiunea **Dosare de email urmărite**: alege dosarul
+în care ajung mesajele clienților — de obicei unul creat cu o regulă de Outlook,
+nu Inbox-ul întreg.
+
+**Aici clientul îl dă expeditorul, nu dosarul.** Într-o cutie poștală intră toți
+clienții deodată, deci adresa de pe mesaj se caută printre contactele din CRM.
+Consecința practică: ce trebuie ținut la zi sunt **adresele de contact ale
+clienților**, nu o mapare de dosare. Un expeditor necunoscut nu oprește nimic —
+atașamentul intră și ajunge la verificare neatribuit.
+
+Nu tot ce e atașat este document: logo-urile din semnături sunt sărite (marcate
+`inline`, sau sub 8 KB), la fel ca fișierele de tip neacceptat.
+
 ---
 
 ## Alternativa: un singur serviciu cu proces continuu

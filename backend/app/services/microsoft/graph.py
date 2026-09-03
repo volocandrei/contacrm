@@ -16,6 +16,9 @@ Scope-urile cerute:
                        dosarele partajate de clienți. **Doar citire**: nu avem ce
                        căuta scriind în OneDrive-ul altcuiva.
   `User.Read`        — cine este contul, ca să se vadă pe ecran.
+  `Mail.Read`        — citește mesajele contului, ca să luăm atașamentele pe
+                       care clienții le trimit pe email. **Doar citire**: nu se
+                       trimite, nu se șterge, nu se marchează nimic.
   `offline_access`   — fără el nu primim refresh token, deci nu există
                        sincronizare automată, doar una manuală la fiecare oră.
 """
@@ -30,13 +33,17 @@ from urllib.parse import urlencode
 import httpx
 
 from app.core.logging import get_logger
-from app.services.drive.base import (
+from app.services.microsoft.base import (
     DeltaPage,
     DriveAccount,
     DriveAuthError,
     DriveError,
     DriveItem,
     DriveTokens,
+    MailAttachment,
+    MailFolderInfo,
+    MailMessage,
+    MailPage,
 )
 
 logger = get_logger(__name__)
@@ -44,7 +51,7 @@ logger = get_logger(__name__)
 GRAPH: Final = "https://graph.microsoft.com/v1.0"
 LOGIN: Final = "https://login.microsoftonline.com"
 
-SCOPES: Final = ("offline_access", "User.Read", "Files.Read.All")
+SCOPES: Final = ("offline_access", "User.Read", "Files.Read.All", "Mail.Read")
 
 #: Cât așteptăm un răspuns. Descărcarea unui fișier poate dura; o listare nu.
 TIMEOUT: Final = httpx.Timeout(30.0, read=120.0)
@@ -249,6 +256,104 @@ class MicrosoftGraphClient:
                 retryable=response.status_code in RETRYABLE_STATUS,
             )
         return io.BytesIO(response.content)
+
+    # ── Cutia poștală (M10) ─────────────────────────────────────────────────
+
+    def list_mail_folders(self, refresh_token: str) -> tuple[MailFolderInfo, ...]:
+        access = self._access_token(refresh_token)
+        body = self._get(access, f"{GRAPH}/me/mailFolders?$top=100")
+        return tuple(
+            MailFolderInfo(
+                id=str(row.get("id") or ""),
+                display_name=str(row.get("displayName") or ""),
+                total_items=int(row.get("totalItemCount") or 0),
+            )
+            for row in body.get("value") or []
+        )
+
+    def mail_delta(
+        self, refresh_token: str, *, folder_id: str, token: str | None, limit: int
+    ) -> MailPage:
+        access = self._access_token(refresh_token)
+        # `delta` pe mesaje nu poate cere atașamentele odată cu ele, deci se cer
+        # separat, per mesaj — dar numai pentru cele care chiar au `hasAttachments`.
+        url = token or (
+            f"{GRAPH}/me/mailFolders/{folder_id}/messages/delta"
+            f"?$top={limit}&$select=id,subject,from,receivedDateTime,hasAttachments"
+        )
+        body = self._get(access, url)
+
+        messages: list[MailMessage] = []
+        for row in body.get("value") or []:
+            message_id = str(row.get("id") or "")
+            if not message_id:
+                continue
+            deleted = "@removed" in row
+            attachments: tuple[MailAttachment, ...] = ()
+            if row.get("hasAttachments") and not deleted:
+                attachments = self._attachments(access, message_id)
+            messages.append(
+                MailMessage(
+                    id=message_id,
+                    sender=_sender(row),
+                    subject=str(row.get("subject") or ""),
+                    received_at=_parse_datetime(row.get("receivedDateTime")),
+                    attachments=attachments,
+                    deleted=deleted,
+                )
+            )
+
+        next_link = body.get("@odata.nextLink")
+        delta_link = body.get("@odata.deltaLink")
+        return MailPage(
+            messages=tuple(messages),
+            delta_token=str(next_link or delta_link) if (next_link or delta_link) else None,
+            has_more=bool(next_link),
+        )
+
+    def _attachments(self, access_token: str, message_id: str) -> tuple[MailAttachment, ...]:
+        """Metadatele atașamentelor. Conținutul se cere abia când chiar îl luăm."""
+        body = self._get(
+            access_token,
+            f"{GRAPH}/me/messages/{message_id}/attachments"
+            "?$select=id,name,size,contentType,isInline",
+        )
+        return tuple(
+            MailAttachment(
+                id=str(row.get("id") or ""),
+                name=str(row.get("name") or ""),
+                size=int(row.get("size") or 0),
+                content_type=row.get("contentType"),
+                is_inline=bool(row.get("isInline")),
+            )
+            for row in body.get("value") or []
+        )
+
+    def download_attachment(
+        self, refresh_token: str, *, message_id: str, attachment_id: str
+    ) -> BinaryIO:
+        access = self._access_token(refresh_token)
+        url = f"{GRAPH}/me/messages/{message_id}/attachments/{attachment_id}/$value"
+        try:
+            with self._http() as http:
+                response = http.get(url, headers={"Authorization": f"Bearer {access}"})
+        except httpx.HTTPError as exc:
+            raise DriveError(f"Descărcarea atașamentului a eșuat: {exc}") from exc
+
+        if response.status_code in {401, 403}:
+            raise DriveAuthError("Microsoft a refuzat descărcarea. Reconectează contul.")
+        if response.status_code >= 400:
+            raise DriveError(
+                f"Descărcarea atașamentului a răspuns {response.status_code}.",
+                retryable=response.status_code in RETRYABLE_STATUS,
+            )
+        return io.BytesIO(response.content)
+
+
+def _sender(payload: dict[str, Any]) -> str:
+    """Adresa expeditorului. Este cheia pe care se identifică clientul."""
+    address = ((payload.get("from") or {}).get("emailAddress") or {}).get("address")
+    return str(address or "").strip().lower()
 
 
 __all__ = ["GRAPH", "LOGIN", "SCOPES", "MicrosoftGraphClient", "authorize_url"]

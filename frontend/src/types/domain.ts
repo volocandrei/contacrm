@@ -476,6 +476,33 @@ export type DriveStatus = {
   lastSyncAt: string | null;
   lastError: string | null;
   folders: DriveFolder[];
+  /** Dosarele de email urmărite. Listă separată: sunt lucruri diferite. */
+  mailFolders: MailFolder[];
+};
+
+/**
+ * Un dosar din cutia poștală, din ale cărui mesaje luăm atașamentele.
+ *
+ * Nu are `clientId`, spre deosebire de un dosar de drive, și asta este diferența
+ * de fond: într-o cutie poștală intră toți clienții deodată, deci clientul îl dă
+ * **expeditorul**, potrivit pe contactele din CRM.
+ */
+export type MailFolder = {
+  id: string;
+  folderId: string;
+  displayName: string;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  filesIngested: number;
+  isActive: boolean;
+};
+
+/** Un dosar din cutia poștală, la răsfoire. */
+export type MailBrowseItem = {
+  folderId: string;
+  displayName: string;
+  totalItems: number;
+  isTracked: boolean;
 };
 
 /** Un dosar de pe drive, la răsfoire. */

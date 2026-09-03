@@ -21,9 +21,10 @@ from sqlalchemy import select
 
 from app.core.db import session_scope
 from app.core.logging import get_logger
-from app.models.drive import DriveConnection
-from app.services.drive.deps import get_drive_client
-from app.services.drive.sync import DriveSyncService
+from app.models.microsoft import MicrosoftConnection
+from app.services.microsoft.deps import get_drive_client
+from app.services.microsoft.drive_sync import DriveSyncService
+from app.services.microsoft.mail_sync import MailSyncService
 from app.services.storage import StorageProvider
 
 logger = get_logger(__name__)
@@ -41,7 +42,9 @@ def connected_organizations() -> list[uuid.UUID]:
     with session_scope() as session:
         return list(
             session.scalars(
-                select(DriveConnection.organization_id).where(DriveConnection.is_active.is_(True))
+                select(MicrosoftConnection.organization_id).where(
+                    MicrosoftConnection.is_active.is_(True)
+                )
             )
         )
 
@@ -64,11 +67,15 @@ def run_drive_sync(storage: StorageProvider, *, limit: int | None = None) -> Dri
     for organization_id in organizations:
         try:
             with session_scope() as session:
-                result = DriveSyncService(session, storage, client).sync_organization(
+                drive = DriveSyncService(session, storage, client).sync_organization(
                     organization_id
                 )
-            ingested += result.ingested
-            failed += result.failed
+                # Aceeași sesiune: dosarele și cutia poștală aparțin aceluiași
+                # cont, iar un tur care reușește pe jumătate nu are de ce să
+                # comite jumătate.
+                mail = MailSyncService(session, storage, client).sync_organization(organization_id)
+            ingested += drive.ingested + mail.ingested
+            failed += drive.failed + mail.failed
         except Exception:
             # O organizație care cade nu oprește restul. Urma rămâne în log; ce
             # este vizibil pentru utilizator se scrie pe conexiune, de către
