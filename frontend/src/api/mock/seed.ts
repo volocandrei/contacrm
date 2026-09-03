@@ -284,7 +284,7 @@ function money(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
-function buildFields(
+export function buildFields(
   typeCode: string,
   clientName: string | null,
   date: string,

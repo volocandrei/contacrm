@@ -604,7 +604,7 @@ class TestDocumentsTouchPeriods:
         response = api_storage.post(
             "/api/v1/documents/upload",
             files={"file": ("factura.pdf", io.BytesIO(PDF), "application/octet-stream")},
-            data={"client_id": str(client_row.id)},
+            data={"clientId": str(client_row.id)},
         )
         document_id = response.json()["id"]
 

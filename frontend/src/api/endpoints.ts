@@ -69,6 +69,12 @@ export const clients = {
 export const documents = {
   list: (params: QueryParams) => api.get<Paginated<DocumentListItem>>("/documents", params),
   get: (id: string) => api.get<DocumentDetail>(`/documents/${id}`),
+  upload: (file: File, clientId?: string) =>
+    api.upload<DocumentDetail>(
+      "/documents/upload",
+      file,
+      clientId ? { clientId } : undefined,
+    ),
   nextReview: (after?: string) =>
     api.get<DocumentDetail | null>("/documents/next-review", after ? { after } : undefined),
   updateFields: (id: string, updates: Array<{ field: DocumentFieldName; value: string | null }>) =>

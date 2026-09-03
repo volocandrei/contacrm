@@ -180,6 +180,37 @@ class TestUpload:
         assert body["originalFilename"] == "factura.pdf"
         assert body["processingAttempts"] == 0
 
+    def test_the_client_may_be_given_at_upload_time(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Operatorul știe adesea al cui este teancul, înainte de orice extracție.
+
+        Câmpul se numește `clientId`, nu `client_id`: restul contractului este
+        camelCase în ambele direcții, iar un singur câmp de formular scris altfel
+        ar fi exact excepția pe care nimeni nu o ține minte.
+        """
+        login(api_storage, admin.email)
+
+        response = api_storage.post(
+            "/api/v1/documents/upload",
+            files={"file": ("a.pdf", io.BytesIO(PDF), "application/pdf")},
+            data={"clientId": str(client_row.id)},
+        )
+
+        assert response.status_code == 201, response.text
+        assert response.json()["clientId"] == str(client_row.id)
+
+    def test_without_a_client_nothing_is_assumed(
+        self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
+    ) -> None:
+        """Identificarea vine din codul fiscal citit de pe document, nu de aici."""
+        login(api_storage, admin.email)
+        assert upload(api_storage)["clientId"] is None
+
     def test_never_exposes_a_storage_path(
         self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
     ) -> None:

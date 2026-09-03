@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/compo
 import { ConfidenceBadge, DocumentStatusBadge } from "@/components/status-badge";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { useHasPermission } from "@/features/auth/use-auth";
+import { UploadPanel } from "@/features/documents/upload-panel";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { DOCUMENT_SOURCE, DOCUMENT_STATUS, type DocumentSource } from "@/types/domain";
@@ -148,6 +149,10 @@ export function DocumentsPage({
           ) : undefined
         }
       />
+
+      {/* Singurul drum prin care un document intră azi: email și WhatsApp sunt
+          Faza 2. Stă pe inbox, pentru că acolo ajunge oricum după încărcare. */}
+      {preset === "inbox" && canWrite && <UploadPanel />}
 
       {/* Filtre (§25) */}
       <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-7">

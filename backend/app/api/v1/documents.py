@@ -300,7 +300,10 @@ def upload_document(
     request: Request,
     background: BackgroundTasks,
     file: Annotated[UploadFile, File()],
-    client_id: Annotated[uuid.UUID | None, Form()] = None,
+    # `clientId`, nu `client_id`: restul contractului este camelCase în ambele
+    # direcții, iar un singur câmp de formular scris altfel ar fi exact genul de
+    # excepție pe care nimeni nu o ține minte.
+    client_id: Annotated[uuid.UUID | None, Form(alias="clientId")] = None,
 ) -> DocumentDetailOut:
     """Primește un fișier și creează documentul.
 

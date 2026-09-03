@@ -83,6 +83,20 @@ const routes: Route[] = [
       }),
   },
   {
+    // Ruta stă înaintea lui `/documents/:id`: altfel „upload" ar fi citit ca
+    // identificator de document.
+    method: "POST",
+    pattern: "/documents/upload",
+    handler: ({ body }) =>
+      store.toDetail(
+        store.uploadDocument({
+          filename: str(body, "filename"),
+          size: Number(body.size ?? 0),
+          mimeType: typeof body.mimeType === "string" ? body.mimeType : "",
+        }),
+      ),
+  },
+  {
     method: "GET",
     pattern: "/documents/next-review",
     handler: ({ query }) => store.nextReviewDocument(query.after),

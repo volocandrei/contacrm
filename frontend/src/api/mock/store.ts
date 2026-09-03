@@ -19,6 +19,7 @@ import {
   PERIODS,
   TASKS,
   USERS,
+  buildFields,
   derivePeriodStatus,
   type StoredDocument,
   periodProgress,
@@ -392,7 +393,189 @@ export type DocumentFilters = {
   order?: "asc" | "desc";
 };
 
+/* ─── Încărcare (§38) ──────────────────────────────────────────────────────── */
+
+/**
+ * Cât „durează" procesarea în demonstrație.
+ *
+ * Aici nu există worker. Un document urcat rămâne `RECEIVED` până când cineva îl
+ * citește după acest prag — nu printr-un cronometru, ci pentru că fiecare citire
+ * verifică întâi ce s-a scurs. Efectul pentru interfață este identic cu cel real:
+ * ecranul se reîmprospătează singur cât timp documentul este în lucru și se
+ * oprește când ajunge într-o stare care așteaptă un om.
+ */
+const MOCK_PROCESSING_MS = 2500;
+
+/**
+ * Limitele de mai jos **simulează** serverul, nu îl înlocuiesc.
+ *
+ * Serverul adevărat stabilește tipul din primii octeți ai fișierului, nu din ce
+ * declară browserul (§50), recunoaște duplicatele după SHA-256 și își ia limita
+ * de dimensiune din configurare. Aici nu avem octeți — avem doar ce spune
+ * fișierul despre sine, așa că un fișier redenumit `.pdf` trece, iar același
+ * document urcat de două ori nu este văzut ca duplicat. Este limita simulării și
+ * e scrisă unde se vede.
+ */
+const MOCK_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MOCK_ACCEPTED_MIME = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+/** Documentele urcate în sesiunea curentă și momentul de la care „s-au procesat". */
+const processingDeadlines = new Map<string, number>();
+
+let uploadCounter = 0;
+
+export type UploadInput = { filename: string; size: number; mimeType: string };
+
+/**
+ * Promovează documentele urcate cărora le-a trecut „procesarea".
+ *
+ * Se cheamă din fiecare drum de citire. Un cronometru ar fi părut mai direct, dar
+ * ar continua să bată după ce componenta a dispărut și ar face testele să depindă
+ * de ceasul real.
+ */
+function settleProcessing() {
+  if (processingDeadlines.size === 0) return;
+  const now = Date.now();
+
+  for (const [id, deadline] of processingDeadlines) {
+    if (now < deadline) continue;
+    processingDeadlines.delete(id);
+
+    const document = state.documents.find((d) => d.id === id);
+    if (!document) continue;
+
+    // Providerul simulat inventează valori — la fel ca `OCR_PROVIDER=mock` pe
+    // server. Ce iese de aici nu este citit de pe document, iar ecranul de
+    // verificare o spune: fiecare câmp își poartă proveniența.
+    const fields = buildFields("FACTURA_INTRARE", null, MOCK_NOW.slice(0, 10), CURRENT_MONTH, 0.82);
+    document.fields = fields;
+    document.status = "REVIEW_REQUIRED";
+    document.reviewRequired = true;
+    document.confidence = 0.82;
+    document.processingAttempts = 1;
+    document.documentTypeCode = fields.documentType.value;
+    document.documentTypeLabel = fields.documentType.value
+      ? (DOCUMENT_TYPE_LABEL.get(fields.documentType.value) ?? null)
+      : null;
+    document.documentDate = fields.documentDate.value;
+    document.referenceMonth = fields.referenceMonth.value;
+    document.supplierName = fields.supplierName.value;
+    document.documentNumber = fields.documentNumber.value;
+    document.totalAmount = fields.totalAmount.value;
+    document.currency = fields.currency.value;
+    document.ocr = {
+      provider: "mock",
+      confidence: 0.82,
+      textPreview: `FACTURA FISCALA\nFurnizor: ${fields.supplierName.value ?? "-"}\nTotal de plata: ${fields.totalAmount.value ?? "-"} RON`,
+    };
+    document.validationIssues = ["Încredere sub pragul automat (82%)"];
+    document.history.push({
+      id: `${document.id}-h2`,
+      at: new Date().toISOString(),
+      actor: "Sistem",
+      action: "EXTRACTION_COMPLETED",
+      detail: "Extracție finalizată (confidence 82%)",
+    });
+  }
+}
+
+export function uploadDocument(input: UploadInput): StoredDocument {
+  requirePermission("documents:write");
+
+  if (input.size === 0) {
+    throw new ApiError("VALIDATION_ERROR", "Fișierul este gol.", 422, {
+      file: ["Fișierul este gol."],
+    });
+  }
+  if (input.size > MOCK_MAX_UPLOAD_BYTES) {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      `Fișierul depășește limita de ${MOCK_MAX_UPLOAD_BYTES / (1024 * 1024)} MB.`,
+      422,
+      { file: ["Fișier prea mare."] },
+    );
+  }
+  if (!MOCK_ACCEPTED_MIME.has(input.mimeType)) {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      "Tip de fișier neacceptat. Se acceptă PDF, JPEG, PNG și WEBP.",
+      422,
+      { file: ["Tip neacceptat."] },
+    );
+  }
+
+  uploadCounter += 1;
+  const id = `doc-upload-${uploadCounter}`;
+  const at = new Date().toISOString();
+
+  // Un document proaspăt urcat nu are niciun câmp citit: proveniența fiecăruia
+  // este `EMPTY`, nu `AI` cu valoare nulă. Diferența se vede pe ecran.
+  const fields = buildFields("FACTURA_INTRARE", null, at.slice(0, 10), CURRENT_MONTH, 0);
+  for (const key of Object.keys(fields) as (keyof typeof fields)[]) {
+    fields[key] = { value: null, source: "EMPTY", confidence: null } as never;
+  }
+
+  const document: StoredDocument = {
+    id,
+    originalFilename: input.filename,
+    storedFilename: null,
+    clientId: null,
+    clientName: null,
+    documentTypeCode: null,
+    documentTypeLabel: null,
+    source: "UPLOAD",
+    receivedAt: at,
+    documentDate: null,
+    referenceMonth: null,
+    supplierName: null,
+    documentNumber: null,
+    totalAmount: null,
+    currency: null,
+    status: "RECEIVED",
+    confidence: null,
+    isDuplicate: false,
+    reviewRequired: false,
+    mimeType: input.mimeType,
+    fileSize: input.size,
+    // Serverul calculează hash-ul în timp ce citește octeții; aici nu îi avem.
+    sha256: id.padEnd(64, "0"),
+    storagePath: null,
+    duplicateOfId: null,
+    errorCode: null,
+    processingAttempts: 0,
+    fields,
+    ocr: { provider: "mock", confidence: null, textPreview: null },
+    extraction: {
+      provider: "mock",
+      model: "mock-extractor",
+      promptVersion: "v1",
+      durationMs: null,
+    },
+    validationIssues: [],
+    history: [
+      {
+        id: `${id}-h1`,
+        at,
+        actor: currentUser.fullName,
+        action: "DOCUMENT_UPLOADED",
+        detail: input.filename,
+      },
+    ],
+  };
+
+  state.documents.unshift(document);
+  processingDeadlines.set(id, Date.now() + MOCK_PROCESSING_MS);
+  recordAudit("DOCUMENT_UPLOADED", "Document", id, input.filename);
+  return document;
+}
+
 export function listDocuments(filters: DocumentFilters): Paginated<DocumentListItem> {
+  settleProcessing();
   let items = state.documents;
 
   if (filters.q) {
@@ -435,6 +618,7 @@ export function listDocuments(filters: DocumentFilters): Paginated<DocumentListI
 }
 
 export function getDocument(id: string): StoredDocument {
+  settleProcessing();
   return state.documents.find((d) => d.id === id) ?? notFound("Document", id);
 }
 
@@ -888,6 +1072,7 @@ export function listDocumentTypes() {
 /* ─── Dashboard ────────────────────────────────────────────────────────────── */
 
 export function getDashboard(): DashboardData {
+  settleProcessing();
   const docs = state.documents;
   const today = MOCK_NOW.slice(0, 10);
   const countByStatus = (status: DocumentStatus) => docs.filter((d) => d.status === status).length;
@@ -979,6 +1164,7 @@ export function getDashboard(): DashboardData {
 
 /** Contoarele afișate în meniul lateral. */
 export function getSidebarCounts() {
+  settleProcessing();
   return {
     inbox: state.documents.filter((d) => d.status === "RECEIVED" || d.status === "PROCESSING").length,
     review: state.documents.filter((d) => d.status === "REVIEW_REQUIRED").length,

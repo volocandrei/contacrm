@@ -242,9 +242,71 @@ export function filenameFromDisposition(header: string | null): string | null {
   return plain?.[1]?.trim() || null;
 }
 
+/* ─── Încărcarea unui fișier ───────────────────────────────────────────────── */
+
+/**
+ * Trimite un fișier ca `multipart/form-data`.
+ *
+ * `Content-Type` **nu** se pune de mână: browserul îl compune singur, împreună cu
+ * delimitatorul, iar unul scris de noi ar rupe corpul cererii.
+ *
+ * Ce se trimite este fișierul, nu o părere despre el. Serverul stabilește tipul
+ * din primii octeți, nu din `content_type`-ul declarat de browser (§50), și tot
+ * el decide dimensiunea maximă — nu ținem aici o a doua copie a regulii, care
+ * s-ar despărți tăcut de cea adevărată.
+ */
+async function httpUpload<T>(path: string, file: File, fields: Record<string, string>): Promise<T> {
+  const send = () => {
+    const form = new FormData();
+    form.append("file", file);
+    for (const [key, value] of Object.entries(fields)) form.append(key, value);
+    return fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: form,
+      credentials: "include",
+    });
+  };
+
+  let response = await send();
+  if (response.status === 401) {
+    if (await refreshSession()) response = await send();
+    else onSessionLost?.();
+  }
+
+  if (!response.ok) throw await toApiError(response);
+  return (await response.json()) as T;
+}
+
+/**
+ * În modul simulat nu există server care să citească octeții, deci backendul din
+ * browser primește doar ce declară fișierul: nume, dimensiune, tip. Este exact
+ * limita simulării, și e scrisă acolo unde se vede (`mock/store.ts`).
+ */
+async function mockUpload<T>(path: string, file: File): Promise<T> {
+  if (MOCK_LATENCY_MS > 0) {
+    await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
+  }
+  return mockRequest("POST", path, {}, {
+    filename: file.name,
+    size: file.size,
+    mimeType: file.type,
+  }) as T;
+}
+
+export function uploadFile<T>(
+  path: string,
+  file: File,
+  fields: Record<string, string> = {},
+): Promise<T> {
+  return MODE === "mock" ? mockUpload<T>(path, file) : httpUpload<T>(path, file, fields);
+}
+
 export const api = {
   get: <T>(path: string, params?: QueryParams) => request<T>("GET", path, { params }),
   post: <T>(path: string, body?: Record<string, unknown>) => request<T>("POST", path, { body }),
   patch: <T>(path: string, body?: Record<string, unknown>) => request<T>("PATCH", path, { body }),
   delete: <T>(path: string) => request<T>("DELETE", path),
+  upload: <T>(path: string, file: File, fields?: Record<string, string>) =>
+    uploadFile<T>(path, file, fields),
 };

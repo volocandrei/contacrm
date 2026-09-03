@@ -168,6 +168,20 @@ function useDocumentMutation<TArgs>(
   });
 }
 
+/**
+ * Încarcă un fișier.
+ *
+ * Un `useMutation` per fișier ar fi cerut o componentă per fișier. Aici mutația
+ * este pentru **un** fișier, iar panoul o cheamă de câte ori trebuie și își ține
+ * singur lista de rezultate: un lot în care al treilea fișier eșuează nu are voie
+ * să ascundă că primele două au reușit.
+ */
+export function useUploadDocument() {
+  return useDocumentMutation(({ file, clientId }: { file: File; clientId?: string }) =>
+    documents.upload(file, clientId),
+  );
+}
+
 export function useUpdateDocumentFields(id: string) {
   return useDocumentMutation((updates: Array<{ field: DocumentFieldName; value: string | null }>) =>
     documents.updateFields(id, updates),
