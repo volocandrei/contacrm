@@ -7,7 +7,8 @@ defectul găsit la M5.5, rulând serverul.
 
 Soluția: cererea se scrie **în aceeași tranzacție cu documentul**, ca rând `PENDING`
 în `document_processing_jobs`. Ori se comit amândouă, ori niciunul. Cine execută —
-un background task azi, un worker Celery mâine — doar revendică rândul.
+`app/worker.py`, un background task, sau o bătaie de cron — doar revendică rândul.
+Tabelul **este** coada; de ce nu un broker separat este scris în `app/worker.py`.
 
 Revendicarea este o tranziție de stare, nu o citire: `PENDING → RUNNING` sub
 `FOR UPDATE`, deci doi executanți nu pot lua același job. Un job care nu mai este

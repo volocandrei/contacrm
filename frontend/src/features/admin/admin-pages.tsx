@@ -1,11 +1,17 @@
 import { CircleAlert, Lock } from "lucide-react";
-import { useAuditLogs, useUsers } from "@/api/hooks";
+import { useAuditLogs, useSettings, useUsers } from "@/api/hooks";
 import { Pagination, SearchInput } from "@/components/form-controls";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { useAuth, useHasPermission } from "@/features/auth/use-auth";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { formatDateTime } from "@/lib/format";
-import { ROLE_CODE, type Permission, type RoleCode } from "@/types/domain";
+import {
+  ROLE_CODE,
+  SETTING_GROUPS,
+  type Permission,
+  type RoleCode,
+  type SettingGroup,
+} from "@/types/domain";
 
 const ROLE_LABEL: Record<RoleCode, string> = {
   SUPER_ADMIN: "Super administrator",
@@ -255,90 +261,103 @@ export function AuditLogPage() {
 }
 
 /**
- * Setările sunt afișate ca valori curente, fără editare, până când backend-ul
- * expune `system_settings`. Pragurile nu sunt hardcodate în interfață (§16).
+ * Setările (§16, §73).
+ *
+ * Valorile vin de la server, din procesul care chiar rulează. Înainte erau
+ * scrise de mână aici — `"local"`, `"0,90"`, `"mock"` — sub un banner care
+ * declara că vin din variabile de mediu. Nu veneau: `STORAGE_PROVIDER=s3` în
+ * producție nu ar fi schimbat nimic pe ecran.
+ *
+ * Backendul trimite numele variabilei de mediu, nu o etichetă. Traducerea în
+ * română o face harta de mai jos: cine se uită la ecran vede și ce înseamnă, și
+ * ce anume are de schimbat.
  */
+const SETTING_LABEL: Record<string, string> = {
+  CONFIDENCE_AUTO_THRESHOLD: "Prag aprobare automată",
+  CONFIDENCE_REVIEW_THRESHOLD: "Prag verificare obligatorie",
+  AUTO_APPROVE_ENABLED: "Aprobare fără verificare umană",
+  MAX_PROCESSING_ATTEMPTS: "Reîncercări de procesare",
+  PROCESSING_STALE_AFTER_MINUTES: "Prag de abandon (minute)",
+  STORAGE_PROVIDER: "Provider de stocare",
+  MAX_UPLOAD_SIZE_MB: "Dimensiune maximă upload (MB)",
+  ALLOWED_MIME_TYPES: "Tipuri de fișier acceptate",
+  ARCHIVE_PATTERN: "Structura arhivei",
+  OCR_PROVIDER: "Provider OCR",
+  AI_PROVIDER: "Provider AI",
+  PROMPT_VERSION: "Versiune prompt",
+  REFERENCE_PERIOD_STRATEGY: "Regula lunii contabile",
+  DEFAULT_TIMEZONE: "Fus orar",
+  NOTIFICATIONS_ENABLED: "Trimitere notificări",
+  RETENTION_ENABLED: "Ștergere automată",
+};
+
+const GROUP_LABEL: Record<SettingGroup, string> = {
+  PROCESSING: "Procesare și încredere",
+  STORAGE: "Stocare",
+  EXTRACTION: "OCR / AI",
+  PERIODS: "Perioade contabile",
+  NOTIFICATIONS: "Notificări",
+  RETENTION: "Retenție",
+};
+
+/** `true`/`false` nu se citesc bine pe un ecran în română. */
+function displayValue(value: string): string {
+  if (value === "true") return "activat";
+  if (value === "false") return "dezactivat";
+  return value;
+}
+
 export function SettingsPage() {
   const canManage = useHasPermission("admin:settings");
+  const { data, isLoading, error } = useSettings();
+
   if (!canManage) return <NoPermissionState permission="admin:settings" />;
 
-  const groups = [
-    {
-      title: "Procesare și încredere",
-      items: [
-        { label: "Prag aprobare automată", value: "0,90", source: "system_settings" },
-        { label: "Prag verificare obligatorie", value: "0,70", source: "system_settings" },
-        { label: "Reîncercări OCR", value: "3", source: "system_settings" },
-      ],
-    },
-    {
-      title: "Stocare",
-      items: [
-        { label: "Provider", value: "local", source: "STORAGE_PROVIDER" },
-        { label: "Rădăcină arhivă", value: "/ARHIVA/{an}/{luna}/{client}/", source: "ARCHIVE_ROOT" },
-        { label: "Dimensiune maximă upload", value: "25 MB", source: "MAX_UPLOAD_SIZE_MB" },
-      ],
-    },
-    {
-      title: "OCR / AI",
-      items: [
-        { label: "Provider OCR", value: "mock", source: "OCR_PROVIDER" },
-        { label: "Provider AI", value: "mock", source: "AI_PROVIDER" },
-        { label: "Versiune prompt", value: "v1", source: "PROMPT_VERSION" },
-      ],
-    },
-    {
-      title: "Notificări",
-      items: [
-        { label: "Trimitere activă", value: "dezactivată", source: "NOTIFICATIONS_ENABLED" },
-        { label: "Provider email", value: "neconfigurat", source: "EMAIL_PROVIDER" },
-        { label: "Provider WhatsApp", value: "neconfigurat", source: "WHATSAPP_PROVIDER" },
-      ],
-    },
-    {
-      title: "Retenție",
-      items: [
-        { label: "Ștergere automată", value: "dezactivată", source: "RETENTION_ENABLED" },
-        { label: "Păstrare documente", value: "10 ani", source: "RETENTION_DOCUMENTS_YEARS" },
-        { label: "Păstrare audit", value: "5 ani", source: "RETENTION_AUDIT_LOG_YEARS" },
-      ],
-    },
-  ];
+  const grouped = SETTING_GROUPS.map((group) => ({
+    group,
+    items: (data ?? []).filter((entry) => entry.group === group),
+  })).filter((section) => section.items.length > 0);
 
   return (
     <div>
       <PageHeader
         title="Setări"
-        description="Valorile curente de configurare. Editarea devine disponibilă odată cu backend-ul."
+        description="Configurarea după care rulează serverul chiar acum."
       />
 
       <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
         <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <p>
-          Valorile de mai jos vin din variabile de mediu și din tabelul <code>system_settings</code>.
-          Nicio regulă fiscală nu este hardcodată în interfață.
+          Valorile vin din variabile de mediu și se schimbă modificând deployment-ul, nu de aici.
+          Secretele, adresa bazei de date și căile de pe disc nu sunt publicate niciodată.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {groups.map((group) => (
-          <Panel key={group.title} title={group.title}>
-            <dl className="space-y-2 text-sm">
-              {group.items.map((item) => (
-                <div key={item.label} className="flex items-start justify-between gap-3">
-                  <dt className="text-gray-600 dark:text-gray-400">
-                    {item.label}
-                    <span className="ml-2 text-xs text-gray-400">{item.source}</span>
-                  </dt>
-                  <dd className="shrink-0 font-medium text-gray-900 dark:text-gray-100">
-                    {item.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </Panel>
-        ))}
-      </div>
+      {isLoading ? (
+        <LoadingState />
+      ) : error ? (
+        <ErrorState error={error} />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {grouped.map((section) => (
+            <Panel key={section.group} title={GROUP_LABEL[section.group]}>
+              <dl className="space-y-2 text-sm">
+                {section.items.map((item) => (
+                  <div key={item.key} className="flex items-start justify-between gap-3">
+                    <dt className="text-gray-600 dark:text-gray-400">
+                      {SETTING_LABEL[item.key] ?? item.key}
+                      <span className="ml-2 text-xs text-gray-400">{item.key}</span>
+                    </dt>
+                    <dd className="shrink-0 font-medium text-gray-900 dark:text-gray-100">
+                      {displayValue(item.value)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </Panel>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

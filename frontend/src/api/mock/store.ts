@@ -41,6 +41,7 @@ import type {
   ReportBucket,
   ReportSummary,
   RoleCode,
+  SettingEntry,
   Task,
   UserSummary,
 } from "@/types/domain";
@@ -833,6 +834,43 @@ export function listAudit(filters: { q?: string; action?: string; page?: number;
 export function listUsers(): UserSummary[] {
   requirePermission("admin:users");
   return state.users;
+}
+
+/**
+ * Setările pe care rulează **demonstrația** (§16, §73).
+ *
+ * Oglinda lui `app/api/v1/settings.py`, cu valorile care sunt adevărate aici:
+ * backendul simulat nu are nici disc, nici provider de OCR, nici bază de date.
+ * Tocmai de aceea trebuie să spună `mock` — dacă ar copia valorile de producție,
+ * ecranul ar minti la fel ca înainte, doar cu alt text.
+ *
+ * Lista este albă și aici: nu există nicio valoare sensibilă de scăpat, pentru
+ * că nu se citește nimic dintr-un mediu.
+ */
+export function listSettings(): SettingEntry[] {
+  requirePermission("admin:settings");
+  return [
+    { key: "CONFIDENCE_AUTO_THRESHOLD", group: "PROCESSING", value: "0.90" },
+    { key: "CONFIDENCE_REVIEW_THRESHOLD", group: "PROCESSING", value: "0.70" },
+    { key: "AUTO_APPROVE_ENABLED", group: "PROCESSING", value: "false" },
+    { key: "MAX_PROCESSING_ATTEMPTS", group: "PROCESSING", value: "3" },
+    { key: "PROCESSING_STALE_AFTER_MINUTES", group: "PROCESSING", value: "15" },
+    { key: "STORAGE_PROVIDER", group: "STORAGE", value: "local" },
+    { key: "MAX_UPLOAD_SIZE_MB", group: "STORAGE", value: "25" },
+    {
+      key: "ALLOWED_MIME_TYPES",
+      group: "STORAGE",
+      value: "application/pdf,image/jpeg,image/png,image/webp",
+    },
+    { key: "ARCHIVE_PATTERN", group: "STORAGE", value: "/ARHIVA/{an}/{luna}/{client}/" },
+    { key: "OCR_PROVIDER", group: "EXTRACTION", value: "mock" },
+    { key: "AI_PROVIDER", group: "EXTRACTION", value: "mock" },
+    { key: "PROMPT_VERSION", group: "EXTRACTION", value: "v1" },
+    { key: "REFERENCE_PERIOD_STRATEGY", group: "PERIODS", value: "document_date" },
+    { key: "DEFAULT_TIMEZONE", group: "PERIODS", value: "Europe/Bucharest" },
+    { key: "NOTIFICATIONS_ENABLED", group: "NOTIFICATIONS", value: "false" },
+    { key: "RETENTION_ENABLED", group: "RETENTION", value: "false" },
+  ];
 }
 
 export function listMessages(filters: { clientId?: string; channel?: string }) {

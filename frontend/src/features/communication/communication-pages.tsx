@@ -141,8 +141,9 @@ export function RemindersPage() {
           <Bell className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
           <div className="text-sm text-gray-600 dark:text-gray-400">
             <p className="mb-2">
-              Motorul de remindere rulează în backend (Celery beat) și încă nu este implementat.
-              Regulile planificate:
+              Datele pe care s-ar sprijini reminderele există deja: ecranul „Documente lipsă"
+              spune, pentru fiecare client și fiecare lună, ce anume nu a sosit. Ce lipsește este
+              trimiterea — un provider de email sau WhatsApp, adică Faza 2. Regulile planificate:
             </p>
             <ul className="ml-5 list-disc space-y-1">
               <li>cu 5 zile înainte de termen — solicitare documente;</li>

@@ -11,11 +11,12 @@ import type {
   Contact,
   CurrentUser,
   DashboardData,
-  ReportSummary,
   DocumentDetail,
   DocumentFieldName,
   DocumentListItem,
   DocumentType,
+  ReportSummary,
+  SettingEntry,
   Task,
   TaskStatus,
   UserSummary,
@@ -108,4 +109,5 @@ export const communication = {
 export const administration = {
   auditLogs: (params: QueryParams) => api.get<Paginated<AuditLogEntry>>("/audit-logs", params),
   users: () => api.get<UserSummary[]>("/users"),
+  settings: () => api.get<SettingEntry[]>("/settings"),
 };

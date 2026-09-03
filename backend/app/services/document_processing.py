@@ -1,8 +1,9 @@
 """Pipeline-ul de procesare a unui document (§19, §38-§43, §52-§55).
 
 `process(document_id)` este singura intrare. Semnătura este deliberat aceea a unui
-task de worker: astăzi o cheamă un background task din același proces, mâine o
-cheamă Celery, fără să se schimbe nimic aici.
+task de worker: o cheamă `app/worker.py` din propriul proces, un background task
+din procesul API, sau ruta de cron — fără să se schimbe nimic aici. Dacă vreodată
+apare un broker, tot aici ajunge.
 
 Ordinea, și de ce contează:
 

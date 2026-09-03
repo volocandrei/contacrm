@@ -39,6 +39,7 @@ export const queryKeys = {
   reportSummary: (params: QueryParams) => ["reports", "summary", params] as const,
   auditLogs: (params: QueryParams) => ["audit-logs", params] as const,
   users: ["users"] as const,
+  settings: ["settings"] as const,
 };
 
 /* ─── Interogări ───────────────────────────────────────────────────────────── */
@@ -140,6 +141,10 @@ export function useAuditLogs(params: QueryParams) {
 
 export function useUsers() {
   return useQuery({ queryKey: queryKeys.users, queryFn: administration.users });
+}
+
+export function useSettings() {
+  return useQuery({ queryKey: queryKeys.settings, queryFn: administration.settings });
 }
 
 /* ─── Mutații ──────────────────────────────────────────────────────────────── */

@@ -19,6 +19,7 @@ from app.api.v1 import (
     internal,
     periods,
     reports,
+    settings,
     tasks,
     users,
 )
@@ -31,6 +32,7 @@ api_router.include_router(dashboard.router)
 api_router.include_router(documents.router)
 api_router.include_router(periods.router)
 api_router.include_router(reports.router)
+api_router.include_router(settings.router)
 api_router.include_router(tasks.router)
 api_router.include_router(users.router)
 api_router.include_router(audit.router)

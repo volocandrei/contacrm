@@ -1,6 +1,6 @@
 # STATUS — ContaCRM
 
-Starea proiectului la **01.09.2026**. Documentul acesta răspunde la trei întrebări:
+Starea proiectului la **03.09.2026**. Documentul acesta răspunde la trei întrebări:
 cum pornești pe o mașină nouă, ce este construit și ce urmează.
 
 Pentru arhitectură, schema de bază de date și registrul de riscuri, vezi
@@ -76,11 +76,10 @@ Nu e comoditate: cookie-ul de sesiune este `SameSite=Lax`, iar de pe altă origi
 ar fi trimis la cererile pornite de `<img>` sau `<object>` — adică exact la
 previzualizarea documentului. Un token în URL nu este o alternativă (§27).
 
-> În modul `http` funcționează autentificarea, administrarea utilizatorilor,
-> CRM-ul (clienți, contacte, note, sarcini) și **tot fluxul de documente**: inbox,
-> încărcare, procesare, ecranul de verificare, previzualizare, descărcare, arhivă.
-> Panoul principal, perioadele și rapoartele încă dau 404 — vin cu M6–M7.
-> Contoarele din bara laterală funcționează deja.
+> În modul `http` funcționează **tot**, cu o singură excepție: autentificarea,
+> administrarea, CRM-ul, fluxul complet de documente, panoul principal,
+> perioadele, jurnalul de audit, rapoartele și ecranul de setări. Rămâne doar
+> `Comunicare → Mesaje`, care are nevoie de Microsoft Graph și WhatsApp (Faza 2).
 
 ### Verificări
 
@@ -107,12 +106,12 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  8.606 linii sursă +   672 linii teste   →  57 teste
-backend  10.325 linii sursă + 9.052 linii teste   → 650 teste
+frontend  8.949 linii sursă +   883 linii teste   →  77 teste
+backend  11.383 linii sursă + 10.295 linii teste  → 735 teste
 migrări   1.372 linii
 ```
 
-Toate verificările trec: **707 teste**, lint curat, `mypy --strict` curat, build curat.
+Toate verificările trec: **812 teste**, lint curat, `mypy --strict` curat, build curat.
 
 ### Frontend — complet, pe backend simulat ✅
 
@@ -125,14 +124,14 @@ Toate cele **22 de rute** sunt ecrane reale, nu placeholdere:
 | Documente | inbox, în procesare, verificare, arhivă, **ecranul de verificare** |
 | Contabilitate | perioade cu checklist, documente lipsă |
 | Comunicare | mesaje, șabloane, remindere |
-| Rapoarte | agregări peste documente |
+| Rapoarte | agregări calculate în backend, cu filtre pe lună și client |
 | Administrare | utilizatori, roluri, setări, jurnal audit |
 
 Piesa centrală este **ecranul de verificare**: facsimilul documentului lângă
 câmpurile extrase, fiecare câmp cu proveniența lui (`AI 81%`, „corectat manual",
 „lipsă") și bordură colorată pe praguri de încredere. Scurtături `Alt+S` / `Alt+A`.
 
-**Backendul simulat** (`src/api/mock/`, ~1.600 linii) implementează 29 de rute cu
+**Backendul simulat** (`src/api/mock/`, ~1.700 linii) implementează 32 de rute cu
 aceleași căi, paginare, filtrare, permisiuni și coduri de eroare ca API-ul real.
 Comutarea se face din `VITE_API_MODE` — restul aplicației nu știe cine răspunde.
 
@@ -140,7 +139,7 @@ Alte lucruri gata: temă light/dark persistată, filtre în URL (o listă filtra
 poate trimite unui coleg), sidebar colapsabil cu contoare live, accesibilitate
 consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 
-### Backend — M2 + M3 + M4 + M5 complet ✅ · M6 început
+### Backend — M2–M6 complet ✅ · M7 început
 
 **M2 — schelet**
 - FastAPI cu fabrică `create_app()`, fără efecte secundare la import
@@ -358,9 +357,9 @@ Vechile și noile valori nu ies prin API: auditul răspunde la „cine, ce, cân
 „ce scria pe factură". Cine are nevoie de conținut deschide documentul, iar acea
 deschidere se auditează la rândul ei.
 
-Rute reale existente: 35 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
-documente ×13, `/dashboard` ×2, perioade ×5, audit, health ×3), plus
-`/internal/run-queue`, care nu apare în OpenAPI pentru că nu face parte din
+Rute reale existente: 37 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
+documente ×13, `/dashboard` ×2, perioade ×5, audit, rapoarte, setări, health ×3),
+plus `/internal/run-queue`, care nu apare în OpenAPI pentru că nu face parte din
 contractul cu frontend-ul.
 
 ### Verificat pe date reale, nu doar în teste
@@ -449,12 +448,40 @@ ci portat.**
 | M4 | CRM: clients, contacts, notes, tags, tasks | ✅ |
 | **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare, arhivare, întărire** | ✅ |
 | **M6** | Coadă durabilă + worker separat, perioade + checklist, dashboard, ecran audit, acțiuni în masă | ✅ |
-| M7 | Notificări, rapoarte | |
+| **M7** | Rapoarte în SQL, ecran de setări real, notificări | ⏳ rapoarte ✅ · setări ✅ · notificări = Faza 2 |
 | M8 | Teste E2E, CI | |
 | Faza 2 | Microsoft Graph, WhatsApp, OCR/AI real, remindere, export ZIP | |
 | Faza 3 | Integrare software contabil, rapoarte avansate, detecție anomalii | |
 
 **MVP = M1–M8.**
+
+**M7 — rapoarte și setări reale**
+
+Amândouă au pornit de la același defect: interfața spunea ceva ce nu era adevărat.
+
+`GET /reports/summary` numără în SQL. Înainte, pagina cerea primele 200 de
+documente — plafonul maxim — și le agrega în browser; „rata de procesare reușită"
+era calculată pe felia aceea și afișată ca și cum ar fi acoperit tot. Pe setul
+sintetic sunt sub 200 de documente, deci ieșea corect **din întâmplare** — exact
+motivul pentru care greșeala nu se vedea.
+
+Trei lucruri se văd altfel acum: documentele fără lună, fără client sau fără tip
+nu mai sunt sărite din agregare, ci au propria găleată; `successRate` este `null`
+când nu s-a terminat nimic, nu zero, pentru că zero se citea ca „totul a eșuat";
+iar etichetele vin doar de unde există cu adevărat — numele clientului și
+denumirea tipului de la server, formularea absenței și traducerea stărilor din
+interfață, care le avea deja.
+
+`GET /settings` publică configurarea după care rulează procesul. Ecranul afișa
+`"local"`, `"0,90"`, `"mock"` scrise de mână în TSX, sub un banner care declara că
+vin din variabile de mediu: `STORAGE_PROVIDER=s3` în producție nu ar fi schimbat
+nimic pe ecran. Ce se publică este o **listă albă**, nu un filtru — un câmp nou în
+`Settings` nu apare de la sine, iar un test se uită la fiecare câmp existent, nu
+la o listă ținută minte, ca prima cheie de API adăugată să nu ajungă pe un ecran.
+
+Notificările rămân Faza 2: datele pe care s-ar sprijini există deja („Documente
+lipsă" spune pentru fiecare client ce nu a sosit), dar trimiterea cere un provider
+de email sau WhatsApp.
 
 ### Punerea în funcțiune
 
@@ -520,8 +547,6 @@ Niciuna nu blochează deploy-ul.
 | `QueryBoundary` (`components/page.tsx`) | scris ca să elimine triada `isLoading/error/empty`, dar nefolosit — cele 8 pagini o repetă manual |
 | `react-hook-form`, `zod`, `@hookform/resolvers` | instalate, nefolosite |
 | primitivele shadcn (`button`, `card`, `badge`, `separator`) | importate doar de componenta de demo; aplicația scrie Tailwind brut. Ori le adoptăm, ori recunoaștem că nu le folosim |
-| `"2026-08"` hardcodat în 6 locuri | doar în backendul simulat, unde `MOCK_NOW` este tot august: setul sintetic rămâne coerent oricând l-ai deschide. Backendul real urmărește datele, nu calendarul (`latest_active_month`). Rămâne totuși o valoare scrisă de mână acolo unde ar trebui derivată din `MOCK_NOW` |
+| `"2026-08"` hardcodat în 6 locuri | doar în backendul simulat, unde `MOCK_NOW` este tot august: setul sintetic rămâne coerent oricând l-ai deschide. Backendul real urmărește datele, nu calendarul (`latest_active_month`). Rămâne totuși o valoare scrisă de mână acolo unde ar trebui derivată din `MOCK_NOW`. `MONTH_OPTIONS` din ecranul de perioade poate trece pe `MonthFilter`, care nu are nevoie de nicio listă |
 | `client_ip()` (`api/deps.py`) | ignoră `X-Forwarded-For`. **Devine vizibil la primul deploy în spatele unui proxy**: auditul va nota IP-ul platformei, nu al utilizatorului. Antetul trebuie citit, dar numai de la proxy-uri de încredere — altfel oricine își poate falsifica IP-ul din audit |
-| lipsă `.gitattributes` | Git raportează conversii LF↔CRLF; un `* text=auto eol=lf` previne diff-uri false dacă intră cineva pe Linux/Mac |
 | `oxlint`: 2 warning-uri | `only-export-components` pe fișiere shadcn generate — cosmetic |
-| `POST /documents/bulk` | declarat în `api/endpoints.ts`, fără rută în backend și fără apelant în interfață — se leagă la M6, odată cu acțiunile în masă din ecranul de listă |

@@ -1,8 +1,8 @@
 """Pornirea procesării în afara ciclului cerere-răspuns (§38).
 
-Upload-ul răspunde imediat; extracția rulează după. Astăzi asta înseamnă un
-background task în același proces, cu **propria sesiune de bază de date** — exact
-cum va lucra și un worker Celery.
+Upload-ul răspunde imediat; extracția rulează după — într-un background task din
+procesul API sau, mai bine, în `app/worker.py`. În ambele cazuri cu **propria
+sesiune de bază de date**.
 
 Sesiunea separată nu este un detaliu: sesiunea cererii se închide odată cu
 răspunsul, iar procesarea trebuie să-și comită singură rezultatul. Din același

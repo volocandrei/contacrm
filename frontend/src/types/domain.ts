@@ -432,3 +432,32 @@ export type ReportSummary = {
   byClient: ReportBucket[];
   clientCount: number;
 };
+
+/* ─── Setări (§16, §73) ────────────────────────────────────────────────────── */
+
+export const SETTING_GROUPS = [
+  "PROCESSING",
+  "STORAGE",
+  "EXTRACTION",
+  "PERIODS",
+  "NOTIFICATIONS",
+  "RETENTION",
+] as const;
+export type SettingGroup = (typeof SETTING_GROUPS)[number];
+
+/**
+ * O valoare de configurare, așa cum rulează chiar acum procesul care a răspuns.
+ *
+ * `key` este numele variabilei de mediu, nu o etichetă: cine se uită la ecran
+ * trebuie să știe ce anume să schimbe, nu doar ce este acum. Textul în română îl
+ * pune interfața.
+ *
+ * Ce ajunge aici este o listă albă din backend, nu tot ce există în configurare:
+ * `SECRET_KEY`, `DATABASE_URL`, cheile S3 și căile de pe disc nu ies niciodată
+ * printr-un răspuns HTTP (§73).
+ */
+export type SettingEntry = {
+  key: string;
+  group: SettingGroup;
+  value: string;
+};

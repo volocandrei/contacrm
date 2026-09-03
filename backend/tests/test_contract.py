@@ -64,3 +64,45 @@ def test_error_response_shape_matches_frontend(client) -> None:  # type: ignore[
     assert isinstance(body["message"], str) and body["message"]
     assert "details" in body
     assert body["requestId"] == response.headers["X-Request-ID"]
+
+
+def test_settings_expose_the_same_keys_on_both_sides() -> None:
+    """Backendul simulat publica aceeasi suprafata de configurare ca serverul.
+
+    Daca listele se despart, ecranul de setari arata in demonstratie alte randuri
+    decat in aplicatie — iar cine il vede la client crede ca a vazut sistemul.
+    """
+    import re
+    from pathlib import Path
+
+    from app.api.v1.settings import EXPOSED
+
+    store = Path(__file__).resolve().parents[2] / "frontend" / "src" / "api" / "mock" / "store.ts"
+    block = re.search(
+        r"export function listSettings\(\): SettingEntry\[\] \{(.*?)\n\}",
+        store.read_text(encoding="utf-8"),
+        re.DOTALL,
+    )
+    assert block is not None, "listSettings nu a fost gasit in mock/store.ts"
+
+    frontend = set(re.findall(r'key: "([A-Z_]+)"', block.group(1)))
+    assert frontend == {key for key, _, _ in EXPOSED}
+
+
+def test_setting_groups_match_the_frontend() -> None:
+    """`SETTING_GROUPS` din domain.ts este oglinda lui `SettingGroup`."""
+    import re
+    from pathlib import Path
+
+    from app.api.v1.settings import SettingGroup
+
+    domain = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "domain.ts"
+    block = re.search(
+        r"export const SETTING_GROUPS = \[(.*?)\] as const;",
+        domain.read_text(encoding="utf-8"),
+        re.DOTALL,
+    )
+    assert block is not None, "SETTING_GROUPS nu a fost gasit in types/domain.ts"
+
+    frontend = set(re.findall(r'"([A-Z_]+)"', block.group(1)))
+    assert frontend == {group.value for group in SettingGroup}
