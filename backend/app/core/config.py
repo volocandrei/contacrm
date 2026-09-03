@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     # coadă. Gol înseamnă **oprit**: ruta refuză orice, inclusiv o cerere corectă.
     # Un endpoint care execută muncă nu are voie să fie public nici măcar o clipă.
     cron_secret: str = ""
+    # Câte proxy-uri de încredere stau **obligatoriu** în fața aplicației: 0 când
+    # este expusă direct, 1 în spatele Vercel sau al unui singur reverse proxy.
+    # Sub acest număr, `X-Forwarded-For` se ignoră cu totul — un antet citit fără
+    # să știm cine l-a scris înseamnă că oricine își poate alege IP-ul din audit.
+    trusted_proxy_count: int = 0
 
     # ── Bază de date ─────────────────────────────────────────────────────────
     database_url: str = (
@@ -186,6 +191,16 @@ class Settings(BaseSettings):
         problems: list[str] = []
         if self.secret_key.startswith(("dev-only", "schimba")):
             problems.append("SECRET_KEY are încă valoarea implicită.")
+        if self.ocr_provider == "mock":
+            # `mock` inventează furnizori, sume și date. Într-o demonstrație este
+            # exact ce trebuie; într-o instalare de producție ar scrie valori
+            # false în câmpuri contabile, iar ecranul de verificare le-ar arăta
+            # cu proveniență și scor de încredere, adică exact ca pe niște valori
+            # citite de pe document. Pentru o demonstrație există `staging`.
+            problems.append(
+                "OCR_PROVIDER=mock în producție: providerul inventează date contabile. "
+                "Folosește pdf_text, sau ENVIRONMENT=staging pentru o demonstrație."
+            )
         if self.ocr_provider not in LOCAL_EXTRACTION_PROVIDERS and self.ai_provider == "mock":
             problems.append("OCR_PROVIDER real cu AI_PROVIDER=mock — configurare inconsistentă.")
         if self.storage_provider == "s3" and not self.s3_bucket:

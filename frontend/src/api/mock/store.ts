@@ -743,7 +743,7 @@ function tally(
     const { key: bucketKey, label } = key(doc);
     // `null` are nevoie de o cheie proprie în hartă, altfel s-ar amesteca cu
     // documentele care chiar au valoarea "null" ca text.
-    const id = bucketKey ?? " absent";
+    const id = bucketKey ?? "\0absent";
     const existing = buckets.get(id);
     if (existing) existing.count += 1;
     else buckets.set(id, { key: bucketKey, label, count: 1 });
@@ -870,6 +870,7 @@ export function listSettings(): SettingEntry[] {
     { key: "DEFAULT_TIMEZONE", group: "PERIODS", value: "Europe/Bucharest" },
     { key: "NOTIFICATIONS_ENABLED", group: "NOTIFICATIONS", value: "false" },
     { key: "RETENTION_ENABLED", group: "RETENTION", value: "false" },
+    { key: "TRUSTED_PROXY_COUNT", group: "SECURITY", value: "0" },
   ];
 }
 

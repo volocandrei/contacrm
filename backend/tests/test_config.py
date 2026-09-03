@@ -42,8 +42,33 @@ def test_production_refuses_default_secret_key() -> None:
 
 
 def test_production_accepts_a_real_secret_key() -> None:
-    settings = _settings(environment=Environment.PRODUCTION, secret_key="x" * 64)
+    settings = _settings(
+        environment=Environment.PRODUCTION, secret_key="x" * 64, ocr_provider="pdf_text"
+    )
     settings.assert_production_ready()
+
+
+def test_production_refuses_the_provider_that_invents_data() -> None:
+    """`mock` scrie furnizori, sume și date inventate în câmpuri contabile.
+
+    Pe ecranul de verificare arată exact ca niște valori citite de pe document —
+    cu proveniență și scor de încredere — deci operatorul nu are cum să le
+    distingă. Pentru demonstrații rămâne `staging`.
+    """
+    settings = _settings(environment=Environment.PRODUCTION, secret_key="x" * 64)
+    assert settings.ocr_provider == "mock"
+
+    with pytest.raises(RuntimeError, match="inventează"):
+        settings.assert_production_ready()
+
+
+def test_a_demonstration_environment_is_not_held_to_the_production_rules() -> None:
+    """Ruta de scăpare pe care o indică mesajul de mai sus trebuie să existe.
+
+    Altfel nu ar mai fi niciun mod de a arăta aplicația fără documente reale, iar
+    presiunea ar fi să se pună `ENVIRONMENT=production` cu `mock` oricum.
+    """
+    assert _settings(environment=Environment.STAGING).is_production is False
 
 
 def test_production_refuses_inconsistent_ocr_and_ai_providers() -> None:

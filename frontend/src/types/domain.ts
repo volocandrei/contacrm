@@ -442,6 +442,7 @@ export const SETTING_GROUPS = [
   "PERIODS",
   "NOTIFICATIONS",
   "RETENTION",
+  "SECURITY",
 ] as const;
 export type SettingGroup = (typeof SETTING_GROUPS)[number];
 

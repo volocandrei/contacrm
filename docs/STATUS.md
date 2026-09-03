@@ -535,7 +535,7 @@ Verificat capăt la capăt pe server: aceeași factură, o dată cu clientul nos
 cumpărător și o dată furnizor, a ieșit „Factură intrare" și „Factură ieșire"; una
 cu două coduri necunoscute a rămas neatribuită.
 
-**Un defect prins tot acolo:** o expresie regulată ajunsese în fișier cu ``
+**Un defect prins tot acolo:** o expresie regulată ajunsese în fișier cu `\b`
 transformat în byte de control, deci nu se potrivea cu nimic. Testele unitare nu
 existau pentru ea; rularea pe server a arătat-o imediat. Acum există și testele,
 și o verificare în CI care refuză caractere de control în surse.

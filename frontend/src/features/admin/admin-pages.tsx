@@ -289,6 +289,7 @@ const SETTING_LABEL: Record<string, string> = {
   DEFAULT_TIMEZONE: "Fus orar",
   NOTIFICATIONS_ENABLED: "Trimitere notificări",
   RETENTION_ENABLED: "Ștergere automată",
+  TRUSTED_PROXY_COUNT: "Proxy-uri de încredere în față",
 };
 
 const GROUP_LABEL: Record<SettingGroup, string> = {
@@ -298,6 +299,7 @@ const GROUP_LABEL: Record<SettingGroup, string> = {
   PERIODS: "Perioade contabile",
   NOTIFICATIONS: "Notificări",
   RETENTION: "Retenție",
+  SECURITY: "Securitate",
 };
 
 /** `true`/`false` nu se citesc bine pe un ecran în română. */

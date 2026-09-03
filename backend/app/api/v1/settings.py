@@ -52,6 +52,7 @@ class SettingGroup(StrEnum):
     PERIODS = "PERIODS"
     NOTIFICATIONS = "NOTIFICATIONS"
     RETENTION = "RETENTION"
+    SECURITY = "SECURITY"
 
 
 class SettingOut(ApiModel):
@@ -114,6 +115,12 @@ EXPOSED: Final[tuple[tuple[str, SettingGroup, Callable[[Settings], str]], ...]] 
         lambda s: _yes_no(s.notifications_enabled),
     ),
     ("RETENTION_ENABLED", SettingGroup.RETENTION, lambda s: _yes_no(s.retention_enabled)),
+    # Numărul de proxy-uri, nu adresele lor. Are ce căuta pe ecran pentru că de
+    # el depinde dacă IP-ul din jurnalul de audit înseamnă ceva: pus pe 0 în
+    # spatele unui proxy, toate intrările notează adresa platformei; pus prea
+    # mare, notează o adresă pe care clientul și-o poate alege singur. Un audit
+    # despre care nu se știe în ce caz se află nu se poate folosi într-o dispută.
+    ("TRUSTED_PROXY_COUNT", SettingGroup.SECURITY, lambda s: str(s.trusted_proxy_count)),
 )
 
 

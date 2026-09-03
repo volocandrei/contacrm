@@ -64,10 +64,21 @@ Pe serviciul **backend**:
 | `STORAGE_PROVIDER` | `s3` | vezi §4 |
 | `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT_URL` | de la furnizor | |
 | `CRON_SECRET` | un secret generat | vezi §5 |
+| `TRUSTED_PROXY_COUNT` | `1` | Vercel este singurul proxy din față; fără el, jurnalul de audit notează adresa platformei la fiecare acțiune |
+| `OCR_PROVIDER` | `pdf_text` | pornirea în producție refuză `mock` — vezi mai jos |
 
-`OCR_PROVIDER` și `AI_PROVIDER` rămân `mock`. Trecerea la un provider real
-înseamnă că documentele părăsesc infrastructura noastră — o decizie cu implicații
-GDPR (R2), nu o schimbare de configurare.
+**Pornirea în producție refuză `OCR_PROVIDER=mock`.** Providerul acela inventează
+furnizori, sume și date, iar ecranul de verificare le arată cu proveniență și scor
+de încredere — adică exact ca pe niște valori citite de pe document. Într-o
+demonstrație este util; într-o instalare reală ar scrie valori false în câmpuri
+contabile, fără ca operatorul să aibă cum să le deosebească. Pentru demonstrații
+rămâne `ENVIRONMENT=staging`.
+
+`pdf_text` citește stratul de text al PDF-ului local, fără rețea și fără cheie de
+API: din punctul de vedere al GDPR este identic cu `mock`, doar că rezultatul este
+adevărat. Un provider bazat pe model înseamnă că documentele părăsesc
+infrastructura noastră — o decizie cu implicații GDPR (R2), nu o schimbare de
+configurare.
 
 ## 3. Baza de date
 

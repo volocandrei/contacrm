@@ -12,8 +12,10 @@ from typing import Annotated, Any
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.db import get_db
 from app.core.errors import ForbiddenError, UnauthorizedError
+from app.core.net import FORWARDED_FOR, resolve_client_ip
 from app.core.security import TokenError, decode_token
 from app.domain.permissions import Permission, permissions_for
 from app.models.user import User
@@ -75,13 +77,17 @@ def require_permission(permission: Permission) -> Any:
 
 
 def client_ip(request: Request) -> str | None:
-    """IP-ul clientului.
+    """IP-ul clientului, pentru jurnalul de audit.
 
-    `X-Forwarded-For` se ia în seamă doar când aplicația chiar stă în spatele unui
-    proxy de încredere — altfel orice client își poate falsifica IP-ul din audit.
-    TODO: citește antetul doar pentru rețele de proxy configurate explicit.
+    Regula stă în `app.core.net`; aici se citesc doar cele două intrări ale ei.
+    `TRUSTED_PROXY_COUNT` implicit este 0, deci antetul se ignoră până când cineva
+    declară explicit prin câte proxy-uri trece cererea.
     """
-    return request.client.host if request.client else None
+    return resolve_client_ip(
+        request.client.host if request.client else None,
+        request.headers.get(FORWARDED_FOR),
+        trusted_proxies=settings.trusted_proxy_count,
+    )
 
 
 def get_storage() -> StorageProvider:

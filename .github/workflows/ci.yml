@@ -101,9 +101,14 @@ jobs:
       - name: Niciun caracter de control în surse
         # Un `\b` de regex ajuns în fișier ca byte 0x08 a produs o expresie care
         # nu se potrivea cu nimic, iar defectul s-a văzut abia pe server.
+        #
+        # Se citește prin `git ls-files | xargs grep -a`, nu prin `git grep -I`:
+        # `-I` **sare** fișierele pe care git le consideră binare, adică exact
+        # fișierele stricate. Prima variantă a verificării trecea verde peste un
+        # `store.ts` care conținea un NUL brut, tocmai pentru că îl sărea.
         run: |
-          found=$(git grep -Il $'[\x01-\x08\x0b\x0c\x0e-\x1f]' -- \
-            '*.py' '*.ts' '*.tsx' '*.json' '*.yml' || true)
+          found=$(git ls-files -z -- '*.py' '*.ts' '*.tsx' '*.json' '*.yml' '*.md' \
+            | LC_ALL=C xargs -0 grep -aclP '[\x00-\x08\x0b\x0c\x0e-\x1f]' || true)
           if [ -n "$found" ]; then
             echo "Caractere de control în:"; echo "$found"; exit 1
           fi
