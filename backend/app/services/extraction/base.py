@@ -65,6 +65,11 @@ class ExtractionResult:
     # produs-o este exact minciuna pe care ecranul de verificare promite să nu
     # o spună (§22).
     classification_source: FieldSource = FieldSource.AI
+    # Coduri între care documentul sigur se află, dar pe care providerul nu le
+    # poate separa singur. O factură își spune numele, nu și direcția: aceea
+    # depinde de care parte de pe document este clientul cabinetului, iar asta
+    # providerul nu are de unde să știe. Cine poate decide o face mai târziu.
+    document_type_candidates: tuple[str, ...] = ()
 
     # Câmpuri, cheiate pe numele din API (`documentDate`, `totalAmount`, …).
     fields: Mapping[str, ExtractedValue] = field(default_factory=dict)

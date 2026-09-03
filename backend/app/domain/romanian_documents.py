@@ -334,6 +334,30 @@ _TYPE_MARKERS: Final = (
 )
 
 
+# O factură se recunoaște din titlu; **direcția** ei nu. „Proforma" este exclusă
+# intenționat: nu este un document contabil, ci o ofertă.
+_INVOICE = re.compile(r"\bfactur[aeă]\b")
+_NOT_AN_INVOICE = re.compile(r"\bproform")
+
+
+def invoice_candidates(text: str, *, known_codes: frozenset[str]) -> tuple[str, ...]:
+    """Codurile între care documentul sigur se află, dar pe care textul nu le separă.
+
+    Textul spune „factură" fără să spună a cui este. Direcția depinde de care CUI
+    de pe document aparține cabinetului — o informație pe care sistemul o are și
+    documentul nu. Se rezolvă la identificarea clientului
+    (`app/services/client_matching.py`), nu aici.
+
+    Perechea se întoarce doar dacă amândouă codurile există la organizație:
+    altfel rezolvarea de mai târziu ar putea alege unul pe care scrierea îl refuză.
+    """
+    haystack = normalize(text)
+    if not _INVOICE.search(haystack) or _NOT_AN_INVOICE.search(haystack):
+        return ()
+    pair = ("FACTURA_INTRARE", "FACTURA_IESIRE")
+    return pair if all(code in known_codes for code in pair) else ()
+
+
 def classify(text: str, *, known_codes: frozenset[str]) -> Found | None:
     """Tipul documentului, doar când titlul îl spune.
 
@@ -359,6 +383,7 @@ __all__ = [
     "find_document_date",
     "find_series_and_number",
     "find_tax_ids",
+    "invoice_candidates",
     "is_valid_tax_id",
     "normalize",
     "parse_amount",

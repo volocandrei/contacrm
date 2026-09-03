@@ -36,10 +36,11 @@ from app.domain.document_actions import reprocess_check
 from app.domain.document_state import can_transition
 from app.domain.enums import DocumentErrorCode, DocumentStatus, FieldSource
 from app.domain.periods import ReferencePeriodStrategy, derive_reference_month
-from app.models.document import Document, DocumentProcessingJob
+from app.models.document import Document, DocumentProcessingJob, DocumentType
 from app.repositories.document import DocumentRepository
 from app.services import processing_queue as queue
 from app.services.audit import AuditService
+from app.services.client_matching import TYPE_BY_ROLE, ClientMatcher, MatchRole
 from app.services.document_archive import DocumentArchiveService
 from app.services.document_fields import SPEC_BY_NAME, DocumentFieldWriter, FieldUpdate
 from app.services.document_validation import DocumentValidationService, ValidationLevel
@@ -152,6 +153,9 @@ class DocumentProcessingService:
             )
 
         self._apply(document, result)
+        # Înaintea perioadei: `_assign_period` atinge luna clientului, iar un client
+        # găsit după aceea ar lăsa perioada fără rând.
+        self._match_client(document, result)
         self._assign_period(document)
         return self._decide(document, job, result)
 
@@ -256,6 +260,92 @@ class DocumentProcessingService:
         document.ai_classification_confidence = result.classification_confidence
         document.ai_extraction_confidence = result.extraction_confidence
         document.extraction_duration_ms = result.duration_ms
+
+    def _match_client(self, document: Document, result: ExtractionResult) -> None:
+        """Găsește clientul după codul fiscal de pe document (§8).
+
+        Se citesc valorile **de pe document**, nu cele propuse de extracție: dacă
+        un om a corectat deja codul fiscal, corectura lui decide. `_apply` a scris
+        deja tot, inclusiv câmpurile protejate pe care nu le-a atins.
+
+        Un client atribuit nu se rescrie niciodată, nici la reprocesare. Cine a
+        pus documentul acolo — om sau sistem — a decis deja.
+        """
+        if document.client_id is not None:
+            self._resolve_document_type(document, result)
+            return
+
+        match = ClientMatcher(self.session, document.organization_id).by_tax_ids(
+            supplier_tax_id=document.supplier_tax_id,
+            customer_tax_id=document.customer_tax_id,
+        )
+        if match is None:
+            return
+
+        document.client_id = match.client_id
+        self._resolve_document_type(document, result, role=match.role)
+
+        # Urma spune **de ce**, nu doar că s-a întâmplat: fără codul care a produs
+        # potrivirea, un operator care nu e de acord nu are ce verifica.
+        self.audit.record(
+            organization_id=document.organization_id,
+            action="DOCUMENT_CLIENT_MATCHED",
+            entity_type="Document",
+            entity_id=str(document.id),
+            user_id=None,
+            user_name="sistem",
+            detail=f"{match.client_name} · CUI {match.tax_id} · {match.role.value}",
+            new_value={"clientId": str(match.client_id), "role": match.role.value},
+        )
+        logger.info(
+            "document_client_matched",
+            document_id=str(document.id),
+            client_id=str(match.client_id),
+            role=match.role.value,
+        )
+
+    def _resolve_document_type(
+        self,
+        document: Document,
+        result: ExtractionResult,
+        *,
+        role: MatchRole | None = None,
+    ) -> None:
+        """Alege între coduri pe care extracția nu le putea separa.
+
+        Textul spune „factură" fără să spună a cui este. Rolul în care apare
+        clientul o spune: furnizor înseamnă ieșire, cumpărător înseamnă intrare.
+
+        Fără rol — client atribuit mai devreme, de un om sau de altă cale — nu se
+        alege nimic. A ghici direcția ar pune documentul în registrul greșit, ceea
+        ce este mai rău decât a-l lăsa neclasificat.
+        """
+        if not result.document_type_candidates or document.document_type_id is not None:
+            return
+        if role is None:
+            return
+
+        code = TYPE_BY_ROLE.get(role)
+        if code is None or code not in result.document_type_candidates:
+            return
+
+        document_type = self.session.scalars(
+            select(DocumentType).where(
+                DocumentType.organization_id == document.organization_id,
+                DocumentType.code == code,
+                DocumentType.is_active.is_(True),
+            )
+        ).first()
+        if document_type is None:
+            return
+
+        document.document_type_id = document_type.id
+        document.document_type = document_type
+        metadata = dict(document.field_metadata or {})
+        # Nu a citit-o nimeni de pe document și nu a propus-o un model: a rezultat
+        # dintr-o regulă aplicată peste ce știe sistemul despre proprii clienți.
+        metadata["documentType"] = {"source": FieldSource.DERIVED.value, "confidence": None}
+        document.field_metadata = metadata
 
     def _assign_period(self, document: Document) -> None:
         """Pune documentul în luna contabilă care i se cuvine (ADR-008).

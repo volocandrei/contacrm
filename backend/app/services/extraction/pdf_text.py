@@ -163,6 +163,7 @@ class PdfTextExtractionProvider:
         series, number = ro.find_series_and_number(text)
         amounts = ro.find_amounts(text)
         document_type = ro.classify(text, known_codes=self._known_type_codes)
+        candidates = ro.invoice_candidates(text, known_codes=self._known_type_codes)
 
         fields = {name: _empty() for name in FIELDS}
         fields["documentDate"] = _from(ro.find_document_date(text))
@@ -190,6 +191,7 @@ class PdfTextExtractionProvider:
             document_type_code=document_type.value if document_type else None,
             classification_confidence=document_type.confidence if document_type else None,
             classification_source=FieldSource.OCR,
+            document_type_candidates=candidates,
             fields=fields,
         )
 

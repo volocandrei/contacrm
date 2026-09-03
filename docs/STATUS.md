@@ -449,7 +449,7 @@ ci portat.**
 | **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare, arhivare, întărire** | ✅ |
 | **M6** | Coadă durabilă + worker separat, perioade + checklist, dashboard, ecran audit, acțiuni în masă | ✅ |
 | **M7** | Rapoarte în SQL, setări reale, extracție reală din PDF, notificări | ⏳ rapoarte ✅ · setări ✅ · `pdf_text` ✅ · notificări = Faza 2 |
-| M8 | Teste E2E, CI | |
+| **M8** | CI + teste E2E | ⏳ CI ✅ · E2E |
 | Faza 2 | Microsoft Graph, WhatsApp, OCR/AI real, remindere, export ZIP | |
 | Faza 3 | Integrare software contabil, rapoarte avansate, detecție anomalii | |
 
@@ -508,6 +508,48 @@ mutat documentul în altă lună contabilă.
 Pe drum s-a reparat o minciună veche a ecranului de verificare: badge-ul afișa
 „AI 95%" pentru **orice** proveniență care nu era `MANUAL`, `EMPTY` sau `DERIVED`.
 O valoare citită de o regulă apare acum ca „citit", cu altă iconiță.
+
+**M7 — identificarea clientului, pasul care lipsea din flux**
+
+Fluxul produsului spune „intake → **identificare client** → OCR/AI". Pasul acela nu
+exista: fiecare document ajungea `UNMATCHED` și aștepta un om care să aleagă
+clientul dintr-o listă. La sute de documente pe zi, era cea mai scumpă apăsare de
+buton din tot sistemul.
+
+Acum se caută codurile fiscale citite de pe document printre clienții cabinetului.
+Se compară normalizat, pentru că aceeași firmă apare cu `RO` pe o factură și fără
+pe alta.
+
+**Rolul potrivirii dă și direcția documentului.** Extracția nu putea decide dacă o
+factură este de intrare sau de ieșire, și pe bună dreptate: un modul care citește
+text nu are de unde să știe pentru cine lucrează cabinetul. Dar dacă clientul
+nostru apare ca *furnizor*, el a emis-o — este ieșire; dacă apare ca *cumpărător*,
+este intrare. Extracția rămâne cinstită și spune doar „este factură, nu știu a
+cui"; sistemul decide restul, din ce știe despre proprii clienți. Tipul rezultat
+este marcat `DERIVED`, nu `AI`.
+
+Când nu se poate spune, nu se spune: o factură între doi clienți ai aceluiași
+cabinet aparține la fel de mult amândurora, deci rămâne `UNMATCHED`.
+
+Verificat capăt la capăt pe server: aceeași factură, o dată cu clientul nostru
+cumpărător și o dată furnizor, a ieșit „Factură intrare" și „Factură ieșire"; una
+cu două coduri necunoscute a rămas neatribuită.
+
+**Un defect prins tot acolo:** o expresie regulată ajunsese în fișier cu ``
+transformat în byte de control, deci nu se potrivea cu nimic. Testele unitare nu
+existau pentru ea; rularea pe server a arătat-o imediat. Acum există și testele,
+și o verificare în CI care refuză caractere de control în surse.
+
+**M8 — CI**
+
+`.github/workflows/ci.yml` rulează la fiecare push exact comenzile care se rulează
+local — un CI care verifică altceva dă un fals sentiment de siguranță. Backendul
+pornește un PostgreSQL real, nu un SQLite „ca să meargă în CI": altfel ar rămâne
+neverificate exact lucrurile care contează — indexuri parțiale, `unaccent`,
+`FOR UPDATE SKIP LOCKED`, constrângerile CHECK.
+
+Al treilea job verifică ce nu are voie să intre în repo: documente contabile
+(§70), fișiere `.env`, caractere de control.
 
 ### Punerea în funcțiune
 

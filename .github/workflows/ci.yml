@@ -1,0 +1,109 @@
+name: CI
+
+# Ce rulează local trebuie să ruleze și aici, cu aceleași comenzi. Un CI care
+# verifică altceva decât dezvoltatorul dă un fals sentiment de siguranță: trece
+# verde pe ceva ce nimeni nu a rulat vreodată așa.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un push nou peste altul anulează rularea veche: nu are rost să aflăm dacă
+# trecea un commit pe care nimeni nu-l mai are.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Versiune explicită, nu `engines` din package.json: acolo scrie un
+          # interval (`>=22.12`), iar un interval nu spune pe ce rulează CI.
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # `ci`, nu `install`: instalează exact ce scrie în lockfile și eșuează dacă
+      # lockfile-ul nu se potrivește cu `package.json`.
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit -p tsconfig.app.json
+      - run: npm test -- --run
+      - run: npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      # Testele de integrare rulează pe un PostgreSQL real, cu schema construită
+      # prin migrări. Un SQLite „ca să meargă în CI" ar lăsa neverificate exact
+      # lucrurile care contează: indexuri parțiale, `unaccent`, `FOR UPDATE SKIP
+      # LOCKED`, constrângerile CHECK.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: contacrm
+          POSTGRES_PASSWORD: contacrm_dev_password
+          POSTGRES_DB: contacrm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U contacrm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql+psycopg://contacrm:contacrm_dev_password@localhost:5432/contacrm
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      # `--frozen`: dacă lockfile-ul nu este la zi, CI cade aici, nu rezolvă tăcut
+      # alte versiuni decât cele testate local.
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy app
+      - run: uv run alembic upgrade head
+      # Testele își fac singure baza `<db>_test`; migrarea de mai sus verifică
+      # separat că migrările chiar se aplică pe o bază goală.
+      - run: uv run pytest
+
+  # Ce nu are voie să intre în repo, indiferent cine face push.
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Niciun document contabil în repo (§70)
+        run: |
+          found=$(git ls-files -- '*.pdf' '*.jpg' '*.jpeg' '*.png' '*.webp' \
+            ':!:frontend/public/**' ':!:docs/**' || true)
+          if [ -n "$found" ]; then
+            echo "Fișiere care ar putea fi documente reale:"; echo "$found"; exit 1
+          fi
+      - name: Niciun `.env` comis
+        run: |
+          found=$(git ls-files -- '.env' '*/.env' '.env.*' ':!:.env.example' || true)
+          if [ -n "$found" ]; then echo "$found"; exit 1; fi
+      - name: Niciun caracter de control în surse
+        # Un `\b` de regex ajuns în fișier ca byte 0x08 a produs o expresie care
+        # nu se potrivea cu nimic, iar defectul s-a văzut abia pe server.
+        run: |
+          found=$(git grep -Il $'[\x01-\x08\x0b\x0c\x0e-\x1f]' -- \
+            '*.py' '*.ts' '*.tsx' '*.json' '*.yml' || true)
+          if [ -n "$found" ]; then
+            echo "Caractere de control în:"; echo "$found"; exit 1
+          fi

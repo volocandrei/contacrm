@@ -29,6 +29,7 @@ from app.domain.romanian_documents import (
     find_document_date,
     find_series_and_number,
     find_tax_ids,
+    invoice_candidates,
     is_valid_tax_id,
     normalize,
     parse_amount,
@@ -36,6 +37,7 @@ from app.domain.romanian_documents import (
 )
 
 TYPES = frozenset({"FACTURA_INTRARE", "BON_FISCAL", "EXTRAS_CONT", "CHITANTA"})
+TYPES_WITH_INVOICES = TYPES | {"FACTURA_IESIRE"}
 
 
 class TestNormalisation:
@@ -241,3 +243,36 @@ class TestClassification:
 
     def test_two_titles_mean_we_cannot_tell(self) -> None:
         assert classify("EXTRAS DE CONT ... CHITANTA", known_codes=TYPES) is None
+
+
+class TestInvoiceCandidates:
+    """Ce se poate spune despre o factura: ca este una, nu si a cui.
+
+    Testele astea lipseau cand am scris regula, iar defectul — `\b` ajuns in
+    fisier ca byte de control, deci o expresie care nu se potrivea cu nimic — a
+    fost prins abia rulind pe server. De aceea exista acum.
+    """
+
+    def test_an_invoice_narrows_it_to_two_codes(self) -> None:
+        assert invoice_candidates("FACTURA FISCALA nr. 7001", known_codes=TYPES_WITH_INVOICES) == (
+            "FACTURA_INTRARE",
+            "FACTURA_IESIRE",
+        )
+
+    def test_the_word_boundary_is_real(self) -> None:
+        """Fara delimitare, `facturare` sau `manufactura` ar trece drept factura."""
+        assert invoice_candidates("Servicii de facturare", known_codes=TYPES_WITH_INVOICES) == ()
+
+    def test_a_proforma_is_not_an_accounting_document(self) -> None:
+        """Este o oferta, nu o proba contabila."""
+        assert invoice_candidates("FACTURA PROFORMA", known_codes=TYPES_WITH_INVOICES) == ()
+
+    def test_something_that_is_not_an_invoice(self) -> None:
+        assert invoice_candidates("EXTRAS DE CONT", known_codes=TYPES_WITH_INVOICES) == ()
+
+    def test_diacritics_do_not_hide_it(self) -> None:
+        assert invoice_candidates("Factură fiscală", known_codes=TYPES_WITH_INVOICES) != ()
+
+    def test_nothing_is_proposed_without_both_codes_configured(self) -> None:
+        """Altfel rezolvarea de mai tarziu ar putea alege unul pe care scrierea il refuza."""
+        assert invoice_candidates("FACTURA", known_codes=frozenset({"FACTURA_INTRARE"})) == ()
