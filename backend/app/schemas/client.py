@@ -51,6 +51,67 @@ class ClientOut(ApiModel):
     created_at: datetime
 
 
+class ClientCreate(ApiModel):
+    """Ce trimite formularul de client nou.
+
+    Doar denumirea este obligatorie. Un prospect care încă nu și-a trimis datele
+    are drept la un rând în CRM — restul se completează când se știe.
+    """
+
+    name: str = Field(min_length=1, max_length=255)
+    tax_id: str | None = Field(default=None, max_length=32)
+    registration_number: str | None = Field(default=None, max_length=64)
+    address: str | None = Field(default=None, max_length=2000)
+    #: Implicit ACTIVE: cine adaugă un client îi ține contabilitatea. `PROSPECT`
+    #: rămâne disponibil pentru cineva cu care se discută încă.
+    status: ClientStatus = ClientStatus.ACTIVE
+    assigned_accountant_id: uuid.UUID | None = None
+
+
+class ClientUpdate(ApiModel):
+    """Modificarea unui client. Câmpurile **netrimise** rămân neatinse.
+
+    `None` și „absent" înseamnă lucruri diferite: primul golește câmpul, al
+    doilea nu îl atinge. Distincția se face cu `exclude_unset`, în rută.
+    """
+
+    name: str | None = Field(default=None, max_length=255)
+    tax_id: str | None = Field(default=None, max_length=32)
+    registration_number: str | None = Field(default=None, max_length=64)
+    address: str | None = Field(default=None, max_length=2000)
+    status: ClientStatus | None = None
+    assigned_accountant_id: uuid.UUID | None = None
+
+
+class ContactCreate(ApiModel):
+    """Persoana de contact.
+
+    **Adresa de email nu este un detaliu.** După ea ajunge un atașament primit la
+    clientul potrivit (§8). Un client fără contact primește documente doar prin
+    dosarul lui din OneDrive.
+    """
+
+    full_name: str = Field(min_length=1, max_length=255)
+    role: str | None = Field(default=None, max_length=128)
+    email: EmailAddress | None = None
+    phone: str | None = Field(default=None, max_length=32)
+    whatsapp_number: str | None = Field(default=None, max_length=32)
+    is_primary: bool = False
+    is_active: bool = True
+
+
+class ContactUpdate(ApiModel):
+    """La fel ca la client: ce nu se trimite nu se schimbă."""
+
+    full_name: str | None = Field(default=None, max_length=255)
+    role: str | None = Field(default=None, max_length=128)
+    email: EmailAddress | None = None
+    phone: str | None = Field(default=None, max_length=32)
+    whatsapp_number: str | None = Field(default=None, max_length=32)
+    is_primary: bool | None = None
+    is_active: bool | None = None
+
+
 class ClientFilters(ApiModel):
     """Filtrele pe care le trimite `clients-page.tsx`."""
 

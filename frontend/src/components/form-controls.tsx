@@ -45,6 +45,7 @@ export function SelectFilter({
   allLabel = "Toate",
   className,
   showLabel = false,
+  includeAll = true,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -53,6 +54,14 @@ export function SelectFilter({
   allLabel?: string;
   className?: string;
   showLabel?: boolean;
+  /**
+   * Opțiunea goală de la început.
+   *
+   * Are sens ca **filtru** („toate statusurile"), nu ca **câmp de formular**:
+   * acolo ar lăsa utilizatorul să trimită un status vid, pe care serverul îl
+   * refuză. Aceeași componentă face amândouă, deci alegerea este a apelantului.
+   */
+  includeAll?: boolean;
 }) {
   return (
     <label className={cn("block", className)}>
@@ -70,7 +79,7 @@ export function SelectFilter({
         onChange={(event) => onChange(event.target.value)}
         className={cn(inputClass, "cursor-pointer pr-8")}
       >
-        <option value="">{allLabel}</option>
+        {includeAll && <option value="">{allLabel}</option>}
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

@@ -53,6 +53,23 @@ const routes: Route[] = [
       store.listClients({ ...query, page: num(query.page), pageSize: num(query.pageSize) }),
   },
   { method: "GET", pattern: "/clients/:id", handler: ({ params }) => store.getClient(params.id!) },
+  { method: "POST", pattern: "/clients", handler: ({ body }) => store.createClient(body) },
+  {
+    method: "PATCH",
+    pattern: "/clients/:id",
+    handler: ({ params, body }) => store.updateClient(params.id!, body),
+  },
+  {
+    method: "POST",
+    pattern: "/clients/:id/contacts",
+    handler: ({ params, body }) => store.createContact(params.id!, body),
+  },
+  {
+    method: "PATCH",
+    pattern: "/clients/:id/contacts/:contactId",
+    handler: ({ params, body }) =>
+      store.updateContact(params.id!, params.contactId!, body),
+  },
   {
     method: "GET",
     pattern: "/clients/:id/contacts",

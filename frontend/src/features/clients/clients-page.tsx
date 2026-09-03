@@ -1,5 +1,9 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Plus } from "lucide-react";
 import { useClients } from "@/api/hooks";
+import { usePermissionCheck } from "@/features/auth/use-auth";
+import { ClientForm } from "@/features/clients/client-form";
 import { Pagination, SearchInput, SelectFilter } from "@/components/form-controls";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { ClientStatusBadge } from "@/components/status-badge";
@@ -18,6 +22,9 @@ const DEFAULTS = { q: "", status: "", page: "1" };
 
 export function ClientsPage() {
   const { values, setValue } = useFilterParams(DEFAULTS);
+  const [adding, setAdding] = useState(false);
+  const navigate = useNavigate();
+  const has = usePermissionCheck();
   const { data, isLoading, error } = useClients({
     q: values.q,
     status: values.status,
@@ -27,7 +34,38 @@ export function ClientsPage() {
 
   return (
     <div>
-      <PageHeader title="Clienți" description="Companiile administrate de cabinet" />
+      <PageHeader
+        title="Clienți"
+        description="Companiile administrate de cabinet"
+        actions={
+          // Butonul se ascunde fără permisiune, dar decizia rămâne pe server:
+          // ascunderea este ergonomie, nu securitate.
+          has("clients:write") && !adding ? (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Client nou
+            </button>
+          ) : null
+        }
+      />
+
+      {adding && (
+        <div className="mb-4">
+          <ClientForm
+            onDone={(client) => {
+              setAdding(false);
+              // Direct pe fișa lui: pasul următor este aproape întotdeauna
+              // adăugarea contactului, adică adresa după care sosesc documentele.
+              navigate(`/crm/clienti/${client.id}`);
+            }}
+            onCancel={() => setAdding(false)}
+          />
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap gap-2">
         <SearchInput

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Mail, Phone, StickyNote } from "lucide-react";
+import { ArrowLeft, Mail, Pencil, Phone, Plus, StickyNote } from "lucide-react";
 import {
   useClient,
   useClientContacts,
@@ -10,6 +10,8 @@ import {
   useDocuments,
 } from "@/api/hooks";
 import { ErrorState, LoadingState, Panel } from "@/components/page";
+import { usePermissionCheck } from "@/features/auth/use-auth";
+import { ClientForm, ContactForm } from "@/features/clients/client-form";
 import {
   ClientStatusBadge,
   ConfidenceBadge,
@@ -33,6 +35,8 @@ type TabId = (typeof TABS)[number]["id"];
 export function ClientDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const [tab, setTab] = useState<TabId>("general");
+  const [editing, setEditing] = useState(false);
+  const has = usePermissionCheck();
   const { data: client, isLoading, error } = useClient(id);
 
   if (isLoading) return <LoadingState />;
@@ -59,7 +63,27 @@ export function ClientDetailPage() {
             {client.taxId} · {client.registrationNumber} · {client.address}
           </p>
         </div>
+        {has("clients:write") && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+            Modifică
+          </button>
+        )}
       </div>
+
+      {editing && (
+        <div className="mb-6">
+          <ClientForm
+            client={client}
+            onDone={() => setEditing(false)}
+            onCancel={() => setEditing(false)}
+          />
+        </div>
+      )}
 
       <div
         role="tablist"
@@ -171,9 +195,37 @@ function GeneralTab({ clientId }: { clientId: string }) {
 
 function ContactsTab({ clientId }: { clientId: string }) {
   const { data: contacts, isLoading } = useClientContacts(clientId);
+  const has = usePermissionCheck();
+  // `null` = niciun formular; `""` = unul nou; un id = modificarea aceluia.
+  const [editing, setEditing] = useState<string | null>(null);
   if (isLoading) return <LoadingState />;
 
+  const target = editing ? contacts?.find((contact) => contact.id === editing) : undefined;
+
   return (
+    <>
+      {editing !== null && (
+        <div className="mb-4">
+          <ContactForm
+            clientId={clientId}
+            contact={target}
+            onDone={() => setEditing(null)}
+            onCancel={() => setEditing(null)}
+          />
+        </div>
+      )}
+
+      {has("clients:write") && editing === null && (
+        <button
+          type="button"
+          onClick={() => setEditing("")}
+          className="mb-4 inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Contact nou
+        </button>
+      )}
+
     <Panel bodyClassName="p-0">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
@@ -185,6 +237,9 @@ function ContactsTab({ clientId }: { clientId: string }) {
               <th scope="col" className="px-4 py-3 font-medium">Telefon</th>
               <th scope="col" className="px-4 py-3 font-medium">WhatsApp</th>
               <th scope="col" className="px-4 py-3 font-medium">Stare</th>
+              <th scope="col" className="px-4 py-3 font-medium">
+                <span className="sr-only">Acțiuni</span>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -207,12 +262,24 @@ function ContactsTab({ clientId }: { clientId: string }) {
                 <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
                   {contact.isActive ? "Activ" : "Inactiv"}
                 </td>
+                <td className="px-4 py-3 text-right">
+                  {has("clients:write") && (
+                    <button
+                      type="button"
+                      onClick={() => setEditing(contact.id)}
+                      className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+                    >
+                      Modifică
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </Panel>
+      </Panel>
+    </>
   );
 }
 

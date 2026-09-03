@@ -28,6 +28,7 @@ import { buildArchivePath, buildDocumentFilename, type FilenameInput } from "@/l
 import type {
   AuditLogEntry,
   Client,
+  ClientStatus,
   ClientNote,
   Contact,
   CurrentUser,
@@ -365,6 +366,215 @@ export function listContacts(clientId: string): Contact[] {
 
 export function listNotes(clientId: string): ClientNote[] {
   return state.notes.filter((n) => n.clientId === clientId);
+}
+
+/**
+ * `RO14399840` și `14399840` sunt același cod fiscal.
+ *
+ * Oglindește `client_matching.normalize_tax_id` din backend. Fără normalizare,
+ * aceeași firmă ar putea fi adăugată de două ori, iar identificarea automată a
+ * clientului ar găsi apoi doi candidați și n-ar mai atribui niciun document.
+ */
+function normalizeTaxId(raw: string | null | undefined): string {
+  const cleaned = (raw ?? "").toUpperCase().replace(/[\s.-]/g, "");
+  const digits = cleaned.startsWith("RO") ? cleaned.slice(2) : cleaned;
+  return digits.replace(/^0+/, "");
+}
+
+export type ClientInput = {
+  name?: string;
+  taxId?: string | null;
+  registrationNumber?: string | null;
+  address?: string | null;
+  status?: ClientStatus;
+  assignedAccountantId?: string | null;
+};
+
+function cleanText(raw: string | null | undefined): string | null {
+  const text = (raw ?? "").trim();
+  return text || null;
+}
+
+function assertTaxIdIsFree(taxId: string | null, exceptId: string | null) {
+  if (!taxId) return;
+  const wanted = normalizeTaxId(taxId);
+  if (!wanted) return;
+  const owner = state.clients.find(
+    (c) => c.id !== exceptId && normalizeTaxId(c.taxId) === wanted,
+  );
+  if (owner) {
+    throw new ApiError("CONFLICT", `CUI-ul ${taxId} aparține deja clientului ${owner.name}.`, 409, {
+      taxId: ["CUI folosit deja."],
+    });
+  }
+}
+
+function requiredText(raw: string | null | undefined, field: string, label: string): string {
+  const text = (raw ?? "").trim();
+  if (!text) {
+    throw new ApiError("VALIDATION_ERROR", `${label} este obligatorie.`, 422, {
+      [field]: ["Câmp obligatoriu."],
+    });
+  }
+  return text;
+}
+
+export function createClient(input: ClientInput): Client {
+  requirePermission("clients:write");
+  const name = requiredText(input.name, "name", "Denumirea");
+  const taxId = cleanText(input.taxId);
+  assertTaxIdIsFree(taxId, null);
+
+  const accountant = input.assignedAccountantId
+    ? (state.users.find((u) => u.id === input.assignedAccountantId) ?? null)
+    : null;
+
+  const client: Client = {
+    id: `client-${state.clients.length + 1}-${Date.now()}`,
+    name,
+    taxId: taxId ?? "",
+    registrationNumber: cleanText(input.registrationNumber) ?? "",
+    address: cleanText(input.address) ?? "",
+    // ACTIV, nu PROSPECT: cine adaugă un client îi ține contabilitatea.
+    status: input.status ?? "ACTIVE",
+    assignedAccountantId: accountant?.id ?? null,
+    assignedAccountantName: accountant?.fullName ?? null,
+    tags: [],
+    lastInteractionAt: null,
+    createdAt: new Date(MOCK_NOW).toISOString(),
+  };
+  state.clients.push(client);
+  recordAudit("CLIENT_CREATED", "Client", client.id, client.name);
+  return client;
+}
+
+export function updateClient(id: string, input: ClientInput): Client {
+  requirePermission("clients:write");
+  const client = getClient(id);
+  let changed = false;
+
+  if ("name" in input) {
+    client.name = requiredText(input.name, "name", "Denumirea");
+    changed = true;
+  }
+  if ("taxId" in input) {
+    const taxId = cleanText(input.taxId);
+    assertTaxIdIsFree(taxId, client.id);
+    client.taxId = taxId ?? "";
+    changed = true;
+  }
+  if ("registrationNumber" in input) {
+    client.registrationNumber = cleanText(input.registrationNumber) ?? "";
+    changed = true;
+  }
+  if ("address" in input) {
+    client.address = cleanText(input.address) ?? "";
+    changed = true;
+  }
+  if (input.status) {
+    client.status = input.status;
+    changed = true;
+  }
+  if ("assignedAccountantId" in input) {
+    const accountant = input.assignedAccountantId
+      ? (state.users.find((u) => u.id === input.assignedAccountantId) ?? null)
+      : null;
+    client.assignedAccountantId = accountant?.id ?? null;
+    client.assignedAccountantName = accountant?.fullName ?? null;
+    changed = true;
+  }
+
+  if (changed) recordAudit("CLIENT_UPDATED", "Client", client.id, client.name);
+  return client;
+}
+
+export type ContactInput = {
+  fullName?: string;
+  role?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  whatsappNumber?: string | null;
+  isPrimary?: boolean;
+  isActive?: boolean;
+};
+
+/**
+ * Aceeași adresă la doi clienți nu produce nicio eroare la preluare — doar o
+ * oprește: `MailSyncService` scoate din hartă adresele ambigue, pentru că nu are
+ * cum să aleagă. Documentele nu ar mai ajunge la nimeni.
+ */
+function assertEmailIsFree(email: string | null, exceptId: string | null) {
+  if (!email) return;
+  const owner = state.contacts.find((c) => c.id !== exceptId && c.email === email);
+  if (!owner) return;
+  const client = state.clients.find((c) => c.id === owner.clientId);
+  throw new ApiError(
+    "CONFLICT",
+    `Adresa ${email} este deja contactul clientului ${client?.name ?? "necunoscut"}. ` +
+      "Două contacte cu aceeași adresă opresc atribuirea automată a emailurilor.",
+    409,
+    { email: ["Adresă folosită deja."] },
+  );
+}
+
+/** Litere mici: potrivirea expeditorului se face pe adresa normalizată (§8). */
+function normalizeEmail(raw: string | null | undefined): string | null {
+  const email = cleanText(raw);
+  return email ? email.toLowerCase() : null;
+}
+
+function demoteOtherPrimaries(clientId: string, keep: string) {
+  for (const other of state.contacts) {
+    if (other.clientId === clientId && other.id !== keep) other.isPrimary = false;
+  }
+}
+
+export function createContact(clientId: string, input: ContactInput): Contact {
+  requirePermission("clients:write");
+  getClient(clientId);
+  const email = normalizeEmail(input.email);
+  assertEmailIsFree(email, null);
+
+  const contact: Contact = {
+    id: `contact-${state.contacts.length + 1}-${Date.now()}`,
+    clientId,
+    fullName: requiredText(input.fullName, "fullName", "Numele"),
+    role: cleanText(input.role) ?? "",
+    email,
+    phone: cleanText(input.phone),
+    whatsappNumber: cleanText(input.whatsappNumber),
+    isPrimary: input.isPrimary ?? false,
+    isActive: input.isActive ?? true,
+  };
+  state.contacts.push(contact);
+  if (contact.isPrimary) demoteOtherPrimaries(clientId, contact.id);
+  recordAudit("CONTACT_CREATED", "Contact", contact.id, contact.fullName);
+  return contact;
+}
+
+export function updateContact(clientId: string, contactId: string, input: ContactInput): Contact {
+  requirePermission("clients:write");
+  getClient(clientId);
+  const contact = state.contacts.find((c) => c.id === contactId && c.clientId === clientId);
+  if (!contact) return notFound("Contact", contactId);
+
+  if ("fullName" in input) contact.fullName = requiredText(input.fullName, "fullName", "Numele");
+  if ("role" in input) contact.role = cleanText(input.role) ?? "";
+  if ("email" in input) {
+    const email = normalizeEmail(input.email);
+    assertEmailIsFree(email, contact.id);
+    contact.email = email;
+  }
+  if ("phone" in input) contact.phone = cleanText(input.phone);
+  if ("whatsappNumber" in input) contact.whatsappNumber = cleanText(input.whatsappNumber);
+  if (input.isActive !== undefined) contact.isActive = input.isActive;
+  if (input.isPrimary) {
+    contact.isPrimary = true;
+    demoteOtherPrimaries(clientId, contact.id);
+  }
+
+  recordAudit("CONTACT_UPDATED", "Contact", contact.id, contact.fullName);
+  return contact;
 }
 
 export function listClientPeriods(clientId: string) {

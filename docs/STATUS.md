@@ -443,7 +443,7 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 | Trei constrângeri `CHECK` din modele rămăseseră în urma migrărilor. `compare_metadata` nu compară corpul lor, deci testul de derivă nu le vedea | inventarul `pg_constraint` din baza migrată |
 | Niciun antet de securitate pe răspunsurile API: existau doar pe fișiere și în `vercel.json` | **antetele unui server pornit** |
 | `/demo` — pagină de demonstrație, neautentificată, în producție | inventarul rutelor |
-| Nu exista **niciun** mod de a adăuga un client într-o bază de producție: `seed-dev` refuză să ruleze acolo, iar interfața nu are formular | încercând să instalez aplicația de la zero |
+| Nu exista **niciun** mod de a adăuga un client într-o bază de producție: `seed-dev` refuză să ruleze acolo, iar interfața nu avea formular. Rezolvat întâi cu `add-client`, apoi cu ecranul propriu-zis | încercând să instalez aplicația de la zero |
 | `RATE_LIMIT_PER_MINUTE` stătea în configurare de la primul commit și nu îl citea niciun modul: o protecție care exista doar pe hârtie | căutând cine citește fiecare setare |
 | Prima variantă a limitării număra **toate** încercările, nu doar eșecurile: al unsprezecelea login cu parola corectă dintr-un minut era refuzat | **două teste E2E căzute departe de cauză**, în mijlocul unui flux de documente |
 | Pe un ecran de 390px, fiecare pagină depășea cu 50px, iar titlul din antet se strângea la lățime zero | măsurând lățimea reală pe trei viewporturi |

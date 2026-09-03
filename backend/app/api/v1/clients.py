@@ -10,9 +10,9 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, status
 
-from app.api.deps import DbSession, require_permission
+from app.api.deps import DbSession, client_ip, require_permission
 from app.api.v1.documents import to_list_item
 from app.core.errors import NotFoundError
 from app.domain.permissions import Permission
@@ -20,13 +20,24 @@ from app.models.client import Client
 from app.models.user import User
 from app.repositories.client import ClientRepository
 from app.repositories.document import DocumentRepository
-from app.schemas.client import ClientFilters, ClientNoteOut, ClientOut, ContactOut
+from app.schemas.client import (
+    ClientCreate,
+    ClientFilters,
+    ClientNoteOut,
+    ClientOut,
+    ClientUpdate,
+    ContactCreate,
+    ContactOut,
+    ContactUpdate,
+)
 from app.schemas.common import PageParams, Paginated
 from app.schemas.document import DocumentFilters, DocumentListItemOut
+from app.services.client_service import ActorContext, ClientService
 
 router = APIRouter(prefix="/clients", tags=["crm"])
 
 ClientReader = Annotated[User, require_permission(Permission.CLIENTS_READ)]
+ClientWriter = Annotated[User, require_permission(Permission.CLIENTS_WRITE)]
 
 
 def _to_out(client: Client, accountant_names: dict[uuid.UUID, str]) -> ClientOut:
@@ -120,3 +131,86 @@ def list_client_documents(
     return Paginated[DocumentListItemOut].build(
         items=[to_list_item(row) for row in rows], total=total, params=page
     )
+
+
+# ── Scriere (§61) ────────────────────────────────────────────────────────────
+#
+# **Nu există ștergere, deliberat.** Un client cu documente este istorie
+# contabilă; ce se cere de fapt este „nu mai lucrez cu el", iar asta se face
+# trecându-l în `INACTIVE`. O rută `DELETE` ar fi arătat ca soluția evidentă
+# exact în momentul greșit.
+
+
+def _actor(user: User, request: Request) -> ActorContext:
+    return ActorContext(
+        user=user, ip=client_ip(request), user_agent=request.headers.get("User-Agent")
+    )
+
+
+@router.post("", response_model=ClientOut, status_code=status.HTTP_201_CREATED)
+def create_client(
+    session: DbSession,
+    user: ClientWriter,
+    request: Request,
+    payload: ClientCreate,
+) -> ClientOut:
+    repository = ClientRepository(session)
+    client = ClientService(session).create(
+        user.organization_id, payload.model_dump(), _actor(user, request)
+    )
+    return _to_out(client, repository.accountant_names([client]))
+
+
+@router.patch("/{client_id}", response_model=ClientOut)
+def update_client(
+    session: DbSession,
+    user: ClientWriter,
+    request: Request,
+    client_id: uuid.UUID,
+    payload: ClientUpdate,
+) -> ClientOut:
+    repository = ClientRepository(session)
+    client = ClientService(session).update(
+        user.organization_id,
+        client_id,
+        # `exclude_unset`: un câmp netrimis nu se atinge, unul trimis `null` se
+        # golește. Fără el, un formular care trimite doar statusul ar șterge CUI-ul.
+        payload.model_dump(exclude_unset=True),
+        _actor(user, request),
+    )
+    return _to_out(client, repository.accountant_names([client]))
+
+
+@router.post(
+    "/{client_id}/contacts", response_model=ContactOut, status_code=status.HTTP_201_CREATED
+)
+def create_contact(
+    session: DbSession,
+    user: ClientWriter,
+    request: Request,
+    client_id: uuid.UUID,
+    payload: ContactCreate,
+) -> ContactOut:
+    contact = ClientService(session).add_contact(
+        user.organization_id, client_id, payload.model_dump(), _actor(user, request)
+    )
+    return ContactOut.model_validate(contact)
+
+
+@router.patch("/{client_id}/contacts/{contact_id}", response_model=ContactOut)
+def update_contact(
+    session: DbSession,
+    user: ClientWriter,
+    request: Request,
+    client_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    payload: ContactUpdate,
+) -> ContactOut:
+    contact = ClientService(session).update_contact(
+        user.organization_id,
+        client_id,
+        contact_id,
+        payload.model_dump(exclude_unset=True),
+        _actor(user, request),
+    )
+    return ContactOut.model_validate(contact)

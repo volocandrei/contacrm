@@ -7,6 +7,7 @@ import type {
   ChecklistItem,
   Client,
   ClientNote,
+  ClientStatus,
   Contact,
   CurrentUser,
   DashboardData,
@@ -62,8 +63,36 @@ export const dashboard = {
   counts: () => api.get<SidebarCounts>("/dashboard/counts"),
 };
 
+/** Ce se poate scrie despre un client. Fără `tags`: etichetele au ecranul lor. */
+export type ClientInput = {
+  name?: string;
+  taxId?: string | null;
+  registrationNumber?: string | null;
+  address?: string | null;
+  status?: ClientStatus;
+  assignedAccountantId?: string | null;
+};
+
+export type ContactInput = {
+  fullName?: string;
+  role?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  whatsappNumber?: string | null;
+  isPrimary?: boolean;
+  isActive?: boolean;
+};
+
 export const clients = {
   list: (params: QueryParams) => api.get<Paginated<Client>>("/clients", params),
+  create: (input: ClientInput) => api.post<Client>("/clients", { ...input }),
+  // `PATCH`, nu `PUT`: ce nu se trimite rămâne neatins. Un formular care trimite
+  // doar statusul nu are voie să golească CUI-ul.
+  update: (id: string, input: ClientInput) => api.patch<Client>(`/clients/${id}`, { ...input }),
+  createContact: (clientId: string, input: ContactInput) =>
+    api.post<Contact>(`/clients/${clientId}/contacts`, { ...input }),
+  updateContact: (clientId: string, contactId: string, input: ContactInput) =>
+    api.patch<Contact>(`/clients/${clientId}/contacts/${contactId}`, { ...input }),
   get: (id: string) => api.get<Client>(`/clients/${id}`),
   contacts: (id: string) => api.get<Contact[]>(`/clients/${id}/contacts`),
   notes: (id: string) => api.get<ClientNote[]>(`/clients/${id}/notes`),

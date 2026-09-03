@@ -16,6 +16,8 @@ import {
   reports,
   tasks,
   type BulkPayload,
+  type ClientInput,
+  type ContactInput,
 } from "@/api/endpoints";
 import type { DocumentDetail, DocumentFieldName, TaskStatus } from "@/types/domain";
 
@@ -78,6 +80,35 @@ export function useClientNotes(id: string) {
 
 export function useClientPeriods(id: string) {
   return useQuery({ queryKey: queryKeys.clientPeriods(id), queryFn: () => clients.periods(id) });
+}
+
+/**
+ * Scrierea unui client. La succes se invalidează lista **și** fișa: un client
+ * redenumit trebuie să apară schimbat în amândouă, nu doar acolo unde s-a salvat.
+ */
+export function useSaveClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: ClientInput }) =>
+      id ? clients.update(id, input) : clients.create(input),
+    onSuccess: (client) => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      queryClient.setQueryData(queryKeys.client(client.id), client);
+    },
+  });
+}
+
+export function useSaveContact(clientId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: ContactInput }) =>
+      id
+        ? clients.updateContact(clientId, id, input)
+        : clients.createContact(clientId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.clientContacts(clientId) });
+    },
+  });
 }
 
 export function useDocuments(params: QueryParams) {

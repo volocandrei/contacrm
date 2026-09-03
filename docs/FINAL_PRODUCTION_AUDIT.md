@@ -310,10 +310,16 @@ parțial din migrare, dar cu un mesaj în loc de o eroare de bază), refuză să
 ghicească atunci când baza are mai multe cabinete, și creează opțional contactul —
 adresa după care un atașament primit ajunge la clientul potrivit.
 
-**Nu am construit ecranul.** Un modul de administrare a clienților este o
-funcționalitate nouă, nu o reparație, iar un audit nu este locul unde se decide
-că apare. Comanda deblochează prima folosire; ecranul rămâne primul lucru de
-construit după livrare.
+La momentul auditului nu am construit și ecranul: un modul de administrare a
+clienților este o funcționalitate nouă, nu o reparație, iar un audit nu este locul
+unde se decide că apare.
+
+**A fost construit imediat după**, ca prim element din lista de mai jos:
+`POST/PATCH /clients`, `POST/PATCH /clients/{id}/contacts`, permisiunea
+`clients:write` — care exista în hartă și nu era folosită de nicio rută —, formulare
+în „Clienți" și în fișa clientului, și aceleași două verificări în backendul
+simulat. Comanda `add-client` rămâne pentru instalarea de la zero, când încă nu
+există niciun cont prin care să te autentifici.
 
 **Test:** `tests/test_cli.py`, 8 cazuri — inclusiv CUI duplicat, bază cu două
 cabinete, și client fără email.
@@ -505,7 +511,6 @@ Niciunul nu este cod.
 | Jurnalul de audit nu este imutabil **la nivel de bază de date** | Mică | Nicio rută nu îl modifică, dar aplicația se conectează cu un utilizator care are drept de `DELETE`. Imutabilitatea reală cere un al doilea rol de bază de date, adică o decizie de infrastructură |
 | Permisiunile `documents:delete` și `communication:send` nu au nicio rută | Cosmetic | Există în hartă pentru completitudine; nimic nu le folosește |
 | Codul `INTERNAL_ERROR` pe un răspuns `405` | Cosmetic | Eticheta e greșită, comportamentul nu: frontendul decide reîncercarea după status, nu după cod |
-| Administrarea clienților se face de la linia de comandă | Medie | `add-client` deblochează prima folosire, dar un cabinet care adaugă clienți săptămânal are nevoie de ecranul propriu-zis. Primul lucru de construit după livrare |
 | O eroare de teardown, văzută **o singură dată** | Mică | La una dintre rulările complete, ultimul test a raportat `ERROR` (972 trecute, 1 eroare). Nu s-a reprodus în trei rulări complete consecutive și mesajul a fost trunchiat. Ipoteza este o cursă la `DROP DATABASE ... WITH (FORCE)` din teardown-ul fixture-ului de sesiune. Dacă reapare, trebuie rulat cu ieșirea completă salvată — nu tratat ca zgomot |
 | Integrările Microsoft, neverificate cu credențiale reale | — | Vezi punctul 1 de mai sus |
 
@@ -515,9 +520,9 @@ Niciunul nu este cod.
 
 În ordinea valorii pentru cabinet, nu a dificultății.
 
-1. **Ecranul de administrare a clienților.** Adăugare, editare, dezactivare — cu
-   audit și cu permisiunea `clients:write`, care există deja în hartă și nu este
-   folosită de nicio rută. Comanda `add-client` ține locul, dar nu îl ține bine.
+1. ~~**Ecranul de administrare a clienților.**~~ Construit imediat după audit —
+   vezi A-10. Rămâne fără interfață un singur lucru din CRM: etichetele, care au
+   propria semantică și propriul ecran.
 2. **ANAF SPV — e-Factura.** Prin lege, facturile B2B trec pe acolo, iar XML-ul îl
    citim deja cu certitudine. Ar însemna că facturile de intrare apar singure.
    Blocajul nu este tehnic: cere certificat digital în SPV și împuternicire de la

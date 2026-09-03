@@ -122,17 +122,27 @@ lucru care spune dacă cele două copii sunt din același moment.
 
 ### A venit un client nou
 
+Din interfață: **Clienți → Client nou**. Salvarea duce direct pe fișa lui, unde
+pasul următor este **Contacte → Contact nou**.
+
+**Emailul contactului contează cel mai mult**: după el ajunge un atașament primit
+la clientul potrivit. Un client fără contact primește documente doar prin dosarul
+lui din OneDrive, care se leagă din `Administrare → Surse documente`.
+
+Două lucruri sunt refuzate, și amândouă din același motiv — altfel preluarea
+automată s-ar opri **fără nicio eroare**:
+
+- același CUI la doi clienți, oricum ar fi scris (`RO14399840` și `14399840` sunt
+  același cod): identificarea ar găsi doi candidați și n-ar mai atribui nimic;
+- aceeași adresă de email la doi clienți: adresele ambigue sunt scoase din harta
+  de preluare, deci mesajele de la ea n-ar mai ajunge la nimeni.
+
+Pentru instalarea de la zero, când încă nu există niciun cont prin care să te
+autentifici, aceeași treabă o face:
+
 ```bash
 uv run python -m app.cli add-client
 ```
-
-Cere denumirea, CUI-ul și **emailul de contact**. Ultimul contează cel mai mult:
-după el ajunge un atașament primit la clientul potrivit. Un client fără contact
-primește documente doar prin dosarul lui din OneDrive, care se leagă apoi din
-`Administrare → Surse documente`.
-
-Aplicația nu are ecrane de creare a clienților — CRM-ul este de citire, iar drumul
-de scriere sunt documentele. Comanda ține locul până când ecranul chiar există.
 
 ### Documentele nu mai sosesc din OneDrive sau de pe email
 
