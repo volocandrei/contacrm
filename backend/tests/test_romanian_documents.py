@@ -210,6 +210,49 @@ class TestAmounts:
     def test_an_unlabelled_amount_is_ignored(self) -> None:
         assert find_amounts("Va multumim! 1.234,56") == {}
 
+    @pytest.mark.parametrize(
+        ("written", "expected"),
+        [
+            # Cu separator de mii — convenția „de manual".
+            ("1.190,00", "1190.00"),
+            ("1 190,00", "1190.00"),
+            ("1.234.567,89", "1234567.89"),
+            ("2.000", "2000.00"),
+            # **Fără** separator de mii. Aici era defectul: tiparul accepta cel mult
+            # trei cifre înaintea grupurilor de mii, iar grupurile erau opționale,
+            # deci `1190,00` se potrivea doar pe `119`. O factură de 1190 de lei
+            # intra în contabilitate ca 119 — tăcut, și perfect plauzibil.
+            ("1190,00", "1190.00"),
+            ("1190.00", "1190.00"),
+            ("1190", "1190.00"),
+            ("100000", "100000.00"),
+            ("12500,50", "12500.50"),
+            ("1234.56", "1234.56"),
+            # Sub o mie, ambele convenții.
+            ("119,00", "119.00"),
+            ("12,50", "12.50"),
+            ("2.00", "2.00"),
+        ],
+    )
+    def test_a_total_is_read_whole_in_either_convention(self, written: str, expected: str) -> None:
+        """Suma citită trebuie să fie suma scrisă, oricum ar fi scrisă.
+
+        Toate sumele din suita de dinainte aveau ori separator de mii, ori mai
+        puțin de patru cifre — exact cele două forme pe care tiparul le citea
+        corect. Cazul din mijloc nu era testat nicăieri, și a apărut abia la proba
+        de fum pe o instalare nouă.
+        """
+        found = find_amounts(f"Total de plata: {written} lei")
+        assert found["totalAmount"].value == expected
+
+    def test_vat_and_base_are_read_whole_too(self) -> None:
+        """Aceeași regulă, aceleași tipare: nu doar totalul folosea `_AMOUNT`."""
+        found = find_amounts("Baza impozabila: 10000,00\nTVA: 1900,00\nTotal de plata: 11900,00")
+
+        assert found["subtotal"].value == "10000.00"
+        assert found["vatAmount"].value == "1900.00"
+        assert found["totalAmount"].value == "11900.00"
+
 
 class TestCurrency:
     def test_a_single_currency_is_read(self) -> None:

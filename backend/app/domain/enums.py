@@ -59,6 +59,21 @@ class DocumentSource(StrEnum):
     ONEDRIVE = "ONEDRIVE"
 
 
+class ProcessingJobStatus(StrEnum):
+    """Starea unei cereri din coadă (`document_processing_jobs`).
+
+    `SKIPPED` nu este o eroare: documentul a mers între timp în altă parte, deci nu
+    mai e nimic de făcut, iar un `FAILED` ar umple raportul de eșecuri cu lucruri
+    care n-au eșuat.
+    """
+
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
+
+
 class PeriodStatus(StrEnum):
     NOT_STARTED = "NOT_STARTED"
     COLLECTING = "COLLECTING"

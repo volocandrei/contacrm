@@ -24,12 +24,16 @@ _SEARCHABLE = ("name", "tax_id", "registration_number", "address")
 
 
 def _normalised(column: Any) -> ColumnElement[str]:
-    """Forma în care se compară textul: fără diacritice, litere mici.
+    """Forma în care se compară și se sortează textul: fără diacritice, litere mici.
 
     `app_unaccent` este wrapper-ul IMMUTABLE definit în migrare — `unaccent` însuși
-    nu poate fi indexat pentru că nu e marcat imutabil.
+    nu este imutabil, deci nu poate intra într-un index.
+
+    **Fără `coalesce`**, din același motiv ca la documente: expresia trebuie să fie
+    identică cu cea din `ix_clients_name_trgm`, altfel indexul nu se folosește. Un
+    `NULL` nu se potrivește cu nimic, ceea ce este exact comportamentul dorit.
     """
-    return func.app_unaccent(func.lower(func.coalesce(column, "")))
+    return func.app_unaccent(func.lower(column))
 
 
 def _escape_like(value: str) -> str:

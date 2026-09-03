@@ -390,18 +390,6 @@ export type AuditLogEntry = {
 
 /* ─── Comunicare ───────────────────────────────────────────────────────────── */
 
-export type CommunicationMessage = {
-  id: string;
-  clientId: string;
-  clientName: string;
-  direction: "INBOUND" | "OUTBOUND";
-  channel: "EMAIL" | "WHATSAPP" | "INTERNAL";
-  subject: string | null;
-  preview: string;
-  occurredAt: string;
-  attachmentCount: number;
-};
-
 /* ─── Rapoarte (§84) ───────────────────────────────────────────────────────── */
 
 /**

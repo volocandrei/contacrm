@@ -64,11 +64,6 @@ const routes: Route[] = [
     pattern: "/clients/:id/periods",
     handler: ({ params }) => store.listClientPeriods(params.id!),
   },
-  {
-    method: "GET",
-    pattern: "/clients/:id/messages",
-    handler: ({ params }) => store.listClientMessages(params.id!),
-  },
 
   /* Documente */
   {
@@ -243,7 +238,6 @@ const routes: Route[] = [
 
   /* Comunicare, audit, administrare */
   { method: "GET", pattern: "/settings", handler: () => store.listSettings() },
-  { method: "GET", pattern: "/messages", handler: ({ query }) => store.listMessages(query) },
   {
     method: "GET",
     pattern: "/audit-logs",

@@ -15,7 +15,6 @@ import {
   DOCUMENTS,
   DOCUMENT_TYPES,
   DOCUMENT_TYPE_LABEL,
-  MESSAGES,
   MOCK_NOW,
   PERIODS,
   TASKS,
@@ -30,7 +29,6 @@ import type {
   AuditLogEntry,
   Client,
   ClientNote,
-  CommunicationMessage,
   Contact,
   CurrentUser,
   DashboardData,
@@ -64,7 +62,6 @@ const state = {
   periods: structuredClone(PERIODS),
   tasks: structuredClone(TASKS) as Task[],
   audit: structuredClone(AUDIT_LOGS) as AuditLogEntry[],
-  messages: structuredClone(MESSAGES) as CommunicationMessage[],
   users: structuredClone(USERS) as UserSummary[],
 };
 
@@ -368,10 +365,6 @@ export function listContacts(clientId: string): Contact[] {
 
 export function listNotes(clientId: string): ClientNote[] {
   return state.notes.filter((n) => n.clientId === clientId);
-}
-
-export function listClientMessages(clientId: string): CommunicationMessage[] {
-  return state.messages.filter((m) => m.clientId === clientId);
 }
 
 export function listClientPeriods(clientId: string) {
@@ -1355,13 +1348,6 @@ export function listSettings(): SettingEntry[] {
     { key: "TRUSTED_PROXY_COUNT", group: "SECURITY", value: "0" },
     { key: "ONEDRIVE", group: "SECURITY", value: "true" },
   ];
-}
-
-export function listMessages(filters: { clientId?: string; channel?: string }) {
-  let items = state.messages;
-  if (filters.clientId) items = items.filter((m) => m.clientId === filters.clientId);
-  if (filters.channel) items = items.filter((m) => m.channel === filters.channel);
-  return items;
 }
 
 export function listDocumentTypes() {

@@ -29,12 +29,12 @@ Ordinea de prioritate în decizii (§104):
 |---|---|---|
 | Backend | Python 3.13, FastAPI, Pydantic v2, SQLAlchemy 2.x, Alembic | ✅ schelet — endpoint subțire → service → repository |
 | DB | PostgreSQL 17 | `NUMERIC` pentru bani, `timestamptz` peste tot |
-| Queue | Celery + Redis | fără Kafka/RabbitMQ în MVP (ADR-003) |
-| Frontend | React 19, TypeScript strict, Vite 8, Tailwind v4, shadcn/ui | ✅ implementat |
+| Coadă | `document_processing_jobs` — outbox tranzacțional în Postgres | ✅ **nu** Celery + Redis; motivul stă în `app/worker.py` (ADR-003) |
+| Frontend | React 19, TypeScript strict, Vite 8, Tailwind v4 | ✅ implementat. `components.json` rămâne configurat pentru shadcn/ui, dar aplicația scrie Tailwind brut: primitivele generate erau nefolosite și au fost scoase |
 | Dependențe Python | `uv` | Python-ul nu trebuie instalat în sistem |
 | Auth | JWT access + refresh rotativ, Argon2id | ✅ RBAC granular, cookie-uri httpOnly |
 | Storage | `StorageProvider` abstract | Local FS în MVP → S3/OneDrive/Azure ulterior |
-| OCR/AI | `DocumentExtractionService` abstract | `MockOCRProvider` în dev (ADR-005) |
+| OCR/AI | `DocumentExtractionProvider` abstract | ✅ `local` (PDF cu strat de text + e-Factura) pentru producție; `mock` doar în dev, iar pornirea în producție îl refuză (ADR-005) |
 
 Versiuni reale instalate: React 19.2, Vite 8.2, TypeScript 6.0, Tailwind 4.3,
 lucide-react 1.34 · Python 3.13.15, FastAPI 0.121, SQLAlchemy 2.0.52, Alembic 1.18,
@@ -53,21 +53,19 @@ CONTACRM/
 │   │   ├── models/            # ✅ organization, user, audit, client/contact/note/tag, task
 │   │   ├── schemas/           # ✅ ApiModel, Paginated, PageParams
 │   │   ├── repositories/      # ✅ user, client, task — filtrarea pe organization_id
-│   │   ├── services/          # ✅ auth.py, audit.py                        (M5+ restul)
+│   │   ├── services/          # ✅ documente, extracție, storage, microsoft/ (Graph)
 │   │   ├── domain/            # ✅ permissions.py, enums.py
-│   │   ├── integrations/      # ⏳ graph/, whatsapp/, ocr/, storage/     (M5, Faza 2)
-│   │   └── workers/           # ⏳ taskuri Celery                            (M6)
+│   │   └── worker.py          # ✅ consumă coada și întreabă sursele externe
 │   ├── alembic/versions/      # ✅
-│   ├── prompts/               # ⏳ prompturi AI versionate (ADR-005)         (M6)
 │   ├── Dockerfile             # ✅ multi-stage, rulează ca utilizator neprivilegiat
-│   └── tests/                 # ✅ contract / health / config
-├── frontend/                  # ✅ Vite + React + TS strict + Tailwind + shadcn
+│   └── tests/                 # ✅ 980 de teste, pe PostgreSQL construit cu migrări
+├── frontend/                  # ✅ Vite + React + TS strict + Tailwind
 │   └── src/
 │       ├── api/               # client + endpoints + hooks + mock/ (backend simulat)
-│       ├── components/ui/     # primitive shadcn + componente de bibliotecă
+│       ├── components/        # layout/, page.tsx, form-controls.tsx
 │       ├── features/          # auth/ clients/ documents/ periods/ tasks/ …
-│       └── pages/ hooks/ lib/ types/
-├── docker-compose.yml         # ✅ postgres + redis (+ migrate, backend pe profilul `api`)
+│       └── hooks/ lib/ types/
+├── docker-compose.yml         # ✅ postgres (+ migrate, backend, worker pe profilul `api`)
 └── docs/{adr,…}
 ```
 
@@ -106,41 +104,66 @@ entitățile de business au `deleted_at` (soft delete).
 | Tabel | Câmpuri cheie |
 |---|---|
 | `accounting_periods` | id, client_id, year, month, status (NOT_STARTED…FINALIZED), opened_at, closed_at, completed_at — **UNIQUE(client_id, year, month)** |
-| `period_checklist_items` | id, period_id, document_type, expected_min_count, received_count, is_satisfied |
+| `client_expectations` | id, client_id, document_type_id, expected_min_count — ce se așteaptă lunar de la fiecare client |
 
 ### Documente
 | Tabel | Câmpuri cheie |
 |---|---|
 | `document_types` | id, code, label, is_active, validation_rules jsonb — extensibil, **fără hardcodare** (§6) |
-| `document_intakes` | id, organization_id, source (EMAIL/WHATSAPP/UPLOAD/API), external_message_id, sender, recipient, subject, received_at, raw_payload jsonb, client_id?, status — **UNIQUE(source, external_message_id, attachment_id)** = idempotency (§56) |
+| `document_intakes` | id, organization_id, source (EMAIL/WHATSAPP/UPLOAD/API/ONEDRIVE), external_message_id, sender, recipient, subject, received_at, raw_payload jsonb, client_id?, status — **UNIQUE(source, external_message_id, attachment_id)** = idempotency (§56) |
 | `documents` | vezi mai jos |
-| `document_versions` | id, document_id, version_number, storage_path, sha256_hash, uploaded_by, uploaded_at, reason |
-| `document_extractions` | id, document_id, provider, model, prompt_version, raw_response jsonb, parsed jsonb, field_confidences jsonb, duration_ms, token_usage, cost_estimate, created_at |
+| `document_versions` | id, document_id, version_number, kind, storage_key, sha256_hash, file_size, mime_type, uploaded_by, reason — originalul este versiunea 1 și nu se suprascrie niciodată |
 | `document_field_overrides` | id, document_id, field_name, old_value, new_value, changed_by, changed_at — istoricul corecțiilor umane |
-| `document_processing_jobs` | id, document_id, job_type, status, attempt, last_error, started_at, finished_at, idempotency_key |
+| `document_processing_jobs` | id, document_id, job_type, status (PENDING/RUNNING/SUCCEEDED/FAILED/SKIPPED), attempt, error_code, error_detail, provider, duration_ms, started_at, finished_at, idempotency_key — **UNIQUE(idempotency_key)** |
 
-`documents` (câmpuri per §7): `id, organization_id, client_id, accounting_period_id,
-document_type_id, status, source, intake_id, original_filename, stored_filename,
-storage_path, mime_type, file_size, sha256_hash, received_at, document_date,
-reference_month, series, document_number, supplier_name, supplier_tax_id,
-customer_name, customer_tax_id, currency, subtotal NUMERIC(18,2), vat_amount NUMERIC(18,2),
-total_amount NUMERIC(18,2), ocr_text, ocr_provider, ocr_confidence, ai_classification_confidence,
-ai_extraction_confidence, is_duplicate, duplicate_of_id, review_required, reviewed_by,
-reviewed_at, approved_by, approved_at, archived_at, created_at, updated_at, deleted_at`
+Proveniența extracției — provider, model, versiune de prompt, durată, încredere —
+stă pe `documents` și pe jobul care a produs-o. Un document are o singură
+extracție curentă, deci un tabel separat ar fi fost o indirecție fără conținut.
+
+`documents` — 54 de coloane, grupate după ce spun:
+
+| Grup | Coloane |
+|---|---|
+| identitate | `id`, `organization_id`, `client_id`, `document_type_id`, `intake_id` |
+| stare | `status`, `source`, `review_required`, `is_duplicate`, `duplicate_of_id`, `rejected_reason` |
+| procesare | `error_code`, `error_detail`, `processing_attempts`, `validation_issues` |
+| fișier | `original_filename`, `stored_filename`, `storage_key`, `archive_key`, `archive_path`, `mime_type`, `file_size`, `sha256_hash` |
+| conținut citit | `document_date`, `reference_month`, `series`, `document_number`, `supplier_name`, `supplier_tax_id`, `customer_name`, `customer_tax_id`, `currency`, `subtotal`, `vat_amount`, `total_amount` — sumele `NUMERIC(18,2)`, niciodată `float` |
+| proveniență (§27) | `field_metadata` (sursa fiecărui câmp: AI / OCR / MANUAL / DERIVED / EMPTY), `ocr_provider`, `ocr_confidence`, `ocr_text`, `ai_provider`, `ai_model`, `ai_prompt_version`, `ai_classification_confidence`, `ai_extraction_confidence`, `extraction_duration_ms` |
+| urmă umană | `received_at`, `reviewed_by`, `reviewed_at`, `approved_by`, `approved_at`, `archived_at`, `created_at`, `updated_at`, `deleted_at` |
+
+`ocr_text` **nu** iese niciodată într-un răspuns de listă (§64).
 
 > `document_date` ≠ `reference_month`. Nu se deduc una din alta automat fără regulă
 > configurată. **TODO — BUSINESS RULE REQUIRES ACCOUNTING VALIDATION.**
 
-### Comunicare & audit
+### Surse externe (M9, M10)
 | Tabel | Câmpuri cheie |
 |---|---|
-| `communication_messages` | id, client_id, direction, channel, external_id, subject, body, occurred_at, metadata jsonb |
+| `microsoft_connections` | id, organization_id, provider, account_email, refresh token **criptat** (Fernet, cu cheie separată de `SECRET_KEY`), scopes, is_active, last_error |
+| `drive_folders` | id, organization_id, client_id, drive_id, item_id, path, delta_token, is_active — **dosarul dă clientul** |
+| `mail_folders` | id, organization_id, folder_id, display_name, delta_token, is_active — **fără** client_id: aici expeditorul dă clientul |
+
+### Audit
+| Tabel | Câmpuri cheie |
+|---|---|
+| `audit_logs` | id, organization_id, user_id, user_name, action, entity_type, entity_id, detail, ip, user_agent, created_at |
+
+### Comunicare — proiectat, **neimplementat** (Faza 2)
+
+Niciunul dintre tabelele de mai jos nu există în baza de date. Stau aici ca
+formă a ceea ce ar trebui construit, nu ca descriere a ce este. Ecranele care
+le-ar fi consumat au fost făcute oneste la auditul de producție: nu mai cer
+rute inexistente.
+
+| Tabel | Câmpuri cheie |
+|---|---|
+| `communication_messages` | id, client_id, direction, channel, external_id, subject, body, occurred_at |
 | `notification_templates` | id, code, channel, subject_tpl, body_tpl, locale, is_active |
-| `notifications` | id, template_id, client_id, channel, payload jsonb, status (PENDING/SENDING/SENT/FAILED/RETRYING), attempts, sent_at, error |
+| `notifications` | id, template_id, client_id, channel, payload jsonb, status, attempts, sent_at, error |
 | `reminders` | id, client_id, rule_code, schedule, is_enabled, last_run_at, next_run_at |
-| `legislative_notices` | id, title, content, valid_from, valid_until, active, priority, created_by, approved_by — **necesită aprobare umană înainte de trimitere (§28)** |
-| `audit_logs` | id, organization_id, user_id, action, entity_type, entity_id, old_value jsonb, new_value jsonb, ip, user_agent, request_id, created_at |
-| `system_settings` | key, value jsonb, updated_by — praguri de confidence, reguli de filename etc. (nehardcodate, §16) |
+| `legislative_notices` | id, title, content, valid_from, valid_until, active, priority — **necesită aprobare umană înainte de trimitere (§28)** |
+| `system_settings` | key, value jsonb, updated_by — praguri și reguli administrabile (§16). Până atunci vin din configurare, iar ecranul de setări o arată pe aceea |
 
 ### Indexuri (§63)
 `documents(client_id, reference_month)`, `documents(status)`, `documents(sha256_hash)`,
@@ -177,7 +200,7 @@ Praguri (configurabile în `system_settings`, valori inițiale propuse):
 
 | # | Risc | Impact | Mitigare |
 |---|---|---|---|
-| R1 | ~~Python și Docker nu erau instalate pe mașina de development~~ | — | **Rezolvat.** Docker Desktop 29.7 + Compose v5.4; `uv` aduce Python 3.13 fără instalare de sistem. `docker compose --profile api up` pornește postgres + redis + migrări + API |
+| R1 | ~~Python și Docker nu erau instalate pe mașina de development~~ | — | **Rezolvat.** Docker Desktop 29.7 + Compose v5.4; `uv` aduce Python 3.13 fără instalare de sistem. `docker compose --profile api up` pornește postgres, migrările, API-ul și workerul |
 | R2 | Documente financiare trimise către AI extern | GDPR / confidențialitate (§35) | `MockOCRProvider` implicit; provider extern doar opt-in explicit + DPA documentat |
 | R3 | Fișiere încărcate = vector de atac | RCE / path traversal / stored XSS | validare MIME reală (magic bytes), nu extensie; filename generat intern; hook AV; storage în afara webroot; preview servit prin endpoint autorizat |
 | R4 | Dublă procesare (retry email/webhook/worker) | Documente duplicate, notificări repetate | idempotency keys + UNIQUE pe (source, external_message_id, attachment_id) |
@@ -213,7 +236,7 @@ Praguri (configurabile în `system_settings`, valori inițiale propuse):
 | **M3** | Auth: users/roles/permissions, JWT + refresh rotativ, Argon2id, RBAC, audit log | ✅ |
 | **M4** | CRM: clients, contacts, tags, note, tasks | ✅ |
 | **M5** | Documente: încărcare, StorageProvider, SHA-256, duplicate, API, preview securizat, procesare, interfața de verificare, arhivare, întărire | ✅ |
-| **M6** | Coadă persistentă (Celery+Redis), perioade + checklist, dashboard KPI, ecran audit, acțiuni în masă | perioade + dashboard ✅ |
+| **M6** | Coadă persistentă — outbox în Postgres, **nu** Celery+Redis (vezi `app/worker.py`) —, perioade + checklist, dashboard KPI, ecran audit, acțiuni în masă | ✅ |
 | **M7** | Notificări (abstracție + email), rapoarte |  |
 | **M8** | Teste E2E, Docker compose, CI |  |
 | **Faza 2** | Microsoft Graph, WhatsApp, OCR/AI real, remindere, bulk, export ZIP |  |

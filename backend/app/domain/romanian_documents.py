@@ -234,7 +234,19 @@ def find_series_and_number(text: str) -> tuple[Found | None, Found | None]:
 
 # ── Sume ─────────────────────────────────────────────────────────────────────
 
-_AMOUNT = r"(\d{1,3}(?:[.\s]\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
+# Cele două convenții în care apare o sumă pe o factură românească:
+#
+#   1. cu separator de mii — `1.190,00`, `1 190,00`, `1.234.567,89`
+#   2. fără — `1190,00`, `1190.00`, `1190`
+#
+# Prima ramură cere **cel puțin un** grup de mii (`+`, nu `*`). Cu `*`, ea se
+# potrivea și pe un număr fără separator, dar numai pe primele trei cifre:
+# `1190,00` era citit `119`, iar o factură de 1190 de lei intra în contabilitate
+# ca 119. Silențios, și plauzibil.
+#
+# Niciun test nu a prins-o pentru că toate sumele din suită aveau ori separator
+# de mii, ori mai puțin de patru cifre.
+_AMOUNT = r"(\d{1,3}(?:[.\s]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
 
 _TOTAL = re.compile(r"total\s*(?:de\s*plata|general|factura)?\s*[:\-]?\s*(?:lei|ron)?\s*" + _AMOUNT)
 _VAT = re.compile(

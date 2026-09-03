@@ -17,6 +17,9 @@ semnătura unui task de worker — se schimbă transportul, nu logica.
     python -m app.worker                # bucla continuă
     python -m app.worker --once         # un singur tur, pentru cron sau teste
 
+Workerul face două lucruri, nu unul: execută coada de procesare **și** întreabă
+periodic sursele externe (OneDrive, cutia poștală) dacă a apărut ceva nou.
+
 Mai multe procese pot rula în paralel: revendicarea este atomică, deci două worker-e
 nu iau același job. Oprirea la `SIGINT`/`SIGTERM` este ordonată — jobul în lucru se
 termină, apoi procesul iese.
@@ -40,6 +43,7 @@ from app.core.db import session_scope
 from app.core.logging import configure_logging, get_logger
 from app.models.document import Document, DocumentProcessingJob
 from app.services import processing_queue as queue
+from app.services.microsoft.runner import run_drive_sync
 from app.services.processing_runner import run_processing
 from app.services.storage import StorageProvider
 from app.services.storage.factory import build_storage_provider
@@ -53,6 +57,21 @@ IDLE_SLEEP_SECONDS = 2.0
 
 # Câte joburi ia într-un tur înainte să verifice din nou dacă a fost oprit.
 BATCH = 10
+
+# La cât timp întreabă Microsoft dacă a apărut ceva nou în dosarele urmărite și
+# în cutia poștală.
+#
+# **De ce stă aici.** Sincronizarea era pornită dintr-un singur loc:
+# `/internal/run-queue`, ruta pe care o bate cronul de pe Vercel. O instalare pe
+# serverul cabinetului — `docker compose`, adică exact varianta din documentație —
+# pornește acest worker și niciun cron, deci nu aducea niciodată nimic: dosarele
+# rămâneau urmărite, ecranul arăta conexiunea activă, și nu sosea niciun document.
+# Preluarea automată este tot ce a cerut cabinetul; nu are voie să depindă de
+# platforma pe care se întâmplă să ruleze.
+#
+# Două minute, nu două secunde: fiecare tur costă cereri către Microsoft, iar
+# documentele nu sosesc mai des de-atât.
+SYNC_EVERY_SECONDS = 120.0
 
 
 @dataclass
@@ -126,9 +145,32 @@ def run_once(storage: StorageProvider, *, limit: int = BATCH) -> int:
     return len(claimed)
 
 
+def sync_sources(storage: StorageProvider) -> int:
+    """Un tur peste sursele externe. Nu aruncă: un cabinet căzut nu oprește workerul."""
+    try:
+        report = run_drive_sync(storage)
+    except Exception:
+        logger.exception("worker_sync_failed")
+        return 0
+    return report.ingested
+
+
 def run_forever(storage: StorageProvider, stopper: Stopper) -> None:
-    logger.info("worker_started", idle_seconds=IDLE_SLEEP_SECONDS, batch=BATCH)
+    logger.info(
+        "worker_started",
+        idle_seconds=IDLE_SLEEP_SECONDS,
+        batch=BATCH,
+        sync_seconds=SYNC_EVERY_SECONDS,
+    )
+    # `-inf`, nu `monotonic()`: primul tur se face la pornire, nu peste două minute.
+    # Un worker repornit trebuie să recupereze imediat ce a apărut cât a fost jos.
+    last_sync = float("-inf")
+
     while not stopper.requested:
+        if time.monotonic() - last_sync >= SYNC_EVERY_SECONDS:
+            last_sync = time.monotonic()
+            sync_sources(storage)
+
         try:
             done = run_once(storage)
         except Exception:
@@ -188,7 +230,11 @@ def main(argv: list[str] | None = None) -> None:
         recover_stale(storage)
 
     if args.once:
+        # Aceeași ordine ca în buclă: întâi aducem ce e nou, apoi procesăm coada —
+        # altfel un fișier apărut acum ar aștepta rularea următoare.
+        ingested = sync_sources(storage)
         done = run_once(storage)
+        print(f"documente aduse: {ingested}")
         print(f"cereri executate: {done}")
         return
 

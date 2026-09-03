@@ -3,6 +3,8 @@
     uv run python -m app.cli sync-roles     # aduce rolurile/permisiunile la zi
     uv run python -m app.cli seed-dev       # organizație + utilizatori de development
     uv run python -m app.cli create-admin   # primul cont al unei baze de producție
+    uv run python -m app.cli add-client     # un client nou, într-o bază de producție
+    uv run python -m app.cli check-storage  # baza de date și stocarea se potrivesc?
 
 `sync-roles` este idempotentă și trebuie rulată după fiecare schimbare în
 `app/domain/permissions.py`: tabelele `roles`/`permissions` sunt administrabile,
@@ -44,6 +46,10 @@ MIN_ADMIN_PASSWORD_LENGTH = 12
 
 # Sufixul fara de care `reset-e2e` refuza sa stearga ceva.
 E2E_SUFFIX = "_e2e"
+
+# Cate neconcordante enumera `check-storage` inainte sa se opreasca din listat.
+# Daca sunt mai multe, numarul total spune oricum ce trebuie stiut.
+PROBLEMS_SHOWN = 20
 
 # Toate denumirile, CUI-urile și adresele sunt inventate. „Șerbănescu" există
 # intenționat: verifică vizual că sortarea și căutarea ignoră diacriticele.
@@ -319,6 +325,152 @@ def recover_processing() -> None:
         print(f"Repuse în coadă: {report.requeued}. Rulate acum: {report.ran}.")
 
 
+def check_storage() -> None:
+    """Verifică dacă baza de date și stocarea mai spun același lucru (§71).
+
+    Documentele trăiesc în două sisteme care nu împart o tranzacție: rândul în
+    Postgres și fișierul în stocare. Codul are grijă ca ele să nu se despartă, dar
+    un restore le poate reface din două momente diferite — o bază de aseară peste
+    o stocare de azi-dimineață arată perfect și îi lipsesc documente.
+
+    De aceea comanda asta există: este **pasul de verificare al oricărei
+    restaurări**, nu o curățenie. Nu scrie și nu șterge nimic; spune doar ce nu se
+    potrivește, și iese cu cod diferit de zero dacă a găsit ceva.
+
+    Rulare:
+
+        uv run python -m app.cli check-storage
+    """
+    from app.models.document import Document
+    from app.services.storage.base import ObjectNotFoundError
+    from app.services.storage.factory import build_storage_provider
+
+    storage = build_storage_provider()
+    checked = missing = mismatched = 0
+    problems: list[str] = []
+
+    with session_scope() as session:
+        documents = session.scalars(
+            select(Document).where(Document.deleted_at.is_(None)).order_by(Document.received_at)
+        )
+        for document in documents:
+            # Originalul întotdeauna; copia din arhivă doar dacă documentul a ajuns
+            # acolo. Cele două sunt fișiere diferite, iar oricare poate lipsi.
+            keys = [("original", document.storage_key)]
+            if document.archive_key:
+                keys.append(("arhivă", document.archive_key))
+
+            for label, key in keys:
+                checked += 1
+                try:
+                    size = storage.size(key)
+                except ObjectNotFoundError:
+                    missing += 1
+                    if len(problems) < PROBLEMS_SHOWN:
+                        problems.append(f"  LIPSĂ    {document.id} ({label})")
+                    continue
+                # Doar originalul are dimensiunea scrisă în rând; arhiva este o
+                # copie a lui, deci aceeași dimensiune.
+                if size != document.file_size:
+                    mismatched += 1
+                    if len(problems) < PROBLEMS_SHOWN:
+                        problems.append(
+                            f"  MĂRIME   {document.id} ({label}): "
+                            f"{size} pe disc, {document.file_size} în baza de date"
+                        )
+
+    print(f"fișiere verificate : {checked}")
+    print(f"lipsă              : {missing}")
+    print(f"dimensiune greșită : {mismatched}")
+    for line in problems:
+        print(line)
+    if missing + mismatched > PROBLEMS_SHOWN:
+        print(f"  ... și încă {missing + mismatched - PROBLEMS_SHOWN}")
+
+    if missing or mismatched:
+        sys.exit("Baza de date și stocarea nu se potrivesc.")
+    print("Baza de date și stocarea se potrivesc.")
+
+
+def add_client() -> None:
+    """Adaugă un client într-o bază de producție.
+
+    **De ce există.** Aplicația nu are, deliberat, ecrane de creare a clienților:
+    CRM-ul este de citire, iar drumul de scriere sunt documentele. Consecința, pe
+    care auditul de producție a găsit-o, este că un cabinet nou nu putea adăuga
+    **niciun** client: `seed-dev` refuză să ruleze în producție (și bine face —
+    datele lui sunt inventate), iar prin interfață nu există niciun drum. Fără
+    clienți, nu se poate lega niciun dosar din OneDrive și niciun email nu poate fi
+    atribuit.
+
+    Comanda nu înlocuiește ecranul care ar trebui să existe. Deblochează prima
+    folosire, atât.
+
+    **Emailul de contact contează mai mult decât pare.** El este cheia după care
+    un atașament primit ajunge la clientul potrivit (§8). Un client fără contact
+    primește documente doar prin dosarul lui din OneDrive.
+    """
+    from app.models.client import Client, Contact
+
+    name = input("denumirea clientului: ").strip()
+    if not name:
+        sys.exit("Denumirea este obligatorie.")
+
+    tax_id = input("CUI (gol dacă nu se știe încă): ").strip() or None
+    email = input("email de contact (gol dacă nu se știe): ").strip().lower() or None
+    if email and "@" not in email:
+        sys.exit("Adresă de email invalidă.")
+
+    with session_scope() as session:
+        organizations = list(session.scalars(select(Organization)))
+        if not organizations:
+            sys.exit("Nu există niciun cabinet. Rulează întâi `create-admin`.")
+        if len(organizations) > 1:
+            sys.exit("Baza are mai multe cabinete; comanda nu poate alege singură.")
+        organization = organizations[0]
+
+        if tax_id is not None:
+            # Aceeași regulă ca indexul unic parțial din migrare: unic per cabinet,
+            # printre clienții neșterși. O verificăm aici ca să dăm un mesaj, nu o
+            # eroare de constrângere.
+            existing = session.scalars(
+                select(Client).where(
+                    Client.organization_id == organization.id,
+                    Client.tax_id == tax_id,
+                    Client.deleted_at.is_(None),
+                )
+            ).first()
+            if existing is not None:
+                sys.exit(f"CUI-ul {tax_id} aparține deja clientului {existing.name!r}.")
+
+        client = Client(
+            organization_id=organization.id,
+            name=name,
+            tax_id=tax_id,
+            # ACTIV, nu PROSPECT: cine adaugă un client de la linia de comandă îl
+            # adaugă pentru că îi ține contabilitatea.
+            status=ClientStatus.ACTIVE,
+        )
+        session.add(client)
+        session.flush()
+
+        if email:
+            session.add(
+                Contact(
+                    client_id=client.id,
+                    full_name=name,
+                    email=email,
+                    is_primary=True,
+                    is_active=True,
+                )
+            )
+            session.flush()
+
+        print(f"cabinet : {organization.name}")
+        print(f"client  : {client.name} ({client.tax_id or 'fără CUI'})")
+        print(f"contact : {email or '— niciunul; documentele vor veni doar din OneDrive'}")
+
+
 def create_admin() -> None:
     """Primul cont al unei baze de producție.
 
@@ -429,7 +581,9 @@ COMMANDS = {
     "sync-roles": sync_roles,
     "seed-dev": seed_dev,
     "create-admin": create_admin,
+    "add-client": add_client,
     "recover-processing": recover_processing,
+    "check-storage": check_storage,
     "reset-e2e": reset_e2e,
 }
 

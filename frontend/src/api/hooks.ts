@@ -9,7 +9,6 @@ import type { QueryParams } from "@/api/types";
 import {
   administration,
   clients,
-  communication,
   dashboard,
   documents,
   drive,
@@ -28,7 +27,6 @@ export const queryKeys = {
   clientContacts: (id: string) => ["clients", id, "contacts"] as const,
   clientNotes: (id: string) => ["clients", id, "notes"] as const,
   clientPeriods: (id: string) => ["clients", id, "periods"] as const,
-  clientMessages: (id: string) => ["clients", id, "messages"] as const,
   documents: (params: QueryParams) => ["documents", params] as const,
   document: (id: string) => ["documents", id] as const,
   documentTypes: ["document-types"] as const,
@@ -36,7 +34,6 @@ export const queryKeys = {
   periods: (params: QueryParams) => ["periods", params] as const,
   missingDocuments: (referenceMonth: string) => ["periods", "missing", referenceMonth] as const,
   tasks: (params: QueryParams) => ["tasks", params] as const,
-  messages: (params: QueryParams) => ["messages", params] as const,
   reportSummary: (params: QueryParams) => ["reports", "summary", params] as const,
   auditLogs: (params: QueryParams) => ["audit-logs", params] as const,
   users: ["users"] as const,
@@ -83,10 +80,6 @@ export function useClientPeriods(id: string) {
   return useQuery({ queryKey: queryKeys.clientPeriods(id), queryFn: () => clients.periods(id) });
 }
 
-export function useClientMessages(id: string) {
-  return useQuery({ queryKey: queryKeys.clientMessages(id), queryFn: () => clients.messages(id) });
-}
-
 export function useDocuments(params: QueryParams) {
   return useQuery({ queryKey: queryKeys.documents(params), queryFn: () => documents.list(params) });
 }
@@ -130,10 +123,6 @@ export function useMissingDocuments(referenceMonth: string) {
 
 export function useTasks(params: QueryParams) {
   return useQuery({ queryKey: queryKeys.tasks(params), queryFn: () => tasks.list(params) });
-}
-
-export function useMessages(params: QueryParams) {
-  return useQuery({ queryKey: queryKeys.messages(params), queryFn: () => communication.messages(params) });
 }
 
 export function useAuditLogs(params: QueryParams) {

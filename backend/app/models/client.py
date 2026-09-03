@@ -30,6 +30,7 @@ from app.models.base import (
     OrganizationMixin,
     SoftDeleteMixin,
     TimestampMixin,
+    enum_check,
     uuid_pk,
 )
 
@@ -63,7 +64,7 @@ class Client(Base, OrganizationMixin, TimestampMixin, SoftDeleteMixin):
     __table_args__ = (
         # Numele constrângerilor primesc prefixul din convenția de denumire
         # (`ck_%(table_name)s_%(constraint_name)s`), deci aici se dă doar sufixul.
-        CheckConstraint("status IN ('ACTIVE', 'INACTIVE', 'PROSPECT', 'SUSPENDED')", name="status"),
+        CheckConstraint(enum_check("status", ClientStatus), name="status"),
         # CUI-ul este unic per organizație, dar doar printre clienții neșterși —
         # constrângerea parțială se definește în migrare, unde poate avea WHERE.
         Index("ix_clients_organization_id_status", "organization_id", "status"),

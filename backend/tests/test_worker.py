@@ -25,6 +25,7 @@ from app.models.client import Client
 from app.models.document import Document, DocumentProcessingJob, DocumentType
 from app.models.organization import Organization
 from app.services import processing_queue as queue
+from app.services.microsoft.runner import DriveRunReport
 from app.services.storage import LocalStorageProvider
 from tests.conftest import requires_db
 
@@ -254,3 +255,55 @@ class TestStopping:
         worker._sleep_interruptibly(5.0, stopper)
 
         assert datetime.now(UTC) - started < timedelta(seconds=2)
+
+
+# ── Sursele externe (M9/M10) ─────────────────────────────────────────────────
+#
+# Sincronizarea cu OneDrive și cu cutia poștală era pornită dintr-un singur loc:
+# `/internal/run-queue`, ruta pe care o bate cronul de pe Vercel. O instalare pe
+# serverul cabinetului pornește acest worker și niciun cron — deci nu aducea
+# niciodată nimic, iar interfața arăta o conexiune activă și dosare urmărite.
+# Preluarea automată este tot ce a cerut cabinetul; nu are voie să depindă de
+# platformă.
+
+
+def test_worker_asks_the_external_sources_at_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def fake_sync(_storage: object) -> DriveRunReport:
+        calls.append("sync")
+        return DriveRunReport(organizations=1, ingested=2)
+
+    monkeypatch.setattr(worker, "run_drive_sync", fake_sync)
+    monkeypatch.setattr(worker, "run_once", lambda _storage, **_kw: 0)
+    # Bucla se oprește din primul somn: un tur, nu o buclă infinită.
+    monkeypatch.setattr(
+        worker, "_sleep_interruptibly", lambda _s, stop: setattr(stop, "requested", True)
+    )
+
+    worker.run_forever(object(), worker.Stopper())  # type: ignore[arg-type]
+
+    assert calls == ["sync"], "workerul trebuie să întrebe sursele externe la pornire"
+
+
+def test_sync_reports_what_it_brought(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Numărul întors trebuie să fie cel real.
+
+    `sync_sources` înghite orice excepție, deliberat — un cabinet căzut nu oprește
+    procesarea celorlalți. Consecința este că un test care verifică doar „a fost
+    apelat" trece și când apelul crapă. De aceea se verifică rezultatul.
+    """
+    monkeypatch.setattr(
+        worker, "run_drive_sync", lambda _storage: DriveRunReport(organizations=2, ingested=7)
+    )
+    assert worker.sync_sources(object()) == 7  # type: ignore[arg-type]
+
+
+def test_a_failing_source_does_not_stop_the_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Un cabinet cu token expirat nu are voie să oprească procesarea celorlalți."""
+
+    def exploding(_storage: object) -> DriveRunReport:
+        raise RuntimeError("Microsoft nu răspunde")
+
+    monkeypatch.setattr(worker, "run_drive_sync", exploding)
+    assert worker.sync_sources(object()) == 0  # type: ignore[arg-type]

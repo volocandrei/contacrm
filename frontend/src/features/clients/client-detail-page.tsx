@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Mail, MessageSquare, Phone, StickyNote } from "lucide-react";
+import { ArrowLeft, Mail, Phone, StickyNote } from "lucide-react";
 import {
   useClient,
   useClientContacts,
-  useClientMessages,
   useClientNotes,
   useClientPeriods,
   useClients,
@@ -318,43 +317,21 @@ function DocumentsTab({ clientId }: { clientId: string }) {
 }
 
 function CommunicationTab({ clientId }: { clientId: string }) {
-  const { data: messages, isLoading } = useClientMessages(clientId);
-  if (isLoading) return <LoadingState />;
-
+  // Fila arăta o cronologie de mesaje pe care backendul nu o are: în modul real
+  // cererea răspundea 404, iar ecranul rămânea gol, fără să spună nimic. Până
+  // când sistemul chiar trimite mesaje (Faza 2), arătăm ce știm cu adevărat.
   return (
-    <Panel title="Cronologie comunicare">
-      <ol className="relative space-y-4 border-l border-gray-200 pl-5 dark:border-gray-800">
-        {messages?.map((message) => (
-          <li key={message.id} className="relative">
-            <span
-              className={cn(
-                "absolute top-1.5 -left-[26px] grid h-5 w-5 place-content-center rounded-full ring-4 ring-white dark:ring-gray-900",
-                message.direction === "INBOUND"
-                  ? "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300"
-                  : "bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300",
-              )}
-            >
-              {message.channel === "WHATSAPP" ? (
-                <MessageSquare className="h-3 w-3" aria-hidden="true" />
-              ) : (
-                <Mail className="h-3 w-3" aria-hidden="true" />
-              )}
-            </span>
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              {message.subject ?? (message.channel === "WHATSAPP" ? "Mesaj WhatsApp" : "Mesaj")}
-            </p>
-            <p className="text-xs text-gray-600 dark:text-gray-400">{message.preview}</p>
-            <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-              {message.direction === "INBOUND" ? "Primit" : "Trimis"} ·{" "}
-              {formatDateTime(message.occurredAt)}
-              {message.attachmentCount > 0 && ` · ${message.attachmentCount} atașamente`}
-            </p>
-          </li>
-        ))}
-        {messages?.length === 0 && (
-          <li className="text-sm text-gray-500 dark:text-gray-400">Nicio comunicare înregistrată.</li>
-        )}
-      </ol>
+    <Panel title="Comunicare">
+      <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">
+        Cronologia mesajelor apare odată cu trimiterea automată (Faza 2). Ce a sosit deja de la
+        acest client — pe email sau din dosarul lui de OneDrive — se vede în documentele lui.
+      </p>
+      <Link
+        to={`/documente/inbox?clientId=${clientId}`}
+        className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+      >
+        Vezi documentele primite
+      </Link>
     </Panel>
   );
 }

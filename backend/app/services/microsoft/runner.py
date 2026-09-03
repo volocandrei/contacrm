@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 
 from app.core.db import session_scope
+from app.core.locks import try_lock_organization
 from app.core.logging import get_logger
 from app.models.microsoft import MicrosoftConnection
 from app.services.microsoft.deps import get_drive_client
@@ -29,12 +30,17 @@ from app.services.storage import StorageProvider
 
 logger = get_logger(__name__)
 
+#: Numele încuietorii per organizație. Vezi `app.core.locks`.
+SYNC_LOCK = "microsoft-sync"
+
 
 @dataclass(frozen=True, slots=True)
 class DriveRunReport:
     organizations: int = 0
     ingested: int = 0
     failed: int = 0
+    #: Organizații pe care le sincroniza deja altcineva în momentul bătăii.
+    skipped: int = 0
 
 
 def connected_organizations() -> list[uuid.UUID]:
@@ -62,11 +68,21 @@ def run_drive_sync(storage: StorageProvider, *, limit: int | None = None) -> Dri
         organizations = organizations[:limit]
 
     client = get_drive_client()
-    ingested = failed = 0
+    ingested = failed = skipped = 0
 
     for organization_id in organizations:
         try:
             with session_scope() as session:
+                # Un singur tur pe organizație, oricâți apelanți ar bate deodată.
+                # Cronul la cinci minute peste o sincronizare care durează șase ar
+                # porni a doua bătaie peste prima: aceleași dosare citite de două
+                # ori, aceleași fișiere cerute de două ori de la Microsoft. Ce nu
+                # apucă acum se ia la bătaia următoare — tokenul delta al fiecărui
+                # dosar spune de unde.
+                if not try_lock_organization(session, organization_id, SYNC_LOCK):
+                    logger.info("drive_sync_skipped_busy", organization_id=str(organization_id))
+                    skipped += 1
+                    continue
                 drive = DriveSyncService(session, storage, client).sync_organization(
                     organization_id
                 )
@@ -89,8 +105,11 @@ def run_drive_sync(storage: StorageProvider, *, limit: int | None = None) -> Dri
             organizations=len(organizations),
             ingested=ingested,
             failed=failed,
+            skipped=skipped,
         )
-    return DriveRunReport(organizations=len(organizations), ingested=ingested, failed=failed)
+    return DriveRunReport(
+        organizations=len(organizations), ingested=ingested, failed=failed, skipped=skipped
+    )
 
 
 __all__ = ["DriveRunReport", "connected_organizations", "run_drive_sync"]

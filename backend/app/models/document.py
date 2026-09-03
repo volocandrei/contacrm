@@ -38,13 +38,20 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.domain.enums import DocumentErrorCode, DocumentSource, DocumentStatus, IntakeStatus
+from app.domain.enums import (
+    DocumentErrorCode,
+    DocumentSource,
+    DocumentStatus,
+    IntakeStatus,
+    ProcessingJobStatus,
+)
 from app.models.base import (
     Base,
     EnumString,
     OrganizationMixin,
     SoftDeleteMixin,
     TimestampMixin,
+    enum_check,
     uuid_pk,
 )
 
@@ -88,10 +95,8 @@ class DocumentIntake(Base, OrganizationMixin, TimestampMixin):
 
     __tablename__ = "document_intakes"
     __table_args__ = (
-        CheckConstraint("source IN ('EMAIL', 'WHATSAPP', 'UPLOAD', 'API')", name="source"),
-        CheckConstraint(
-            "status IN ('RECEIVED', 'ACCEPTED', 'REJECTED', 'DUPLICATE')", name="status"
-        ),
+        CheckConstraint(enum_check("source", DocumentSource), name="source"),
+        CheckConstraint(enum_check("status", IntakeStatus), name="status"),
         Index("ix_document_intakes_organization_id_received_at", "organization_id", "received_at"),
         Index("ix_document_intakes_document_id", "document_id"),
     )
@@ -129,15 +134,8 @@ class Document(Base, OrganizationMixin, TimestampMixin, SoftDeleteMixin):
 
     __tablename__ = "documents"
     __table_args__ = (
-        CheckConstraint(
-            "status IN ('RECEIVED', 'PROCESSING', 'REVIEW_REQUIRED', 'APPROVED', "
-            "'ARCHIVED', 'ERROR', 'DUPLICATE', 'REJECTED', 'UNMATCHED')",
-            name="status",
-        ),
-        CheckConstraint(
-            "source IN ('EMAIL', 'WHATSAPP', 'UPLOAD', 'API')",
-            name="source",
-        ),
+        CheckConstraint(enum_check("status", DocumentStatus), name="status"),
+        CheckConstraint(enum_check("source", DocumentSource), name="source"),
         CheckConstraint("file_size > 0", name="file_size_positive"),
         # SHA-256 în hex: exact 64 de caractere. O valoare scurtă înseamnă un hash
         # calculat greșit, iar detecția duplicatelor s-ar baza pe el.
@@ -405,7 +403,7 @@ class DocumentProcessingJob(Base, TimestampMixin):
     __tablename__ = "document_processing_jobs"
     __table_args__ = (
         UniqueConstraint("idempotency_key", name="uq_document_processing_jobs_idempotency_key"),
-        CheckConstraint("status IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED')", name="status"),
+        CheckConstraint(enum_check("status", ProcessingJobStatus), name="status"),
         CheckConstraint("attempt >= 1", name="attempt_positive"),
         Index("ix_document_processing_jobs_document_id", "document_id"),
         Index("ix_document_processing_jobs_status", "status"),

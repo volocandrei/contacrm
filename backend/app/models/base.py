@@ -25,6 +25,22 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
+def enum_check(column: str, values: type[StrEnum]) -> str:
+    """Corpul unui CHECK care enumeră valorile permise, **derivat din enum**.
+
+    Scrisă de mână, lista se desparte tăcut de enum la prima valoare adăugată.
+    S-a și întâmplat, de trei ori: `documents.source`, `document_intakes.source` și
+    `document_processing_jobs.status` au rămas cu lista veche când au apărut
+    `ONEDRIVE` și `SKIPPED`. Migrarea le adăugase în baza de date, modelul spunea
+    altceva, și nimic nu s-a plâns — `compare_metadata` din Alembic nu compară
+    corpul constrângerilor CHECK, deci nici testul de derivă nu le vedea.
+
+    Ordinea urmează declarația enumului, deci este stabilă între rulări.
+    """
+    listed = ", ".join(f"'{member.value}'" for member in values)
+    return f"{column} IN ({listed})"
+
+
 # Convenție de denumire explicită: fără ea, Alembic generează nume de constrângeri
 # diferite de la o rulare la alta și migrările devin imposibil de dat înapoi.
 class EnumString(TypeDecorator[Any]):

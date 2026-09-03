@@ -12,14 +12,14 @@ review uman → standardizare → arhivare → dashboard/audit.
 | Componentă | Stare |
 |---|---|
 | Plan tehnic, schemă DB, riscuri, ADR-uri | ✅ `docs/ARCHITECTURE.md`, `docs/adr/` |
-| Frontend: Vite + React 19 + TS strict + Tailwind v4 + shadcn/ui | ✅ |
+| Frontend: Vite + React 19 + TS strict + Tailwind v4 | ✅ |
 | Shell aplicație: sidebar colapsabil (§51), topbar, temă persistată | ✅ |
 | Ecrane: panou principal, clienți, documente, verificare, perioade, sarcini, rapoarte, administrare | ✅ pe date sintetice |
 | Backend simulat în browser (`api/mock`), cu aceleași rute ca API-ul real | ✅ |
 | Backend M2: FastAPI, settings, logging structurat, erori, health, Alembic | ✅ `backend/` |
 | Backend M3: auth JWT + refresh rotativ, Argon2id, RBAC, audit log | ✅ `backend/app/services/auth.py` |
 | Backend M4: CRM — clienți, contacte, note, etichete, sarcini | ✅ `backend/app/api/v1/clients.py` |
-| Infrastructură dev: PostgreSQL + Redis + API prin Docker | ✅ `docker-compose.yml` |
+| Infrastructură dev: PostgreSQL + API + worker prin Docker | ✅ `docker-compose.yml` |
 | Documente, procesare (M5–M6) | ⏳ urmează |
 
 ## Rulare
@@ -38,7 +38,7 @@ Pornește pe http://localhost:5173. Implicit rulează pe backend-ul simulat
 Are nevoie de un PostgreSQL 17. Prin Docker:
 
 ```bash
-docker compose up -d                        # postgres + redis
+docker compose up -d                        # doar postgres
 cd backend && uv sync
 uv run alembic upgrade head
 uv run python -m app.cli seed-dev           # organizație + conturi de development
@@ -90,10 +90,6 @@ cd backend  && uv run pytest && uv run ruff check . && uv run mypy app
 | `/comunicare/mesaje`, `/sabloane`, `/remindere` | Comunicare |
 | `/rapoarte` | Agregări peste documente |
 | `/administrare/utilizatori`, `/roluri`, `/setari`, `/audit` | Administrare |
-| `/demo` | componenta de referință din registry, neatinsă, în afara shell-ului |
-
-> `/demo` își gestionează propria stare light/dark, deci suprascrie temporar tema aplicației
-> cât timp este afișată. Revenirea în aplicație restaurează tema salvată.
 
 ## Structură
 
@@ -103,30 +99,36 @@ CONTACRM/
 │   └── src/
 │       ├── api/            # client, endpoints, hooks + mock/ (backend simulat)
 │       ├── components/
-│       │   ├── ui/         # primitive shadcn/ui + componente de bibliotecă
 │       │   ├── layout/     # app-shell, app-sidebar
 │       │   ├── page.tsx    # PageHeader, Panel, stările de încărcare/eroare/gol
 │       │   └── form-controls.tsx
 │       ├── features/       # un folder per modul: auth, clients, documents, …
 │       ├── hooks/          # use-theme, use-filter-params
 │       ├── lib/            # navigation, format, filename, utils(cn)
-│       ├── types/          # statusuri și tipuri de domeniu (§53)
-│       └── pages/          # demo
+│       └── types/          # statusuri și tipuri de domeniu (§53)
 ├── backend/                # FastAPI — vezi backend/README.md
 │   ├── app/{api,core,models,schemas,services,repositories,domain}/
 │   ├── alembic/versions/
 │   └── tests/
 ├── docs/
 │   ├── ARCHITECTURE.md     # arhitectură, schemă DB, riscuri, roadmap
-│   └── adr/                # ADR-001 … ADR-007
-├── docker-compose.yml      # postgres + redis (+ backend, pe profilul `api`)
+│   ├── DEPLOY.md           # punerea în funcțiune
+│   ├── RUNBOOK.md          # operare, copii de siguranță, restaurare, incidente
+│   ├── STATUS.md           # starea proiectului, pornire pe o mașină nouă
+│   ├── FINAL_PRODUCTION_AUDIT.md
+│   └── adr/                # ADR-001 … ADR-008
+├── docker-compose.yml      # postgres (+ migrate, backend, worker pe profilul `api`)
 ├── .env.example            # toate variabilele de configurare (fără valori reale)
 └── .claude/launch.json
 ```
 
 ## Adăugarea de componente shadcn/ui
 
-`components.json` este configurat (style `new-york`, base color `neutral`, alias `@/components/ui`):
+Aplicația scrie Tailwind brut. Primitivele generate (`button`, `card`, `badge`,
+`separator`) au fost scoase la auditul de producție: nimic nu le importa, iar
+cinci dependențe existau doar pentru ele. `components.json` rămâne configurat
+(style `new-york`, base color `neutral`, alias `@/components/ui`), deci se pot
+aduce înapoi oricând chiar sunt necesare:
 
 ```bash
 cd frontend && npx shadcn@latest add table dialog dropdown-menu select

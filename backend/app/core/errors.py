@@ -70,12 +70,16 @@ class AppError(Exception):
         *,
         status_code: int | None = None,
         details: dict[str, list[str]] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.status_code = status_code or _DEFAULT_STATUS[code]
         self.details = details
+        # Unele erori spun ceva și în antete, nu doar în corp: un `429` fără
+        # `Retry-After` lasă clientul să ghicească cât să aștepte.
+        self.headers = headers
 
 
 class NotFoundError(AppError):
@@ -108,6 +112,7 @@ def _render(
     message: str,
     status_code: int,
     details: dict[str, list[str]] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     body = ErrorResponse(
         code=code,
@@ -115,14 +120,16 @@ def _render(
         details=details,
         requestId=request_id_var.get(),
     )
-    return JSONResponse(status_code=status_code, content=body.model_dump(mode="json"))
+    return JSONResponse(
+        status_code=status_code, content=body.model_dump(mode="json"), headers=headers
+    )
 
 
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(_: Request, exc: AppError) -> JSONResponse:
         logger.warning("app_error", code=exc.code.value, message=exc.message)
-        return _render(exc.code, exc.message, exc.status_code, exc.details)
+        return _render(exc.code, exc.message, exc.status_code, exc.details, exc.headers)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:

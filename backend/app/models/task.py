@@ -19,6 +19,7 @@ from app.models.base import (
     OrganizationMixin,
     SoftDeleteMixin,
     TimestampMixin,
+    enum_check,
     uuid_pk,
 )
 
@@ -26,8 +27,8 @@ from app.models.base import (
 class Task(Base, OrganizationMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "tasks"
     __table_args__ = (
-        CheckConstraint("status IN ('TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE')", name="status"),
-        CheckConstraint("priority IN ('LOW', 'NORMAL', 'HIGH', 'URGENT')", name="priority"),
+        CheckConstraint(enum_check("status", TaskStatus), name="status"),
+        CheckConstraint(enum_check("priority", TaskPriority), name="priority"),
         # O sarcină este gata dacă și numai dacă are dată de finalizare.
         CheckConstraint("(status = 'DONE') = (completed_at IS NOT NULL)", name="completed_at"),
         Index("ix_tasks_organization_id_status", "organization_id", "status"),

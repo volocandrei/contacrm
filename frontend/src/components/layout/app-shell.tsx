@@ -8,8 +8,22 @@ import { useAuth } from "@/features/auth/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { ALL_NAV_ITEMS } from "@/lib/navigation";
 
+/**
+ * Sub această lățime, bara laterală deschisă (256px) nu mai încape.
+ *
+ * Măsurat pe un ecran de 390px: pagina depășea cu 50px, iar titlul din antet se
+ * strângea la lățime zero — adică dispărea. Aplicația este un instrument de birou
+ * și desktopul rămâne prioritar, dar un ecran care se rupe nu are nicio scuză.
+ */
+const NARROW_SCREEN_PX = 900;
+
+function fitsAnOpenSidebar(): boolean {
+  // `typeof window` — componenta trebuie să poată fi randată și fără DOM.
+  return typeof window === "undefined" || window.innerWidth >= NARROW_SCREEN_PX;
+}
+
 export function AppShell() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(fitsAnOpenSidebar);
   const { theme, toggleTheme } = useTheme();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -21,6 +35,17 @@ export function AppShell() {
     ALL_NAV_ITEMS.filter((item) => item.path !== "/").find((item) =>
       pathname.startsWith(item.path),
     );
+
+  // Rotirea unei tablete sau micșorarea ferestrei nu trebuie să lase bara deschisă
+  // peste conținut. Nu forțăm și invers: cine a închis-o pe un ecran lat a închis-o
+  // pentru că a vrut.
+  useEffect(() => {
+    function onResize() {
+      if (!fitsAnOpenSidebar()) setSidebarOpen(false);
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   function handleSearch(event: React.FormEvent) {
     event.preventDefault();

@@ -7,7 +7,6 @@ import type {
   ChecklistItem,
   Client,
   ClientNote,
-  CommunicationMessage,
   Contact,
   CurrentUser,
   DashboardData,
@@ -69,7 +68,6 @@ export const clients = {
   contacts: (id: string) => api.get<Contact[]>(`/clients/${id}/contacts`),
   notes: (id: string) => api.get<ClientNote[]>(`/clients/${id}/notes`),
   periods: (id: string) => api.get<AccountingPeriod[]>(`/clients/${id}/periods`),
-  messages: (id: string) => api.get<CommunicationMessage[]>(`/clients/${id}/messages`),
 };
 
 export const documents = {
@@ -112,10 +110,6 @@ export const periods = {
 export const tasks = {
   list: (params: QueryParams) => api.get<Task[]>("/tasks", params),
   updateStatus: (id: string, status: TaskStatus) => api.patch<Task>(`/tasks/${id}`, { status }),
-};
-
-export const communication = {
-  messages: (params: QueryParams) => api.get<CommunicationMessage[]>("/messages", params),
 };
 
 export const administration = {

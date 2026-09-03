@@ -1,84 +1,49 @@
 import { Link } from "react-router-dom";
-import { Bell, Mail, MessageSquare, TriangleAlert } from "lucide-react";
-import { useMessages } from "@/api/hooks";
-import { SelectFilter } from "@/components/form-controls";
-import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
-import { useFilterParams } from "@/hooks/use-filter-params";
-import { formatDateTime } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { Bell, MessageSquare, TriangleAlert } from "lucide-react";
+import { PageHeader, Panel } from "@/components/page";
 
 export function MessagesPage() {
-  const { values, setValue } = useFilterParams({ channel: "" });
-  const { data, isLoading, error } = useMessages({ channel: values.channel });
-
   return (
     <div>
       <PageHeader
         title="Mesaje"
         description="Comunicarea cu clienții, agregată din email și WhatsApp"
       />
-
-      <SelectFilter
-        label="Canal"
-        allLabel="Toate canalele"
-        value={values.channel}
-        onChange={(value) => setValue("channel", value)}
-        options={[
-          { value: "EMAIL", label: "Email" },
-          { value: "WHATSAPP", label: "WhatsApp" },
-        ]}
-        className="mb-4 w-48"
-      />
-
-      <Panel bodyClassName="p-0">
-        {isLoading ? (
-          <LoadingState />
-        ) : error ? (
-          <ErrorState error={error} />
-        ) : (data?.length ?? 0) === 0 ? (
-          <EmptyState title="Niciun mesaj" />
-        ) : (
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-            {data?.map((message) => (
-              <li key={message.id} className="flex gap-3 px-5 py-3.5">
-                <span
-                  className={cn(
-                    "mt-0.5 grid h-8 w-8 shrink-0 place-content-center rounded-lg",
-                    message.direction === "INBOUND"
-                      ? "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
-                      : "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400",
-                  )}
+      <Panel>
+        <div className="flex items-start gap-3">
+          <MessageSquare className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="mb-2">
+              Cronologia mesajelor cere ca sistemul să și <strong>trimită</strong>, nu doar să
+              primească — adică un provider de email sau WhatsApp, Faza 2. Până atunci nu
+              inventăm un ecran care nu are ce arăta.
+            </p>
+            <p className="mb-2">Ce există deja și chiar funcționează:</p>
+            <ul className="ml-5 list-disc space-y-1">
+              <li>
+                atașamentele trimise de clienți pe email devin documente automat, la clientul
+                expeditorului — se configurează în{" "}
+                <Link
+                  to="/administrare/surse"
+                  className="font-medium text-blue-600 hover:underline dark:text-blue-400"
                 >
-                  {message.channel === "WHATSAPP" ? (
-                    <MessageSquare className="h-4 w-4" aria-hidden="true" />
-                  ) : (
-                    <Mail className="h-4 w-4" aria-hidden="true" />
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <Link
-                      to={`/crm/clienti/${message.clientId}`}
-                      className="text-sm font-medium text-gray-900 hover:text-blue-600 hover:underline dark:text-gray-100 dark:hover:text-blue-400"
-                    >
-                      {message.clientName}
-                    </Link>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">
-                      {formatDateTime(message.occurredAt)}
-                    </span>
-                  </div>
-                  {message.subject && (
-                    <p className="text-sm text-gray-700 dark:text-gray-300">{message.subject}</p>
-                  )}
-                  <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-                    {message.preview}
-                    {message.attachmentCount > 0 && ` · ${message.attachmentCount} atașamente`}
-                  </p>
-                </div>
+                  Administrare → Surse documente
+                </Link>
+                ;
               </li>
-            ))}
-          </ul>
-        )}
+              <li>
+                ce a sosit, de la cine și când se vede în{" "}
+                <Link
+                  to="/documente/inbox"
+                  className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                >
+                  Inbox documente
+                </Link>
+                , cu sursa fiecărui document.
+              </li>
+            </ul>
+          </div>
+        </div>
       </Panel>
     </div>
   );

@@ -68,7 +68,23 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 14
     cors_allowed_origins: str = "http://localhost:5173"
-    rate_limit_per_minute: int = 120
+    # Câte încercări de autentificare acceptă o adresă IP într-un minut.
+    #
+    # Se numea `rate_limit_per_minute` și nu o citea niciun modul: o promisiune
+    # de protecție care nu exista. Numele spune acum exact ce limitează, iar
+    # `app/core/rate_limit.py` scrie ce acoperă și ce nu.
+    #
+    # Zece pe minut este generos pentru un om care își greșește parola și
+    # strâmt pentru cineva care încearcă o listă. Zero oprește limitarea.
+    login_attempts_per_minute: int = 10
+    # Și câte acceptă adresa aceea în total, peste toate conturile.
+    #
+    # Există separat pentru că cele două atacuri sunt diferite: unul încearcă
+    # multe parole pe un cont, celălalt o parolă pe multe conturi. Un prag
+    # singur ar trebui ori atât de mic încât să blocheze un birou întreg din
+    # spatele unei singure adrese publice, ori atât de mare încât să nu apere
+    # niciun cont.
+    login_attempts_per_address_per_minute: int = 60
     # Secretul cu care un planificator extern (cron) are voie să ceară un tur de
     # coadă. Gol înseamnă **oprit**: ruta refuză orice, inclusiv o cerere corectă.
     # Un endpoint care execută muncă nu are voie să fie public nici măcar o clipă.

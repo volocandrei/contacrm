@@ -25,20 +25,23 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
+from app.domain.enums import ProcessingJobStatus
 from app.models.document import Document, DocumentProcessingJob
 
 logger = get_logger(__name__)
 
 JOB_TYPE = "EXTRACTION"
 
-PENDING = "PENDING"
-RUNNING = "RUNNING"
-SUCCEEDED = "SUCCEEDED"
-FAILED = "FAILED"
+# Numele scurte rămân — sunt folosite peste tot. Valorile vin însă din enum, ca
+# lista din constrângerea CHECK să nu se poată despărți de ele.
+PENDING = ProcessingJobStatus.PENDING
+RUNNING = ProcessingJobStatus.RUNNING
+SUCCEEDED = ProcessingJobStatus.SUCCEEDED
+FAILED = ProcessingJobStatus.FAILED
 # Documentul a mers între timp în altă parte. Nu este o eroare, dar nici nu mai e
 # nimic de făcut — a-l trece la `FAILED` ar umple raportul de eșecuri cu lucruri
 # care au mers exact cum trebuia.
-SKIPPED = "SKIPPED"
+SKIPPED = ProcessingJobStatus.SKIPPED
 
 
 def idempotency_key(document_id: uuid.UUID, attempt: int) -> str:

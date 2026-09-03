@@ -64,7 +64,8 @@ Pe serviciul **backend**:
 | `STORAGE_PROVIDER` | `s3` | vezi §4 |
 | `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT_URL` | de la furnizor | |
 | `CRON_SECRET` | un secret generat | vezi §5 |
-| `TRUSTED_PROXY_COUNT` | `1` | Vercel este singurul proxy din față; fără el, jurnalul de audit notează adresa platformei la fiecare acțiune |
+| `TRUSTED_PROXY_COUNT` | `1` | Vercel este singurul proxy din față; fără el, jurnalul de audit notează adresa platformei la fiecare acțiune — **și limitarea autentificării ar număra toate încercările la aceeași adresă** |
+| `LOGIN_ATTEMPTS_PER_MINUTE`, `LOGIN_ATTEMPTS_PER_ADDRESS_PER_MINUTE` | implicit `10` și `60` | câte încercări de autentificare acceptă o adresă pentru un cont, și în total. Contorul stă în proces: pe o platformă care pornește un proces per cerere nu limitează nimic, deci acolo limita trebuie pusă la marginea rețelei |
 | `OCR_PROVIDER` | `local` | citește și facturi electronice, și PDF-uri; pornirea în producție refuză `mock` — vezi mai jos |
 
 **Pornirea în producție refuză `OCR_PROVIDER=mock`.** Providerul acela inventează
@@ -126,6 +127,18 @@ servește nimic direct: tot ce iese trece prin API, care verifică organizația
 autorizare din aplicație.
 
 ## 5. Workerul
+
+Workerul face **două** lucruri: execută coada de procesare și întreabă periodic
+sursele externe (OneDrive, cutia poștală) dacă a apărut ceva nou. Al doilea
+contează la fel de mult ca primul — fără el, preluarea automată nu se întâmplă,
+iar interfața arată totuși o conexiune activă și dosare urmărite.
+
+**Exact unul dintre cele două trebuie să existe într-o instalare:**
+
+| Instalare | Ce pornește procesarea și sincronizarea |
+| --- | --- |
+| server propriu (`docker compose`) | `python -m app.worker`, proces continuu |
+| Vercel sau altă platformă scalată la zero | cronul din `vercel.json`, la 5 minute |
 
 `python -m app.worker` presupune un proces care trăiește. Într-un mediu care
 scalează la zero, procesul acela nu are unde să existe; ce rămâne este un ceas
@@ -244,6 +257,49 @@ administrat. Alege în funcție de care dintre cele două contează mai mult.
 
 ---
 
+## Primii pași într-o bază de producție
+
+```bash
+uv run alembic upgrade head
+uv run python -m app.cli sync-roles      # rolurile și permisiunile din cod
+uv run python -m app.cli create-admin    # primul cont; cere parola la tastatură
+uv run python -m app.cli add-client      # un client, cu emailul lui de contact
+```
+
+`seed-dev` **nu** rulează în producție și bine face: parolele lui sunt publice, iar
+datele sunt inventate.
+
+`add-client` există pentru că aplicația nu are, deliberat, ecrane de creare a
+clienților — CRM-ul este de citire, iar drumul de scriere sunt documentele.
+Fără ea, un cabinet nou nu putea adăuga niciun client, deci nu putea lega niciun
+dosar din OneDrive. Comanda deblochează prima folosire; ecranul care ar trebui să
+existe rămâne de construit.
+
+**Emailul de contact contează**: după el ajunge un atașament primit la clientul
+potrivit. Un client fără contact primește documente doar prin dosarul lui din
+OneDrive.
+
+---
+
+## Copii de siguranță, restaurare, incidente
+
+`docs/RUNBOOK.md`. Pe scurt, partea care se greșește cel mai des: **copia bazei de
+date se face înaintea copiei fișierelor**, nu invers. Un document este scris în
+stocare înainte de a fi comis în baza de date, deci o bază de la T1 cu fișiere de
+la T2 > T1 este coerentă; ordinea inversă produce rânduri fără fișiere.
+
+După orice restaurare:
+
+```bash
+uv run python -m app.cli check-storage
+```
+
+Comanda compară fiecare document din baza de date cu fișierul lui din stocare și
+iese cu cod diferit de zero dacă nu se potrivesc. O restaurare nu este terminată
+până când nu trece.
+
+---
+
 ## Înainte de orice deploy în producție
 
 `Settings.assert_production_ready()` oprește pornirea dacă `SECRET_KEY` a rămas
@@ -254,4 +310,13 @@ OCR/AI sunt configurați inconsistent. În plus, de verificat manual:
 - `CORS_ALLOWED_ORIGINS` enumeră originile reale;
 - migrările sunt aplicate **înainte** de a promova versiunea nouă;
 - documentele nu se comit niciodată în repo — `storage/` și `ARHIVA/` sunt
-  ignorate.
+  ignorate;
+- **`VITE_API_MODE=http`**. Fără ea, build-ul frontendului refuză să pornească
+  și spune de ce — implicitul ar fi fost backendul simulat din browser, cu
+  clienți și documente inventate;
+- limita de dimensiune a corpului cererii, în proxy-ul din față
+  (`client_max_body_size 30m` în nginx). Aplicația refuză fișierele peste
+  `MAX_UPLOAD_SIZE_MB` **în timp ce le citește**, dar corpul cererii este primit
+  de server înainte de asta;
+- antetele de securitate vin din aplicație (`SecurityHeadersMiddleware`), deci
+  există pe orice instalare. Cele din `vercel.json` rămân ca al doilea strat.

@@ -10,7 +10,6 @@ import type {
   ChecklistItem,
   Client,
   ClientNote,
-  CommunicationMessage,
   Contact,
   DocumentDetail,
   DocumentFields,
@@ -733,25 +732,3 @@ export const AUDIT_LOGS: AuditLogEntry[] = Array.from({ length: 60 }, (_, i) => 
     ip: `10.0.${randInt(0, 4)}.${randInt(2, 240)}`,
   } satisfies AuditLogEntry;
 }).sort((a, b) => b.at.localeCompare(a.at));
-
-/* ─── Comunicare ───────────────────────────────────────────────────────────── */
-
-export const MESSAGES: CommunicationMessage[] = Array.from({ length: 30 }, (_, i) => {
-  const client = pick(ACTIVE_CLIENTS);
-  const direction = chance(0.6) ? "INBOUND" : "OUTBOUND";
-  const channel = pick(["EMAIL", "WHATSAPP", "EMAIL"] as const);
-  return {
-    id: `msg-${i + 1}`,
-    clientId: client.id,
-    clientName: client.name,
-    direction,
-    channel,
-    subject: channel === "EMAIL" ? pick(["Documente august", "Facturi", "Extras cont", "Bonuri"]) : null,
-    preview:
-      direction === "INBOUND"
-        ? "Bună ziua, vă transmit documentele pentru luna în curs."
-        : "Am recepționat documentele. Vă anunțăm dacă lipsește ceva.",
-    occurredAt: `2026-08-${String(randInt(18, 27)).padStart(2, "0")}T${String(randInt(8, 18)).padStart(2, "0")}:${String(randInt(0, 59)).padStart(2, "0")}:00+03:00`,
-    attachmentCount: direction === "INBOUND" ? randInt(0, 6) : 0,
-  } satisfies CommunicationMessage;
-}).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));

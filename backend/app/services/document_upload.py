@@ -7,7 +7,8 @@ sunt două sisteme care nu împart o tranzacție:
 2. se creează rândul `documents` (fără commit), ca să avem un id;
 3. se scrie fișierul la o cheie derivată **din acel id**, nu din numele primit;
 4. se completează rândul cu ce s-a scris efectiv — mărime, hash, tip;
-5. se caută duplicat;
+5. se caută duplicat, sub o încuietoare pe conținut (altfel două încărcări
+   simultane ale aceluiași fișier nu se văd una pe alta);
 6. se înregistrează versiunea 1 și intrarea de audit.
 
 Dacă pasul 3 eșuează, tranzacția se dă înapoi și nu rămâne niciun rând. Dacă pașii
@@ -28,6 +29,7 @@ from typing import BinaryIO
 
 from sqlalchemy.orm import Session
 
+from app.core.locks import lock_content
 from app.core.logging import get_logger
 from app.domain.enums import DocumentSource, DocumentStatus, IntakeStatus
 from app.models.document import Document, DocumentIntake, DocumentVersion
@@ -125,6 +127,13 @@ class DocumentUploadService:
 
         try:
             # 5. Duplicat? Documentul se păstrează oricum (§11).
+            #
+            # Încuietoarea este pe **conținut**, nu pe tabel: două încărcări
+            # simultane ale aceluiași fișier trebuie să se vadă una pe alta, iar
+            # căutarea de mai jos nu poate vedea un rând necomis. Fără ea, ambele
+            # intrau ca documente noi — verificat pe server, de trei ori din
+            # patru. Fișiere diferite nu se așteaptă niciodată: cheia le separă.
+            lock_content(self.session, organization_id, stored.sha256)
             duplicate = self.duplicates.find_duplicate(
                 organization_id, sha256_hash=stored.sha256, exclude_id=document.id
             )

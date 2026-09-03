@@ -11,10 +11,59 @@
  * iar de pe altă origine nu ar fi trimis deloc la `<img>` sau `<object>` — adică
  * exact la previzualizarea documentului.
  */
-import { mockRequest } from "@/api/mock/router";
 import { ApiError, type ApiErrorCode, type QueryParams } from "@/api/types";
 
+/**
+ * Backendul simulat se încarcă **doar dacă este cerut**.
+ *
+ * Importat static, ajungea în pachetul de producție întreg: rutele lui, magazinul
+ * lui și toate datele sintetice — clienți, documente, sume. Nu erau date reale,
+ * dar erau kilobytes livrați fiecărui utilizator ca să nu fie folosiți niciodată,
+ * și era chiar mecanismul care făcea posibil ca un build neconfigurat să pară că
+ * merge. Un import dinamic îl scoate într-o bucată separată, pe care modul `http`
+ * nu o cere niciodată.
+ */
+async function loadMock() {
+  return (await import("@/api/mock/router")).mockRequest;
+}
+
 type Mode = "mock" | "http";
+
+/**
+ * Ce backend răspunde. **Într-un build de producție, alegerea trebuie făcută
+ * explicit.**
+ *
+ * Implicit era `mock`, în orice build. Un `npm run build` fără `VITE_API_MODE=http`
+ * — o variabilă uitată în panoul de deploy — livra aplicația completă, arătoasă și
+ * funcțională, rulând pe backendul simulat din browser: clienți inventați,
+ * documente inventate, și o autentificare care acceptă orice parolă. Nimic nu
+ * semnala nimic. Un cabinet ar fi putut lucra ore întregi într-o aplicație care nu
+ * scrie nicăieri.
+ *
+ * În development implicitul rămâne `mock`: acolo este chiar rostul lui, iar
+ * aplicația pornește fără să ceară un server.
+ *
+ * Nu aruncă la import — o excepție acolo ar da un ecran alb, adică fix la fel de
+ * mut ca problema pe care o semnalează. Întoarce un motiv, iar `main.tsx` îl
+ * afișează în loc să pornească aplicația.
+ */
+export function apiModeProblem(
+  declared: string | undefined,
+  isProduction: boolean,
+): string | null {
+  if (declared === "http" || declared === "mock") return null;
+  if (!isProduction) return null;
+  return (
+    "VITE_API_MODE nu este setată. Un build de producție trebuie să spună explicit " +
+    "pe ce rulează: `http` pentru API-ul real, `mock` pentru o demonstrație. " +
+    "Fără ea, aplicația ar porni pe backendul simulat din browser, cu date inventate."
+  );
+}
+
+export const API_MODE_PROBLEM = apiModeProblem(
+  import.meta.env.VITE_API_MODE,
+  import.meta.env.PROD,
+);
 
 const MODE: Mode = import.meta.env.VITE_API_MODE === "http" ? "http" : "mock";
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
@@ -169,6 +218,7 @@ async function mockRequestAsync<T>(
     await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
   }
   // Erorile sunt aruncate sincron de store; le lăsăm să se propage ca rejection.
+  const mockRequest = await loadMock();
   return mockRequest(method, path, queryObject(options.params), options.body ?? {}) as T;
 }
 
@@ -287,6 +337,7 @@ async function mockUpload<T>(path: string, file: File): Promise<T> {
   if (MOCK_LATENCY_MS > 0) {
     await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
   }
+  const mockRequest = await loadMock();
   return mockRequest("POST", path, {}, {
     filename: file.name,
     size: file.size,

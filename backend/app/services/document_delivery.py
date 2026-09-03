@@ -37,6 +37,10 @@ SECURITY_HEADERS: Final[dict[str, str]] = {
     "Content-Security-Policy": "default-src 'none'; sandbox",
     "Cache-Control": "private, no-store",
     "Referrer-Policy": "no-referrer",
+    # Explicit, nu moștenit: antetul global al aplicației este `DENY`, iar
+    # previzualizarea chiar trebuie încadrată — de propriile noastre pagini,
+    # de nimeni altcineva.
+    "X-Frame-Options": "SAMEORIGIN",
 }
 
 # Ce rămâne dintr-un nume de fișier pus într-un antet HTTP: fără ghilimele, fără

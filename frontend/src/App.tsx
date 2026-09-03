@@ -17,7 +17,6 @@ import { ReviewPage, ReviewQueuePage } from "@/features/documents/review-page";
 import { MissingDocumentsPage, PeriodsPage } from "@/features/periods/periods-page";
 import { ReportsPage } from "@/features/reports/reports-page";
 import { TasksPage } from "@/features/tasks/tasks-page";
-import DemoOne from "@/pages/demo";
 
 function App() {
   return (
@@ -100,9 +99,6 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>
-
-      {/* Componenta de referință din registry, în afara shell-ului (își aduce propriul layout). */}
-      <Route path="/demo" element={<DemoOne />} />
     </Routes>
   );
 }

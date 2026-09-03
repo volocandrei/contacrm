@@ -5,6 +5,9 @@ Postgres folosesc fixture-ul `db` și **sar** cu un motiv explicit când baza nu
 pornită — un test care cade pentru că infrastructura lipsește nu spune nimic despre
 cod, dar ascunde regresiile reale.
 
+**În CI, nu.** Acolo o bază lipsă oprește rularea: altfel un serviciu `postgres`
+care nu a pornit ar da un raport verde peste o suită sărită aproape în întregime.
+
 Baza de test este una separată (`<db>_test_<pid>`), creată și golită de fixture.
 Nu atingem niciodată baza de development.
 """
@@ -68,6 +71,20 @@ def _server_reachable() -> bool:
 
 
 DB_AVAILABLE = _server_reachable()
+
+# Pe laptop, o bază oprită înseamnă „sari testele care o cer": un eșec de
+# infrastructură nu spune nimic despre cod și ar ascunde regresiile reale.
+#
+# În CI înseamnă altceva. Aproape toată suita cere baza de date, deci un Postgres
+# care nu pornește ar face rularea să treacă **verde cu totul sărit** — exact
+# raportul care nu trebuie să existe. De aceea acolo lipsa bazei este o eroare, nu
+# un motiv de sărit.
+if not DB_AVAILABLE and os.getenv("CI"):
+    raise RuntimeError(
+        "PostgreSQL nu este accesibil, iar CI nu are voie să treacă sărind "
+        "testele de integrare. Verifică serviciul `postgres` și DATABASE_URL."
+    )
+
 requires_db = pytest.mark.skipif(
     not DB_AVAILABLE,
     reason="PostgreSQL nu este pornit — rulează `docker compose up -d`",
@@ -128,6 +145,24 @@ def db(db_engine: sa.Engine) -> Iterator[Session]:
         if transaction.is_active:
             transaction.rollback()
         connection.close()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_login_limiters() -> Iterator[None]:
+    """Contoarele de autentificare sunt stare globala de proces.
+
+    Fara golire, testele care se autentifica de mai multe ori s-ar bloca unele
+    pe altele: `TestClient` are o singura adresa, deci toate testele suitei
+    impart aceeasi cheie. Limitarea in sine este verificata explicit, in
+    `test_rate_limit.py` si `test_auth_api.py`.
+    """
+    from app.api.v1.auth import LOGIN_LIMITERS
+
+    for limiter in LOGIN_LIMITERS.values():
+        limiter.reset()
+    yield
+    for limiter in LOGIN_LIMITERS.values():
+        limiter.reset()
 
 
 @pytest.fixture

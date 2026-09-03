@@ -87,7 +87,8 @@ previzualizarea documentului. Un token în URL nu este o alternativă (§27).
 ```bash
 cd frontend && npm test && npm run lint && npm run build
 cd backend  && uv run pytest && uv run ruff check . && uv run mypy app
-uv run python -m app.worker --once   # un tur al cozii de procesare
+uv run python -m app.worker --once      # un tur: surse externe + coada de procesare
+uv run python -m app.cli check-storage  # baza de date și stocarea se potrivesc?
 ```
 
 Testele end-to-end pornesc singure tot ce le trebuie — backendul, build-ul
@@ -428,15 +429,40 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 | Filtrele de lună ofereau trei luni fixe din 2026, iar „Perioade" pornea implicit pe august 2026. Instalat în 2027, ecranul ar fi arătat o lună fără date și nicio cale de a alege alta | citind ce mai scrie în lista de datorie tehnică — unde era notat greșit ca fiind „doar în backendul simulat" |
 | Panoul principal scria „pentru August 2026" deasupra unor cifre care veneau din `latest_active_month`: două luni diferite, același titlu | același loc |
 
+**Auditul de producție (3 septembrie 2026)** — vezi `docs/FINAL_PRODUCTION_AUDIT.md`:
+
+| Defect | Cum a fost găsit |
+|---|---|
+| `Total de plata: 1190,00 lei` era citit **119**. Tiparul sumei accepta grupuri de mii opționale, deci se oprea după trei cifre; orice sumă peste 999 scrisă fără separator intra trunchiată. Toate sumele din suită aveau ori separator de mii, ori sub patru cifre — exact formele care mergeau | **proba de fum pe o instalare complet nouă** |
+| Sincronizarea cu OneDrive și emailul se pornea doar din cron. Pe un server propriu, cu worker și fără cron, nu sosea niciodată nimic, iar interfața arăta o conexiune activă | citind de unde se cheamă `run_drive_sync` |
+| Detecția duplicatelor era `SELECT` + `INSERT` fără nimic între: patru încărcări simultane ale acelorași octeți intrau toate ca documente noi | **patru fire pe un server pornit** |
+| Două ecrane livrate cereau `/messages` și `/clients/:id/messages` — rute care nu există. Unul rămânea gol, fără eroare | comparând rutele consumate de frontend cu cele implementate |
+| Un build de producție fără `VITE_API_MODE` livra aplicația pe backendul simulat: clienți inventați, documente inventate, autentificare care acceptă orice parolă | citind implicitul din `client.ts` |
+| CI ar fi trecut **verde** dacă PostgreSQL nu pornea: peste 900 de teste sărite, cod de ieșire 0 | citind `conftest.py` |
+| Trei indexuri GIN trigram erau moarte: interogarea punea `coalesce`, indexul nu | `EXPLAIN ANALYZE` pe 20.000 de documente |
+| Trei constrângeri `CHECK` din modele rămăseseră în urma migrărilor. `compare_metadata` nu compară corpul lor, deci testul de derivă nu le vedea | inventarul `pg_constraint` din baza migrată |
+| Niciun antet de securitate pe răspunsurile API: existau doar pe fișiere și în `vercel.json` | **antetele unui server pornit** |
+| `/demo` — pagină de demonstrație, neautentificată, în producție | inventarul rutelor |
+| Nu exista **niciun** mod de a adăuga un client într-o bază de producție: `seed-dev` refuză să ruleze acolo, iar interfața nu are formular | încercând să instalez aplicația de la zero |
+| `RATE_LIMIT_PER_MINUTE` stătea în configurare de la primul commit și nu îl citea niciun modul: o protecție care exista doar pe hârtie | căutând cine citește fiecare setare |
+| Prima variantă a limitării număra **toate** încercările, nu doar eșecurile: al unsprezecelea login cu parola corectă dintr-un minut era refuzat | **două teste E2E căzute departe de cauză**, în mijlocul unui flux de documente |
+| Pe un ecran de 390px, fiecare pagină depășea cu 50px, iar titlul din antet se strângea la lățime zero | măsurând lățimea reală pe trei viewporturi |
+| Prima variantă a verificării de accesibilitate raporta opt câmpuri „fără etichetă”; erau toate corecte — verificarea nu cunoștea eticheta implicită | citind ce anume raportase |
+
 ---
 
 ## 3. Ce mai este de făcut
 
 ### Golul concret
 
-Frontend-ul consumă **32 de rute**. Backendul real le implementează pe toate în
-afară de una (plus `/auth/refresh` și health). **Rămâne 1** — `GET /messages`,
-din Faza 2.
+Frontend-ul consumă **30 de rute**. Backendul real le implementează pe toate.
+
+Erau 32, iar două — `GET /messages` și `GET /clients/:id/messages` — erau marcate
+aici drept „Faza 2". Golul era cunoscut la nivel de rută; ce nu era cunoscut este
+că **ecranele care le cereau erau totuși livrate**. În modul simulat mergeau; în
+modul real una arăta o eroare, iar cealaltă rămânea goală fără să spună nimic.
+Auditul de producție le-a făcut oneste, iar `e2e/pages.spec.ts` deschide acum
+fiecare ecran și cade dacă vreunul cere ceva ce serverul nu are.
 
 | Rută | Milestone |
 |---|---|
@@ -451,7 +477,7 @@ din Faza 2.
 | ~~`POST /documents/bulk`, `GET /audit-logs`~~ | ✅ M6 |
 | ~~`GET /reports/summary`, `GET /settings`, `POST /documents/upload`~~ | ✅ M7 |
 | ~~`/integrations/onedrive/*` — 13 rute~~ | ✅ M9, M10 |
-| `GET /messages`, `GET /clients/:id/messages` | Faza 2 |
+| ~~`GET /messages`, `GET /clients/:id/messages`~~ | scoase din interfață la auditul de producție; cronologia reală se poate construi pe `document_intakes` |
 
 Contractul fiecăreia este deja definit: `frontend/src/types/domain.ts` spune exact
 ce câmpuri, iar `frontend/src/api/mock/store.ts` spune exact ce semantică
@@ -887,8 +913,11 @@ Niciuna nu blochează deploy-ul.
 | Element | Notă |
 |---|---|
 | `QueryBoundary` (`components/page.tsx`) | scris ca să elimine triada `isLoading/error/empty`, dar nefolosit — cele 8 pagini o repetă manual |
-| `react-hook-form`, `zod`, `@hookform/resolvers` | instalate, nefolosite |
-| primitivele shadcn (`button`, `card`, `badge`, `separator`) | importate doar de componenta de demo; aplicația scrie Tailwind brut. Ori le adoptăm, ori recunoaștem că nu le folosim |
+| ~~`react-hook-form`, `zod`, `@hookform/resolvers`~~ | scoase la auditul de producție: nimic nu le importa |
+| ~~primitivele shadcn (`button`, `card`, `badge`, `separator`)~~ | scoase odată cu pagina `/demo`, singura care le folosea. `components.json` rămâne: `npx shadcn add <componentă>` le aduce înapoi când chiar sunt necesare |
+| numărul total la căutarea în documente | pagina se ia în 2 ms; `COUNT(*)` peste `OR`-ul care traversează tabela clienților ia 140 ms pe 20.000 de documente. Se poate rezolva doar denormalizând numele clientului pe document sau renunțând la totalul exact la căutarea textuală — niciuna nu merită încă |
+| corpul cererii de upload | fișierul este primit **întreg** înainte ca aplicația să-l poată refuza (măsurat: 150 MB refuzați în 1,3 s). Limita trebuie pusă și în proxy-ul din față — vezi `docs/DEPLOY.md` |
 | ~~`"2026-08"` hardcodat în 6 locuri~~ | rezolvat, și **nu era doar în backendul simulat**, cum scria aici: erau trei luni fixe din 2026 în filtrele reale de pe „Documente" și „Perioade", plus titlul panoului principal. Vezi mai jos |
 | ~~`client_ip()` ignoră `X-Forwarded-For`~~ | rezolvat: `TRUSTED_PROXY_COUNT` spune câte proxy-uri stau obligatoriu în față, iar adresa se citește numărând **de la dreapta**. Implicit 0 — antetul se ignoră până când cineva declară explicit prin ce trece cererea. Pe Vercel se pune 1 |
-| `oxlint`: 2 warning-uri | `only-export-components` pe fișiere shadcn generate — cosmetic |
+| ~~`oxlint`: 2 warning-uri~~ | dispărute odată cu fișierele shadcn |
+| codul `INTERNAL_ERROR` pe un răspuns 405 | eticheta este greșită, dar nu schimbă nimic: frontendul decide reîncercarea după status, nu după cod. Un cod nou ar însemna o schimbare de contract pentru zero câștig |

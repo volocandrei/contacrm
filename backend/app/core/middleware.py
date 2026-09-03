@@ -1,5 +1,8 @@
 """Middleware-ul aplicat fiecărei cereri.
 
+Două lucruri, amândouă valabile pentru orice rută: contextul de cerere
+(`request_id`) și antetele de securitate.
+
 Un singur `request_id` leagă între ele: liniile de log emise pe parcursul cererii,
 antetul `X-Request-ID` din răspuns și câmpul `requestId` din corpul erorilor.
 """
@@ -9,11 +12,13 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from typing import Final
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.core.config import Environment, settings
 from app.core.logging import get_logger, request_id_var
 
 logger = get_logger(__name__)
@@ -73,3 +78,50 @@ def _valid_uuid(value: str | None) -> str | None:
         return str(uuid.UUID(value))
     except ValueError:
         return None
+
+
+# ── Antete de securitate ─────────────────────────────────────────────────────
+
+#: Antetele puse pe **orice** răspuns al API-ului.
+#:
+#: Existau deja, dar numai în două locuri: pe fișierele servite
+#: (`document_delivery.SECURITY_HEADERS`) și în `vercel.json`, adică doar pentru
+#: instalarea de pe Vercel. O instalare pe serverul cabinetului — `docker compose`,
+#: exact varianta din documentație — nu avea niciunul. Locul lor este aplicația:
+#: acolo nu depind de cine o pune în fața ei.
+SECURITY_HEADERS: Final[dict[str, str]] = {
+    # Browserul nu are voie să ghicească alt tip decât cel declarat.
+    "X-Content-Type-Options": "nosniff",
+    # Nicio pagină străină nu poate încadra aplicația (clickjacking). `X-Frame-Options`
+    # pentru browserele vechi, `frame-ancestors` pentru cele care îl citesc.
+    "X-Frame-Options": "DENY",
+    # Adresele conțin id-uri de documente și de clienți: nu pleacă spre alte site-uri.
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    # Răspunsurile API-ului sunt JSON; nimic din ele nu are voie să încarce nimic.
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+}
+
+#: Doar peste HTTPS. Trimis pe `http://localhost`, ar bloca development-ul: browserul
+#: ține minte antetul și refuză apoi orice cerere necriptată către aceeași gazdă.
+HSTS_HEADER: Final = "Strict-Transport-Security"
+HSTS_VALUE: Final = "max-age=31536000; includeSubDomains"
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Pune antetele de mai sus pe orice răspuns care nu le are deja.
+
+    „Care nu le are deja" contează: fișierele servite prin `/documents/{id}/preview`
+    își aduc propria politică, mai strictă (`sandbox`), iar aceea nu trebuie
+    înlocuită cu una mai permisivă.
+    """
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        for header, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(header, value)
+        if settings.environment is not Environment.DEVELOPMENT:
+            response.headers.setdefault(HSTS_HEADER, HSTS_VALUE)
+        return response
