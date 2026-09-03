@@ -59,6 +59,12 @@ class ExtractionResult:
     # Clasificare
     document_type_code: str | None = None
     classification_confidence: float | None = None
+    # De unde vine tipul propus. Implicit `AI`, pentru că așa a fost singurul
+    # provider multă vreme; unul bazat pe reguli spune `OCR` — citit de pe
+    # document. Badge-ul „AI 95%" pe o valoare pe care niciun model nu a
+    # produs-o este exact minciuna pe care ecranul de verificare promite să nu
+    # o spună (§22).
+    classification_source: FieldSource = FieldSource.AI
 
     # Câmpuri, cheiate pe numele din API (`documentDate`, `totalAmount`, …).
     fields: Mapping[str, ExtractedValue] = field(default_factory=dict)

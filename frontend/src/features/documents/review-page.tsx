@@ -12,6 +12,7 @@ import {
   Lock,
   RefreshCw,
   Save,
+  ScanLine,
   Sparkles,
   TriangleAlert,
   UserCheck,
@@ -682,6 +683,12 @@ function FieldOrigin({ field, isDirty }: { field: ExtractedField<string>; isDirt
     );
   }
   const percent = field.confidence !== null ? Math.round(field.confidence * 100) : null;
+  // `OCR` înseamnă citit de pe document — o regulă a găsit valoarea lângă eticheta
+  // ei. `AI` înseamnă propus de un model. Badge-ul „AI 95%" pe o valoare pe care
+  // niciun model nu a produs-o ar fi exact minciuna pe care ecranul ăsta promite
+  // să nu o spună (§22); până acum o spunea, pentru că orice provenienţă care nu
+  // era MANUAL, EMPTY sau DERIVED ajungea aici.
+  const readFromDocument = field.source === "OCR";
   return (
     <span
       className={cn(
@@ -692,9 +699,18 @@ function FieldOrigin({ field, isDirty }: { field: ExtractedField<string>; isDirt
             ? "text-amber-600 dark:text-amber-400"
             : "text-gray-400 dark:text-gray-500",
       )}
+      title={
+        readFromDocument
+          ? "Valoare citită din textul documentului, lângă eticheta ei"
+          : "Valoare propusă de model"
+      }
     >
-      <Sparkles className="h-3 w-3" aria-hidden="true" />
-      AI {percent !== null ? `${percent}%` : ""}
+      {readFromDocument ? (
+        <ScanLine className="h-3 w-3" aria-hidden="true" />
+      ) : (
+        <Sparkles className="h-3 w-3" aria-hidden="true" />
+      )}
+      {readFromDocument ? "citit" : "AI"} {percent !== null ? `${percent}%` : ""}
     </span>
   );
 }

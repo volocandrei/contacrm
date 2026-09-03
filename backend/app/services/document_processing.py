@@ -221,7 +221,7 @@ class DocumentProcessingService:
         if result.document_type_code and "documentType" not in protected:
             updates.append(FieldUpdate(field="documentType", value=result.document_type_code))
             proposed["documentType"] = {
-                "source": FieldSource.AI.value,
+                "source": result.classification_source.value,
                 "confidence": result.classification_confidence,
             }
 

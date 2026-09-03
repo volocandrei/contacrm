@@ -21,6 +21,19 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # disc local, exact acolo unde documentele s-ar pierde la prima repornire.
 STORAGE_PROVIDERS = frozenset({"local", "s3"})
 
+# Providerii de extracție care există. `mock` produce date sintetice; `pdf_text`
+# citește stratul de text al PDF-ului, local, fără ca documentul să plece nicăieri.
+# Un nume neimplementat trebuie să oprească pornirea, nu să eșueze abia în worker,
+# la primul document — adică după ce cineva a crezut că sistemul funcționează.
+EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text"})
+
+# Dintre ei, cei care nu trimit nimic nicăieri și nu au un model în spate. Astăzi
+# sunt toți — distincția există pentru verificarea de producție, care trebuie să
+# prindă momentul în care apare primul provider extern (Faza 2) fără să dea alarme
+# false pentru unul local. `pdf_text` citește text; nu ghicește și nu întreabă pe
+# nimeni, deci nu are ce să fie „inconsistent" cu `AI_PROVIDER=mock`.
+LOCAL_EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text"})
+
 
 class Environment(StrEnum):
     DEVELOPMENT = "development"
@@ -127,6 +140,16 @@ class Settings(BaseSettings):
             )
         return value
 
+    @field_validator("ocr_provider")
+    @classmethod
+    def _known_extraction_provider(cls, value: str) -> str:
+        if value not in EXTRACTION_PROVIDERS:
+            raise ValueError(
+                f"OCR_PROVIDER necunoscut sau neimplementat: {value!r}. Valori acceptate: "
+                + ", ".join(sorted(EXTRACTION_PROVIDERS))
+            )
+        return value
+
     @field_validator("cors_allowed_origins")
     @classmethod
     def _reject_wildcard_cors(cls, value: str) -> str:
@@ -163,7 +186,7 @@ class Settings(BaseSettings):
         problems: list[str] = []
         if self.secret_key.startswith(("dev-only", "schimba")):
             problems.append("SECRET_KEY are încă valoarea implicită.")
-        if self.ocr_provider != "mock" and self.ai_provider == "mock":
+        if self.ocr_provider not in LOCAL_EXTRACTION_PROVIDERS and self.ai_provider == "mock":
             problems.append("OCR_PROVIDER real cu AI_PROVIDER=mock — configurare inconsistentă.")
         if self.storage_provider == "s3" and not self.s3_bucket:
             problems.append("STORAGE_PROVIDER=s3 fără S3_BUCKET.")

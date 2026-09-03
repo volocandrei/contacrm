@@ -47,14 +47,33 @@ def test_production_accepts_a_real_secret_key() -> None:
 
 
 def test_production_refuses_inconsistent_ocr_and_ai_providers() -> None:
-    settings = _settings(
-        environment=Environment.PRODUCTION,
-        secret_key="x" * 64,
-        ocr_provider="google_docai",
-        ai_provider="mock",
-    )
+    """Un OCR bazat pe model, cu AI simulat, este o configurare care minte.
+
+    Numele este atribuit **după** construire, ocolind validatorul: azi nu există
+    niciun provider bazat pe model, deci nicio valoare acceptabilă nu ar putea
+    declanșa regula. Verificarea trebuie totuși să existe și să funcționeze
+    înainte ca un astfel de provider să apară (Faza 2), nu după.
+    """
+    settings = _settings(environment=Environment.PRODUCTION, secret_key="x" * 64)
+    settings.ocr_provider = "google_docai"
+
     with pytest.raises(RuntimeError, match="inconsistentă"):
         settings.assert_production_ready()
+
+
+def test_an_unimplemented_extraction_provider_stops_startup() -> None:
+    """Altfel eșecul apare abia în worker, la primul document — adică după ce
+    cineva a crezut că sistemul funcționează."""
+    with pytest.raises(ValidationError):
+        _settings(ocr_provider="google_docai")
+
+
+def test_reading_a_pdf_locally_is_not_an_inconsistent_configuration() -> None:
+    """`pdf_text` nu este un model: nu are ce să fie inconsistent cu `AI_PROVIDER`."""
+    settings = _settings(
+        environment=Environment.PRODUCTION, secret_key="x" * 64, ocr_provider="pdf_text"
+    )
+    settings.assert_production_ready()
 
 
 def test_api_schema_is_hidden_in_production() -> None:

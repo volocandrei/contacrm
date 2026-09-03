@@ -448,7 +448,7 @@ ci portat.**
 | M4 | CRM: clients, contacts, notes, tags, tasks | ✅ |
 | **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare, arhivare, întărire** | ✅ |
 | **M6** | Coadă durabilă + worker separat, perioade + checklist, dashboard, ecran audit, acțiuni în masă | ✅ |
-| **M7** | Rapoarte în SQL, ecran de setări real, notificări | ⏳ rapoarte ✅ · setări ✅ · notificări = Faza 2 |
+| **M7** | Rapoarte în SQL, setări reale, extracție reală din PDF, notificări | ⏳ rapoarte ✅ · setări ✅ · `pdf_text` ✅ · notificări = Faza 2 |
 | M8 | Teste E2E, CI | |
 | Faza 2 | Microsoft Graph, WhatsApp, OCR/AI real, remindere, export ZIP | |
 | Faza 3 | Integrare software contabil, rapoarte avansate, detecție anomalii | |
@@ -482,6 +482,32 @@ la o listă ținută minte, ca prima cheie de API adăugată să nu ajungă pe u
 Notificările rămân Faza 2: datele pe care s-ar sprijini există deja („Documente
 lipsă" spune pentru fiecare client ce nu a sosit), dar trimiterea cere un provider
 de email sau WhatsApp.
+
+**M7 — primul provider care chiar citește documentul**
+
+`OCR_PROVIDER=pdf_text` scoate textul pe care PDF-ul îl poartă deja și recunoaște
+în el ce poate fi recunoscut cu certitudine: dată, serie și număr, coduri fiscale,
+bază, TVA, total, monedă. Local, fără rețea, fără cheie de API — din punct de
+vedere GDPR identic cu `mock`, doar că rezultatul este adevărat (R2).
+
+**Regula sub care este scris tot:** nu ghicește. O valoare se întoarce doar dacă
+textul o marchează explicit, lângă eticheta ei. Un câmp gol costă zece secunde de
+completat de pe facsimil; un câmp completat greșit trece pe lângă operator, pentru
+că ecranul arată ceva ce pare citit de pe document.
+
+Ce **nu** încearcă, deliberat: direcția facturii (intrare/ieșire depinde de al cui
+este cabinetul — un document în registrul greșit e mai rău decât unul
+neclasificat), numele furnizorului (stă într-un bloc de adresă, fără etichetă) și
+luna contabilă (o derivă sistemul din dată, ADR-008). Un PDF scanat sau o poză nu
+au strat de text: acolo întoarce un rezultat gol, nu unul inventat.
+
+Verificat capăt la capăt pe server real: dintr-o factură cu `Data emiterii` și
+`Data scadenței` una lângă alta, a luat-o pe prima — confuzia dintre ele ar fi
+mutat documentul în altă lună contabilă.
+
+Pe drum s-a reparat o minciună veche a ecranului de verificare: badge-ul afișa
+„AI 95%" pentru **orice** proveniență care nu era `MANUAL`, `EMPTY` sau `DERIVED`.
+O valoare citită de o regulă apare acum ca „citit", cu altă iconiță.
 
 ### Punerea în funcțiune
 
@@ -530,10 +556,17 @@ Necesită input uman, nu sunt de rezolvat în cod:
    total, a fost respinsă pentru că poate declara luna închisă cu documente
    obligatorii lipsă. Închiderea peste un checklist incomplet rămâne posibilă, dar
    cerută explicit. *Necesită confirmarea unui contabil.*
-3. **Provider OCR/AI real** pentru Faza 2 și dacă politica firmei permite
-   trimiterea documentelor în afara UE (GDPR, R2).
-4. **Software-ul contabil țintă** pentru export — determină formatul.
-5. **Tenant unic vs. multi-firmă** de la lansare. Schema suportă ambele;
+3. **OCR real pentru documente scanate.** `pdf_text` acoperă PDF-urile digitale —
+   cazul covârșitor — dar o poză de bon fiscal nu are text de citit. Tesseract ar
+   rezolva-o local (încă un binar de instalat, calitate variabilă pe fotografii);
+   un serviciu cloud ar rezolva-o mai bine, dar înseamnă că documentele pleacă de
+   pe infrastructura noastră. *Decizie cu implicații GDPR (R2), nu una tehnică.*
+4. **`OCR_PROVIDER=mock` în producție.** Implicit este `mock`, care **inventează**
+   furnizori, sume și date. Pentru demonstrație este exact ce trebuie; pentru un
+   cabinet real ar scrie date false în câmpuri contabile. Configurarea nu o
+   interzice azi. *De hotărât dacă pornirea în producție trebuie s-o refuze.*
+5. **Software-ul contabil țintă** pentru export — determină formatul.
+6. **Tenant unic vs. multi-firmă** de la lansare. Schema suportă ambele;
    `organization_id` există peste tot de la început.
 
 ---
