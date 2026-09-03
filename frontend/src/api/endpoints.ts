@@ -11,6 +11,7 @@ import type {
   Contact,
   CurrentUser,
   DashboardData,
+  ReportSummary,
   DocumentDetail,
   DocumentFieldName,
   DocumentListItem,
@@ -44,6 +45,10 @@ export const auth = {
     api.post<CurrentUser>("/auth/login", { email, password }),
   logout: () => api.post<{ ok: boolean }>("/auth/logout"),
   me: () => api.get<CurrentUser>("/me"),
+};
+
+export const reports = {
+  summary: (params: QueryParams) => api.get<ReportSummary>("/reports/summary", params),
 };
 
 export const dashboard = {

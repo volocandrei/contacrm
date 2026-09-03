@@ -13,6 +13,7 @@ import {
   dashboard,
   documents,
   periods,
+  reports,
   tasks,
   type BulkPayload,
 } from "@/api/endpoints";
@@ -35,6 +36,7 @@ export const queryKeys = {
   missingDocuments: (referenceMonth: string) => ["periods", "missing", referenceMonth] as const,
   tasks: (params: QueryParams) => ["tasks", params] as const,
   messages: (params: QueryParams) => ["messages", params] as const,
+  reportSummary: (params: QueryParams) => ["reports", "summary", params] as const,
   auditLogs: (params: QueryParams) => ["audit-logs", params] as const,
   users: ["users"] as const,
 };
@@ -43,6 +45,13 @@ export const queryKeys = {
 
 export function useDashboard() {
   return useQuery({ queryKey: queryKeys.dashboard, queryFn: dashboard.get });
+}
+
+export function useReportSummary(params: QueryParams) {
+  return useQuery({
+    queryKey: queryKeys.reportSummary(params),
+    queryFn: () => reports.summary(params),
+  });
 }
 
 export function useSidebarCounts() {

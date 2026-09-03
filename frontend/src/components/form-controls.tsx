@@ -81,6 +81,40 @@ export function SelectFilter({
   );
 }
 
+/**
+ * Filtru de lună (`YYYY-MM`).
+ *
+ * Un `<input type="month">`, nu o listă de opțiuni: o listă ar trebui scrisă de
+ * mână și ar îmbătrâni odată cu datele — exact ce se întâmplă cu `MONTH_OPTIONS`
+ * din ecranul de perioade. Aici orice lună este valabilă, inclusiv una de anul
+ * trecut, fără să adauge nimeni nimic.
+ */
+export function MonthFilter({
+  value,
+  onChange,
+  label,
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <label className={cn("block", className)}>
+      <span className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400">
+        {label}
+      </span>
+      <input
+        type="month"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn(inputClass, "cursor-pointer")}
+      />
+    </label>
+  );
+}
+
 export function TextField({
   id,
   label,

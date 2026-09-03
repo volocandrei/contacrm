@@ -50,7 +50,9 @@ def extension_for(mime_type: str) -> str:
     try:
         return EXTENSION_BY_MIME[mime_type]
     except KeyError as exc:
-        raise InvalidStorageKeyError(f"Tip de conținut fără extensie cunoscută: {mime_type}") from exc
+        raise InvalidStorageKeyError(
+            f"Tip de conținut fără extensie cunoscută: {mime_type}"
+        ) from exc
 
 
 def validate_key(key: str) -> str:
@@ -86,9 +88,7 @@ def _prefix(organization_id: uuid.UUID, document_id: uuid.UUID) -> str:
     return f"organizations/{organization_id}/documents/{document_id}"
 
 
-def original_key(
-    organization_id: uuid.UUID, document_id: uuid.UUID, *, mime_type: str
-) -> str:
+def original_key(organization_id: uuid.UUID, document_id: uuid.UUID, *, mime_type: str) -> str:
     """Cheia fișierului primit, exact așa cum a venit.
 
     Numele este fix (`source.<ext>`): nu depinde de ce a trimis expeditorul, deci nu

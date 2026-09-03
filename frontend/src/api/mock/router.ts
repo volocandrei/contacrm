@@ -135,6 +135,12 @@ const routes: Route[] = [
     handler: ({ query }) => store.listMissingDocuments(query.referenceMonth ?? "2026-08"),
   },
 
+  {
+    method: "GET",
+    pattern: "/reports/summary",
+    handler: ({ query }) => store.reportSummary(query),
+  },
+
   /* Sarcini */
   { method: "GET", pattern: "/tasks", handler: ({ query }) => store.listTasks(query) },
   {

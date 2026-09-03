@@ -1,0 +1,24 @@
+# Sfârșitul de linie este LF peste tot, indiferent de sistemul de operare.
+#
+# Fără asta, un editor sau un script care rescrie un fișier pe Windows îl poate
+# preda cu CRLF, iar `git diff` raportează atunci **toate** liniile ca schimbate.
+# O modificare de 89 de linii apare ca 949 — adică nu se mai poate citi, deci nu
+# se mai poate recenza. S-a întâmplat deja o dată, în `mock/store.ts`.
+#
+# `text=auto` lasă Git să decidă ce este text; `eol=lf` fixează ce ajunge în
+# directorul de lucru. Ce este în istorie era deja LF, deci nimic nu se rescrie.
+* text=auto eol=lf
+
+# Binare — nicio conversie, altfel se strică.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.pdf binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Fișiere de blocare: se generează, nu se citesc la recenzie.
+uv.lock linguist-generated=true
+package-lock.json linguist-generated=true

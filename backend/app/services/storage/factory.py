@@ -55,9 +55,7 @@ def build_storage_provider(config: Settings | None = None) -> StorageProvider:
     """
     config = config or settings
     if config.storage_provider == "s3":
-        return S3StorageProvider(
-            build_s3_client(config), config.s3_bucket, prefix=config.s3_prefix
-        )
+        return S3StorageProvider(build_s3_client(config), config.s3_bucket, prefix=config.s3_prefix)
     return LocalStorageProvider(config.storage_path)
 
 

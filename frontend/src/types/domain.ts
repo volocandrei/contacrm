@@ -393,3 +393,42 @@ export type CommunicationMessage = {
   occurredAt: string;
   attachmentCount: number;
 };
+
+/* ─── Rapoarte (§84) ───────────────────────────────────────────────────────── */
+
+/**
+ * O linie de clasament dintr-un raport.
+ *
+ * `key` și `label` sunt amândouă `null` exact când gruparea este „nimic": un
+ * document fără client, fără tip sau fără lună de referință. Acelea nu sunt
+ * sărite din raport — un document care nu are lună contabilă este chiar ce
+ * trebuie să vadă cineva.
+ *
+ * Formularea absenței o alege interfața, nu serverul. La fel etichetele de
+ * status, pe care `status-badge.tsx` le traduce de mult: dacă ar veni și din
+ * backend, ar exista două surse pentru același text.
+ */
+export type ReportBucket = {
+  key: string | null;
+  label: string | null;
+  count: number;
+};
+
+export type ReportSummary = {
+  total: number;
+  /** Câte au terminat drumul — indiferent dacă au ieșit bine. */
+  processed: number;
+  failed: number;
+  duplicates: number;
+  /**
+   * `null` când nu s-a terminat încă nimic. Zero ar însemna „totul a eșuat",
+   * ceea ce este altceva și s-ar citi greșit pe ecran.
+   */
+  successRate: number | null;
+  byStatus: ReportBucket[];
+  byMonth: ReportBucket[];
+  byType: ReportBucket[];
+  /** Doar primii; `clientCount` spune câți sunt de fapt. */
+  byClient: ReportBucket[];
+  clientCount: number;
+};

@@ -181,9 +181,7 @@ class S3StorageProvider:
             if byte_range is None:
                 response = self._client.get_object(Bucket=self.bucket, Key=name)
             else:
-                response = self._client.get_object(
-                    Bucket=self.bucket, Key=name, Range=byte_range
-                )
+                response = self._client.get_object(Bucket=self.bucket, Key=name, Range=byte_range)
         except ClientError as exc:
             if _error_code(exc) in _MISSING_CODES:
                 raise ObjectNotFoundError(key) from exc

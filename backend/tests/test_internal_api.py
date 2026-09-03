@@ -103,9 +103,7 @@ class TestAuthorization:
 
     def test_an_empty_bearer_is_not_a_match(self, client: TestClient) -> None:
         """Un secret gol nu se potrivește cu un secret gol: comparația e pe valoare."""
-        response = client.get(
-            "/api/v1/internal/run-queue", headers={"Authorization": "Bearer "}
-        )
+        response = client.get("/api/v1/internal/run-queue", headers={"Authorization": "Bearer "})
         assert response.status_code == 404
 
     def test_the_route_is_absent_from_the_public_schema(self, client: TestClient) -> None:

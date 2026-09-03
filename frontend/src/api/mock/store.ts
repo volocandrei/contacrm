@@ -38,6 +38,8 @@ import type {
   DocumentListItem,
   DocumentStatus,
   Permission,
+  ReportBucket,
+  ReportSummary,
   RoleCode,
   Task,
   UserSummary,
@@ -709,6 +711,93 @@ export function listMissingDocuments(referenceMonth: string) {
       missing: period.checklist.filter((item) => !item.isSatisfied),
     }))
     .filter((entry) => entry.missing.length > 0);
+}
+
+/* ─── Rapoarte (§84) ───────────────────────────────────────────────────────── */
+
+/**
+ * Oglinda lui `ReportService` din backend.
+ *
+ * Regulile sunt aceleași și trebuie să rămână aceleași: ce se numără drept
+ * „procesat", ce se întâmplă când nu s-a terminat nimic, unde ajung documentele
+ * fără lună sau fără client. Dacă cele două se despart, demonstrația arată
+ * altceva decât aplicația — exact genul de diferență care se descoperă târziu.
+ *
+ * Un lucru **nu** se oglindește, deliberat: plafonul de 200. Acolo era greșeala
+ * pe care mutarea în backend a reparat-o, iar aici numărăm tot.
+ */
+
+/** „Procesat" = sistemul a terminat, indiferent dacă a ieșit bine. */
+const IN_PROGRESS: DocumentStatus[] = ["RECEIVED", "PROCESSING"];
+
+/** Câți clienți intră în clasament; restul sunt raportați ca număr. */
+const TOP_CLIENTS = 10;
+
+function tally(
+  documents: StoredDocument[],
+  key: (doc: StoredDocument) => { key: string | null; label: string | null },
+): ReportBucket[] {
+  const buckets = new Map<string, ReportBucket>();
+  for (const doc of documents) {
+    const { key: bucketKey, label } = key(doc);
+    // `null` are nevoie de o cheie proprie în hartă, altfel s-ar amesteca cu
+    // documentele care chiar au valoarea "null" ca text.
+    const id = bucketKey ?? " absent";
+    const existing = buckets.get(id);
+    if (existing) existing.count += 1;
+    else buckets.set(id, { key: bucketKey, label, count: 1 });
+  }
+  return [...buckets.values()];
+}
+
+function byCountDesc(a: ReportBucket, b: ReportBucket): number {
+  return b.count - a.count || (a.label ?? "").localeCompare(b.label ?? "");
+}
+
+export function reportSummary(filters: {
+  fromMonth?: string;
+  toMonth?: string;
+  clientId?: string;
+}): ReportSummary {
+  requirePermission("documents:read");
+
+  let items = state.documents;
+  // Un document fără lună nu intră într-un interval de luni: nu se poate spune
+  // că este înainte sau după.
+  if (filters.fromMonth) {
+    items = items.filter((d) => d.referenceMonth !== null && d.referenceMonth >= filters.fromMonth!);
+  }
+  if (filters.toMonth) {
+    items = items.filter((d) => d.referenceMonth !== null && d.referenceMonth <= filters.toMonth!);
+  }
+  if (filters.clientId) items = items.filter((d) => d.clientId === filters.clientId);
+
+  const total = items.length;
+  const processed = items.filter((d) => !IN_PROGRESS.includes(d.status)).length;
+  const failed = items.filter((d) => d.status === "ERROR").length;
+
+  const byMonth = tally(items, (d) => ({ key: d.referenceMonth, label: d.referenceMonth }));
+  const dated = byMonth.filter((b) => b.key !== null).sort((a, b) => b.key!.localeCompare(a.key!));
+  const undated = byMonth.filter((b) => b.key === null);
+
+  const byClient = tally(items, (d) => ({ key: d.clientId, label: d.clientName })).sort(byCountDesc);
+
+  return {
+    total,
+    processed,
+    failed,
+    duplicates: items.filter((d) => d.isDuplicate).length,
+    // `null`, nu zero: zero s-ar citi ca „totul a eșuat".
+    successRate: processed === 0 ? null : (processed - failed) / processed,
+    byStatus: tally(items, (d) => ({ key: d.status, label: null })).sort(byCountDesc),
+    // Luna recentă prima, documentele fără lună la coadă.
+    byMonth: [...dated, ...undated],
+    byType: tally(items, (d) => ({ key: d.documentTypeCode, label: d.documentTypeLabel })).sort(
+      byCountDesc,
+    ),
+    byClient: byClient.slice(0, TOP_CLIENTS),
+    clientCount: byClient.length,
+  };
 }
 
 /* ─── Sarcini ──────────────────────────────────────────────────────────────── */
