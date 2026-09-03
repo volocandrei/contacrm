@@ -108,6 +108,11 @@ class TimelineEventOut(ApiModel):
 
 
 class DashboardOut(ApiModel):
+    #: Luna pe care o descriu cifrele de mai jos, sau `None` când nu există niciun
+    #: document. Se trimite pentru că altfel ecranul ar trebui să o ghicească — și
+    #: o ghicea: scria „August 2026" scris de mână, sub niște cifre care veneau
+    #: din `latest_active_month`. Două luni diferite, același titlu.
+    reference_month: str | None
     kpis: DashboardKpisOut
     attention: list[AttentionItemOut]
     recent_documents: list[DocumentListItemOut]
@@ -139,6 +144,7 @@ def dashboard(session: DbSession, user: DashboardReader) -> DashboardOut:
     periods = service.list_periods(organization_id, reference_month=current) if current else []
 
     return DashboardOut(
+        reference_month=current,
         kpis=_kpis(session, organization_id, by_status, periods),
         attention=_attention(session, organization_id, periods),
         recent_documents=[

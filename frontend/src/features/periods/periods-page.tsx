@@ -1,19 +1,14 @@
 import { Link } from "react-router-dom";
 import { CircleCheck, TriangleAlert } from "lucide-react";
 import { useMissingDocuments, usePeriods } from "@/api/hooks";
-import { SelectFilter } from "@/components/form-controls";
+import { MonthFilter, SelectFilter } from "@/components/form-controls";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { PeriodStatusBadge } from "@/components/status-badge";
 import { useFilterParams } from "@/hooks/use-filter-params";
+import { currentMonth } from "@/lib/current-month";
 import { formatReferenceMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PERIOD_STATUS } from "@/types/domain";
-
-const MONTH_OPTIONS = [
-  { value: "2026-08", label: "August 2026" },
-  { value: "2026-07", label: "Iulie 2026" },
-  { value: "2026-06", label: "Iunie 2026" },
-];
 
 const STATUS_LABEL: Record<string, string> = {
   NOT_STARTED: "Neînceput",
@@ -26,7 +21,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export function PeriodsPage() {
-  const { values, setValue } = useFilterParams({ referenceMonth: "2026-08", status: "" });
+  const { values, setValue } = useFilterParams({ referenceMonth: currentMonth(), status: "" });
   const { data, isLoading, error } = usePeriods({
     referenceMonth: values.referenceMonth,
     status: values.status,
@@ -40,12 +35,10 @@ export function PeriodsPage() {
       />
 
       <div className="mb-4 flex flex-wrap gap-2">
-        <SelectFilter
+        <MonthFilter
           label="Lună"
-          allLabel="Toate lunile"
           value={values.referenceMonth}
           onChange={(value) => setValue("referenceMonth", value)}
-          options={MONTH_OPTIONS}
           className="w-48"
         />
         <SelectFilter
@@ -141,7 +134,7 @@ export function PeriodsPage() {
 }
 
 export function MissingDocumentsPage() {
-  const { values, setValue } = useFilterParams({ referenceMonth: "2026-08" });
+  const { values, setValue } = useFilterParams({ referenceMonth: currentMonth() });
   const { data, isLoading, error } = useMissingDocuments(values.referenceMonth);
 
   return (
@@ -151,12 +144,11 @@ export function MissingDocumentsPage() {
         description="Clienți la care checklist-ul perioadei nu este acoperit"
       />
 
-      <SelectFilter
+      {/* Ecranul cere o lună anume: „documente lipsă" nu înseamnă nimic fără ea. */}
+      <MonthFilter
         label="Lună"
-        allLabel="August 2026"
         value={values.referenceMonth}
         onChange={(value) => setValue("referenceMonth", value)}
-        options={MONTH_OPTIONS}
         className="mb-4 w-48"
       />
 

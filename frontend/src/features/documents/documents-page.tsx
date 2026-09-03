@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { CircleCheck, Copy, FileStack, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { useBulkDocuments, useClients, useDocumentTypes, useDocuments } from "@/api/hooks";
 import type { BulkPayload, BulkResult } from "@/api/endpoints";
-import { Pagination, SearchInput, SelectFilter } from "@/components/form-controls";
+import { MonthFilter, Pagination, SearchInput, SelectFilter } from "@/components/form-controls";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { ConfidenceBadge, DocumentStatusBadge } from "@/components/status-badge";
 import { useFilterParams } from "@/hooks/use-filter-params";
@@ -41,12 +41,6 @@ const SOURCE_LABEL: Record<DocumentSource, string> = {
   UPLOAD: "Încărcare",
   API: "API",
 };
-
-const MONTH_OPTIONS = [
-  { value: "2026-08", label: "August 2026" },
-  { value: "2026-07", label: "Iulie 2026" },
-  { value: "2026-06", label: "Iunie 2026" },
-];
 
 const CONFIDENCE_OPTIONS = [
   { value: "high", label: "Peste 90%" },
@@ -197,12 +191,10 @@ export function DocumentsPage({
           onChange={(value) => setValue("source", value)}
           options={DOCUMENT_SOURCE.map((source) => ({ value: source, label: SOURCE_LABEL[source] }))}
         />
-        <SelectFilter
+        <MonthFilter
           label="Perioadă"
-          allLabel="Toate lunile"
           value={values.referenceMonth}
           onChange={(value) => setValue("referenceMonth", value)}
-          options={MONTH_OPTIONS}
         />
         <SelectFilter
           label="Încredere"

@@ -360,6 +360,14 @@ export type DashboardKpis = {
 };
 
 export type DashboardData = {
+  /**
+   * Luna pe care o descriu cifrele, sau `null` când nu există niciun document.
+   *
+   * Vine de la server pentru că el o știe: o derivă din date (`latest_active_month`),
+   * nu din calendar. Ecranul o scria de mână — „August 2026" — sub niște cifre care
+   * puteau fi din altă lună.
+   */
+  referenceMonth: string | null;
   kpis: DashboardKpis;
   attention: AttentionItem[];
   recentDocuments: DocumentListItem[];

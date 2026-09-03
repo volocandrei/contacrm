@@ -18,8 +18,6 @@ import { formatReferenceMonth, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AttentionReason, DocumentSource } from "@/types/domain";
 
-const CURRENT_MONTH = "2026-08";
-
 const SOURCE_LABEL: Record<DocumentSource, string> = {
   EMAIL: "Email",
   WHATSAPP: "WhatsApp",
@@ -45,12 +43,19 @@ export function DashboardPage() {
   if (!data) return null;
 
   const { kpis } = data;
+  // Luna o spune serverul, care o derivă din date. Aici scria „2026-08", sub
+  // niște cifre care puteau fi din altă lună.
+  const month = data.referenceMonth ? formatReferenceMonth(data.referenceMonth) : null;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Panou principal"
-        description={`Situația documentelor și a clienților pentru ${formatReferenceMonth(CURRENT_MONTH)}`}
+        description={
+          month
+            ? `Situația documentelor și a clienților pentru ${month}`
+            : "Situația documentelor și a clienților"
+        }
       />
 
       {/* KPI (§20) */}
@@ -241,7 +246,7 @@ export function DashboardPage() {
         {/* Perioade contabile (§19) */}
         <div className="xl:col-span-2">
           <Panel
-            title={`Perioade contabile — ${formatReferenceMonth(CURRENT_MONTH)}`}
+            title={month ? `Perioade contabile — ${month}` : "Perioade contabile"}
             action={
               <Link
                 to="/contabilitate/perioade"

@@ -1132,6 +1132,9 @@ export function getDashboard(): DashboardData {
   ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 
   return {
+    // Luna pe care o descriu cifrele. Aici este cea a setului sintetic; pe
+    // serverul real o dă `latest_active_month`, derivată din date.
+    referenceMonth: CURRENT_MONTH,
     kpis: {
       clientsTotal: state.clients.length,
       clientsActive: state.clients.filter((c) => c.status === "ACTIVE").length,

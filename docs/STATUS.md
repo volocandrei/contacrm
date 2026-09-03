@@ -117,12 +117,12 @@ placeholdere evidente din `.env.example`.
 
 ```
 frontend   9.558 linii sursă +  1.147 linii teste  →   99 teste
-backend   11.725 linii sursă + 11.301 linii teste  →  875 teste
+backend   12.208 linii sursă + 11.765 linii teste  →  877 teste
 end-to-end   728 linii                             →   22 teste (browser real)
 migrări    1.307 linii
 ```
 
-Toate verificările trec: **996 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **998 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -425,6 +425,8 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 | Un byte NUL brut în `store.ts` făcea fișierul binar pentru git, iar verificarea de igienă din CI îl **sărea** (`git grep -I`) | căutând altceva prin `grep` |
 | Testele frontend își făceau propriul `QueryClient`, cu alte valori decât aplicația: întreaga clasă de defecte de cache era invizibilă prin construcție | investigând un eșec din E2E |
 | Extensiile pe tip de conținut erau scrise în **trei** locuri; la adăugarea facturii electronice două au fost aduse la zi și a treia nu, iar încărcarea unui XML cădea cu 500 după ce fișierul trecuse validarea | **suita E2E**, la prima rulare cu e-Factura |
+| Filtrele de lună ofereau trei luni fixe din 2026, iar „Perioade" pornea implicit pe august 2026. Instalat în 2027, ecranul ar fi arătat o lună fără date și nicio cale de a alege alta | citind ce mai scrie în lista de datorie tehnică — unde era notat greșit ca fiind „doar în backendul simulat" |
+| Panoul principal scria „pentru August 2026" deasupra unor cifre care veneau din `latest_active_month`: două luni diferite, același titlu | același loc |
 
 ---
 
@@ -626,6 +628,25 @@ decât ce s-a depus la ANAF, iar §16 spune că originalul nu se transformă. Ec
 de verificare arată în locul facsimilului factura redată din câmpurile ei —
 spusă ca atare, cu documentul original la un clic distanță.
 
+**M7 — luna, spusă de cine o știe**
+
+Trei ecrane aveau luna scrisă de mână. Filtrele de pe „Documente" și „Perioade"
+ofereau exact trei luni — august, iulie și iunie 2026 — iar „Perioade" pornea
+implicit pe august 2026. Instalat în 2027, ecranul ar fi arătat o lună fără date
+și nicio cale de a alege alta. Acum este un `<input type="month">`: orice lună e
+accesibilă, nimic nu îmbătrânește, iar valoarea implicită vine dintr-un singur
+loc (`lib/current-month.ts`), unde „acum" înseamnă ceasul real pe API-ul adevărat
+și momentul setului sintetic în demonstrație.
+
+Panoul principal era mai rău decât vechi: scria „Situația documentelor pentru
+August 2026" deasupra unor cifre care veneau din `latest_active_month` — luna pe
+care o spun **datele**, nu calendarul. Două luni diferite, același titlu. Serverul
+trimite acum luna pe care o descriu cifrele, iar ecranul o afișează pe aceea; când
+nu există niciun document, nu se inventează niciuna.
+
+Distincția merită reținută, pentru că exact confuzia ei a produs defectul: **un
+filtru alege de unde să pornească; un titlu afirmă ceva despre niște numere.**
+
 **M8 — CI**
 
 `.github/workflows/ci.yml` rulează la fiecare push exact comenzile care se rulează
@@ -770,6 +791,6 @@ Niciuna nu blochează deploy-ul.
 | `QueryBoundary` (`components/page.tsx`) | scris ca să elimine triada `isLoading/error/empty`, dar nefolosit — cele 8 pagini o repetă manual |
 | `react-hook-form`, `zod`, `@hookform/resolvers` | instalate, nefolosite |
 | primitivele shadcn (`button`, `card`, `badge`, `separator`) | importate doar de componenta de demo; aplicația scrie Tailwind brut. Ori le adoptăm, ori recunoaștem că nu le folosim |
-| `"2026-08"` hardcodat în 6 locuri | doar în backendul simulat, unde `MOCK_NOW` este tot august: setul sintetic rămâne coerent oricând l-ai deschide. Backendul real urmărește datele, nu calendarul (`latest_active_month`). Rămâne totuși o valoare scrisă de mână acolo unde ar trebui derivată din `MOCK_NOW`. `MONTH_OPTIONS` din ecranul de perioade poate trece pe `MonthFilter`, care nu are nevoie de nicio listă |
+| ~~`"2026-08"` hardcodat în 6 locuri~~ | rezolvat, și **nu era doar în backendul simulat**, cum scria aici: erau trei luni fixe din 2026 în filtrele reale de pe „Documente" și „Perioade", plus titlul panoului principal. Vezi mai jos |
 | ~~`client_ip()` ignoră `X-Forwarded-For`~~ | rezolvat: `TRUSTED_PROXY_COUNT` spune câte proxy-uri stau obligatoriu în față, iar adresa se citește numărând **de la dreapta**. Implicit 0 — antetul se ignoră până când cineva declară explicit prin ce trece cererea. Pe Vercel se pune 1 |
 | `oxlint`: 2 warning-uri | `only-export-components` pe fișiere shadcn generate — cosmetic |

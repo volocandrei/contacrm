@@ -1645,6 +1645,39 @@ class TestDashboard:
         login(api_storage, admin.email)
         assert api_storage.get("/api/v1/dashboard").json()["periods"] == []
 
+    def test_the_response_says_which_month_the_numbers_describe(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Altfel ecranul o ghicește — și o ghicea, scriind „August 2026" de mână.
+
+        Luna o dau datele, nu calendarul: dacă un cabinet încarcă în octombrie
+        documente din august, panoul trebuie să spună august.
+        """
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        _to_review(db, document_id)
+        document = db.get(Document, uuid.UUID(document_id))
+        assert document is not None
+        # Luna în lucru se numără doar pe documente atribuite: unul fără client nu
+        # aparține încă niciunei luni contabile.
+        document.client_id = client_row.id
+        document.reference_month = "2026-08"
+        db.flush()
+
+        assert api_storage.get("/api/v1/dashboard").json()["referenceMonth"] == "2026-08"
+
+    def test_without_any_document_no_month_is_invented(
+        self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
+    ) -> None:
+        """`null`, nu luna de azi: o instalare nouă nu are încă nicio lună în lucru."""
+        login(api_storage, admin.email)
+        assert api_storage.get("/api/v1/dashboard").json()["referenceMonth"] is None
+
     def test_a_document_without_a_client_asks_for_attention(
         self,
         api_storage: TestClient,
