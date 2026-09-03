@@ -12,6 +12,17 @@ export default defineConfig(({ mode }) => {
   // configurația a fost evaluată, deci aici nu ar exista încă.
   const env = loadEnv(mode, import.meta.dirname, 'VITE_')
 
+  // Aceeași regulă pentru `dev` și pentru `preview`: browserul trebuie să vadă o
+  // singură origine în ambele. Testele end-to-end rulează pe `preview`, adică pe
+  // build-ul real, nu pe serverul de development — altfel ar verifica un artefact
+  // pe care nimeni nu îl pune vreodată în producție.
+  const proxy = {
+    '/api': {
+      target: env.VITE_PROXY_TARGET ?? 'http://127.0.0.1:8000',
+      changeOrigin: false,
+    },
+  }
+
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -19,18 +30,12 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(import.meta.dirname, './src'),
       },
     },
-    server: {
-      proxy: {
-        // Backend-ul răspunde pe alt port, dar browserul trebuie să vadă o singură
-        // origine. Cookie-ul de sesiune este `SameSite=Lax`: de pe altă origine nu ar
-        // fi trimis la cererile pe care le fac `<img>` sau `<object>` — adică exact
-        // la previzualizarea documentului. Iar un token în URL este interzis (§27).
-        '/api': {
-          target: env.VITE_PROXY_TARGET ?? 'http://127.0.0.1:8000',
-          changeOrigin: false,
-        },
-      },
-    },
+    // Backend-ul răspunde pe alt port, dar browserul trebuie să vadă o singură
+    // origine. Cookie-ul de sesiune este `SameSite=Lax`: de pe altă origine nu ar
+    // fi trimis la cererile pe care le fac `<img>` sau `<object>` — adică exact la
+    // previzualizarea documentului. Iar un token în URL este interzis (§27).
+    server: { proxy },
+    preview: { proxy },
     test: {
       // Logica pură rulează în node; testele de componente cer DOM prin
       // docblock-ul `// @vitest-environment jsdom` la începutul fișierului.

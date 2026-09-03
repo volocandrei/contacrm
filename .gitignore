@@ -48,3 +48,9 @@ desktop.ini
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Playwright: rezultatele rulărilor și browserele descărcate. Raportul poate
+# conține capturi din documentele urcate în test — nu are ce căuta în repo.
+/frontend/playwright-report/
+/frontend/test-results/
+/frontend/blob-report/

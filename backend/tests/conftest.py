@@ -5,43 +5,46 @@ Postgres folosesc fixture-ul `db` și **sar** cu un motiv explicit când baza nu
 pornită — un test care cade pentru că infrastructura lipsește nu spune nimic despre
 cod, dar ascunde regresiile reale.
 
-Baza de test este una separată (`<db>_test`), creată și golită de fixture. Nu
-atingem niciodată baza de development.
+Baza de test este una separată (`<db>_test_<pid>`), creată și golită de fixture.
+Nu atingem niciodată baza de development.
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
-from alembic import command
 from app.core.config import settings
+from app.core.migrations import run_migrations
 from app.main import create_app
 
-BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 CONNECT_TIMEOUT = 3
 
 
 def _test_database_url() -> URL:
+    """Baza de test, una per proces.
+
+    Numele poartă PID-ul pentru că fixture-ul își aruncă baza cu
+    `DROP DATABASE ... WITH (FORCE)`, iar `FORCE` deconectează pe oricine este
+    legat la ea. Cu un nume comun, două rulări pornite în paralel — două terminale,
+    sau o rulare uitată în fundal — se distrug reciproc, iar rezultatul este o
+    sută de erori SQLAlchemy fără nicio legătură cu codul. Le-am urmărit de două
+    ori înainte să-mi dau seama ce se întâmplă.
+
+    Un proces omorât brutal lasă în urmă o bază `..._test_<pid>`. Se vede după
+    nume și nu încurcă pe nimeni.
+    """
     url = make_url(settings.database_url)
-    return url.set(database=f"{url.database}_test")
-
-
-def run_migrations(url: URL) -> None:
-    """`alembic upgrade head` pe baza dată."""
-    config = Config(str(BACKEND_ROOT / "alembic.ini"))
-    config.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
-    config.set_main_option("sqlalchemy.url", url.render_as_string(hide_password=False))
-    command.upgrade(config, "head")
+    return url.set(database=f"{url.database}_test_{os.getpid()}")
 
 
 def _server_reachable() -> bool:

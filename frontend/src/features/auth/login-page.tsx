@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { CircleAlert, LoaderCircle, LogIn } from "lucide-react";
+import { apiMode } from "@/api/client";
 import { ApiError } from "@/api/types";
 import { useAuth } from "@/features/auth/use-auth";
 
-/** Conturi din setul sintetic, afișate ca să poți intra rapid în development. */
+/** Conturi din setul sintetic, ca să poți intra rapid în demonstrație. */
 const DEMO_ACCOUNTS = [
   { email: "admin@contacrm.test", label: "Administrator" },
   { email: "contabil@contacrm.test", label: "Contabil" },
@@ -12,12 +13,22 @@ const DEMO_ACCOUNTS = [
   { email: "verificator@contacrm.test", label: "Verificator" },
 ];
 
+/**
+ * Ajutoarele de mai jos se arată **doar** pe backendul simulat.
+ *
+ * Bannerul „parola nu este verificată" apărea pe orice ecran, inclusiv într-o
+ * instalare reală unde parola chiar este verificată — iar câmpul venea completat
+ * cu una care acolo nu funcționează. Un ecran de autentificare care minte despre
+ * autentificare este primul lucru pe care îl vede un utilizator nou.
+ */
+const DEMO_MODE = apiMode() === "mock";
+
 export function LoginPage() {
   const { user, login, isLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState("admin@contacrm.test");
-  const [password, setPassword] = useState("demo");
+  const [email, setEmail] = useState(DEMO_MODE ? "admin@contacrm.test" : "");
+  const [password, setPassword] = useState(DEMO_MODE ? "demo" : "");
   const [error, setError] = useState<string | null>(null);
 
   if (user) {
@@ -118,23 +129,25 @@ export function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-4 rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
-          <p className="mb-2 font-medium">
-            Mod development — autentificare simulată, parola nu este verificată.
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {DEMO_ACCOUNTS.map((account) => (
-              <button
-                key={account.email}
-                type="button"
-                onClick={() => setEmail(account.email)}
-                className="rounded-md bg-white px-2 py-1 font-medium text-amber-900 ring-1 ring-amber-200 transition-colors hover:bg-amber-100 dark:bg-gray-900 dark:text-amber-200 dark:ring-amber-800"
-              >
-                {account.label}
-              </button>
-            ))}
+        {DEMO_MODE && (
+          <div className="mt-4 rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+            <p className="mb-2 font-medium">
+              Demonstrație — backend simulat în browser, parola nu este verificată.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {DEMO_ACCOUNTS.map((account) => (
+                <button
+                  key={account.email}
+                  type="button"
+                  onClick={() => setEmail(account.email)}
+                  className="rounded-md bg-white px-2 py-1 font-medium text-amber-900 ring-1 ring-amber-200 transition-colors hover:bg-amber-100 dark:bg-gray-900 dark:text-amber-200 dark:ring-amber-800"
+                >
+                  {account.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

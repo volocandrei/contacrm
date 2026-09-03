@@ -38,7 +38,8 @@ cd frontend && npm install && npm run dev     # http://localhost:5173
 ```
 
 Implicit rulează pe backendul simulat din browser (`VITE_API_MODE=mock`).
-Autentificare: `admin@contacrm.test`, orice parolă.
+Autentificare: `admin@contacrm.test`, orice parolă — ecranul o spune, și o spune
+doar acolo: în modul `http` parola chiar este verificată.
 
 **Backend** — are nevoie de PostgreSQL:
 
@@ -89,6 +90,15 @@ cd backend  && uv run pytest && uv run ruff check . && uv run mypy app
 uv run python -m app.worker --once   # un tur al cozii de procesare
 ```
 
+Testele end-to-end pornesc singure tot ce le trebuie — backendul, build-ul
+frontendului și o bază proprie, `contacrm_e2e`, reconstruită la fiecare rulare:
+
+```bash
+cd frontend
+npx playwright install chromium   # o singură dată
+npm run test:e2e                  # `npm run test:e2e:ui` pentru interfața Playwright
+```
+
 ### Ce NU este în repo (și de ce)
 
 | Lipsește | Cum îl obții |
@@ -106,12 +116,14 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  8.949 linii sursă +   883 linii teste   →  77 teste
-backend  11.383 linii sursă + 10.295 linii teste  → 735 teste
-migrări   1.372 linii
+frontend   9.455 linii sursă +  1.147 linii teste  →   99 teste
+backend   11.663 linii sursă + 11.275 linii teste  →  836 teste
+end-to-end   556 linii                             →   17 teste (browser real)
+migrări    1.307 linii
 ```
 
-Toate verificările trec: **812 teste**, lint curat, `mypy --strict` curat, build curat.
+Toate verificările trec: **952 de teste**, lint curat, `mypy --strict` curat,
+build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
 
@@ -139,7 +151,7 @@ Alte lucruri gata: temă light/dark persistată, filtre în URL (o listă filtra
 poate trimite unui coleg), sidebar colapsabil cu contoare live, accesibilitate
 consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 
-### Backend — M2–M6 complet ✅ · M7 început
+### Backend — M2–M8 complet ✅
 
 **M2 — schelet**
 - FastAPI cu fabrică `create_app()`, fără efecte secundare la import
@@ -408,6 +420,10 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 | `availableActions` oferea `reprocess` pe un document cu încercările epuizate; ruta răspundea 409 | **rulând interfața în modul `http`** |
 | Reprocesarea răspundea 202 cu un document care arăta neatins, deci ecranul nu știa că mai are ce aștepta | **rulând interfața în modul `http`** |
 | Suita de teste frontend își schimba comportamentul după `.env.local` | rulând testele după ce am creat `.env.local` |
+| Bara laterală oferea unui OPERATOR „Utilizatori", „Roluri" și „Setări" — trei uși încuiate, fiecare ducând într-un 403 | **prima rulare a suitei E2E** |
+| Ecranul de autentificare declara „parola nu este verificată" pe orice instalare, cu parola `demo` deja completată — în modul `http` parola este verificată, iar `demo` nu merge | scriind testul E2E de autentificare |
+| Un byte NUL brut în `store.ts` făcea fișierul binar pentru git, iar verificarea de igienă din CI îl **sărea** (`git grep -I`) | căutând altceva prin `grep` |
+| Testele frontend își făceau propriul `QueryClient`, cu alte valori decât aplicația: întreaga clasă de defecte de cache era invizibilă prin construcție | investigând un eșec din E2E |
 
 ---
 
@@ -415,8 +431,9 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 
 ### Golul concret
 
-Frontend-ul consumă **31 de rute**. Backendul real implementează **30** dintre ele
-(plus `/auth/refresh` și health). **Rămâne 1** — `GET /messages`, din Faza 2.
+Frontend-ul consumă **32 de rute**. Backendul real le implementează pe toate în
+afară de una (plus `/auth/refresh` și health). **Rămâne 1** — `GET /messages`,
+din Faza 2.
 
 | Rută | Milestone |
 |---|---|
@@ -429,6 +446,7 @@ Frontend-ul consumă **31 de rute**. Backendul real implementează **30** dintre
 | ~~`GET /dashboard`~~ | ✅ |
 | ~~`GET /periods`, `GET /periods/missing`, `GET /clients/:id/periods`~~ | ✅ M6 |
 | ~~`POST /documents/bulk`, `GET /audit-logs`~~ | ✅ M6 |
+| ~~`GET /reports/summary`, `GET /settings`, `POST /documents/upload`~~ | ✅ M7 |
 | `GET /messages`, `GET /clients/:id/messages` | Faza 2 |
 
 Contractul fiecăreia este deja definit: `frontend/src/types/domain.ts` spune exact
@@ -448,8 +466,8 @@ ci portat.**
 | M4 | CRM: clients, contacts, notes, tags, tasks | ✅ |
 | **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare, arhivare, întărire** | ✅ |
 | **M6** | Coadă durabilă + worker separat, perioade + checklist, dashboard, ecran audit, acțiuni în masă | ✅ |
-| **M7** | Rapoarte în SQL, setări reale, extracție reală din PDF, notificări | ⏳ rapoarte ✅ · setări ✅ · `pdf_text` ✅ · notificări = Faza 2 |
-| **M8** | CI + teste E2E | ⏳ CI ✅ · E2E |
+| **M7** | Rapoarte în SQL, setări reale, extracție reală din PDF, identificarea clientului, încărcare | ✅ (notificările au trecut în Faza 2 — cer un provider de email sau WhatsApp) |
+| **M8** | CI + teste E2E | ✅ |
 | Faza 2 | Microsoft Graph, WhatsApp, OCR/AI real, remindere, export ZIP | |
 | Faza 3 | Integrare software contabil, rapoarte avansate, detecție anomalii | |
 
@@ -540,6 +558,26 @@ transformat în byte de control, deci nu se potrivea cu nimic. Testele unitare n
 existau pentru ea; rularea pe server a arătat-o imediat. Acum există și testele,
 și o verificare în CI care refuză caractere de control în surse.
 
+**M7 — încărcarea, drumul prin care un document chiar intră**
+
+Fluxul produsului începe cu email și WhatsApp, dar amândouă sunt Faza 2. Între
+timp aplicația nu avea **niciun** mod prin care un utilizator să bage un document
+în sistem: ruta `POST /documents/upload` exista de la M5, dar numai un script o
+putea folosi. Tot restul — verificare, corectură, aprobare, arhivare — se
+sprijinea pe date semănate. Un cabinet care ar fi deschis aplicația nu ar fi avut
+ce să facă cu ea.
+
+Panoul stă pe inbox, unde documentul ajunge oricum. Fișierele pleacă **unul câte
+unul**: douăzeci de cereri deodată nu ajung mai repede, se bat pe aceeași
+conexiune și, în spatele unei platforme serverless, se lovesc de limite. Un eșec
+nu oprește lotul — al treilea fișier respins nu are voie să ascundă că primele
+două au intrat, iar fiecare rând își poartă motivul concret venit de la server.
+
+Interfața **nu verifică nimic**: tipul îl stabilește serverul din primii octeți,
+nu din ce declară browserul (§50), iar limita din configurarea lui. O a doua
+copie a regulilor aici s-ar despărți tăcut de cea adevărată, și atunci ecranul ar
+refuza fișiere pe care serverul le acceptă — sau, mai rău, invers.
+
 **M8 — CI**
 
 `.github/workflows/ci.yml` rulează la fiecare push exact comenzile care se rulează
@@ -548,8 +586,60 @@ pornește un PostgreSQL real, nu un SQLite „ca să meargă în CI": altfel ar 
 neverificate exact lucrurile care contează — indexuri parțiale, `unaccent`,
 `FOR UPDATE SKIP LOCKED`, constrângerile CHECK.
 
-Al treilea job verifică ce nu are voie să intre în repo: documente contabile
+Al patrulea job verifică ce nu are voie să intre în repo: documente contabile
 (§70), fișiere `.env`, caractere de control.
+
+Verificarea de igienă avea ea însăși o gaură, găsită imediat: `git grep -I`
+**sare** fișierele pe care git le consideră binare — adică exact fișierele
+stricate. `store.ts` conținea un byte NUL brut acolo unde codul voia escape-ul
+din două caractere; valoarea șirului ieșea la fel, testele treceau, dar git
+trata fișierul ca binar, diff-urile deveneau „Binary files differ" și
+verificarea trecea verde peste el. Acum se citește prin
+`git ls-files | xargs grep -a`. A găsit pe loc încă un caz: propoziția din acest
+document care descrie defectul cu 0x08 conținea ea însăși un 0x08.
+
+**M8 — testele end-to-end**
+
+Aproape toate defectele serioase ale proiectului au fost găsite **rulând**
+aplicația, nu citind-o: tokenul fals trimis către API-ul real, un buton oferit
+într-o stare în care ruta răspundea 409, o reprocesare care răspundea 202 cu un
+document neatins, o expresie regulată ajunsă în fișier cu un byte de control.
+Toate au trecut prin teste unitare verzi. Ce le lega era că apăreau abia acolo
+unde cele două jumătăți se întâlnesc: browser, HTTP, cookie-uri, bază reală.
+
+Suita Playwright pune exact acel drum sub verificare automată, în loc să depindă
+de cine își aduce aminte să deschidă aplicația. Ce pornește este aplicația
+adevărată: PostgreSQL real (baza `contacrm_e2e`, reconstruită la fiecare rulare
+prin migrări), backendul real cu `OCR_PROVIDER=pdf_text`, și **build-ul**
+frontendului servit prin `vite preview` — nu serverul de development, pentru că
+un E2E care verifică un artefact pe care nimeni nu-l pune în producție verifică
+altceva decât produsul.
+
+Testul central urcă un PDF construit de test, cu text scris de test, și cere
+înapoi **exact acele valori**: numărul, seria, totalul, data emiterii (nu cea a
+scadenței), clientul identificat din CUI, direcția facturii dedusă din rolul
+potrivirii. Dacă extracția ar începe vreodată să inventeze, testul cade.
+Restul lanțului merge până la capăt: corectură umană care supraviețuiește unei
+reîncărcări, aprobare, arhivare, și documentul regăsit în arhivă sub numele
+standardizat din §10.
+
+Trei lucruri se pot verifica **doar** aici, dintr-un browser: că sesiunea chiar
+stă într-un cookie `httpOnly` (invizibil din JavaScript prin definiție, deci un
+test care rulează în pagină nu poate ști), că niciun token nu apare în vreun URL
+cerut de pagină (§27 — se ascultă toate cererile, nu doar cele la care ne-am
+gândit), și că previzualizarea vine dintr-un `blob:`.
+
+`npm run test:e2e` rulează același lucru pe laptop și în CI: Playwright pornește
+singur ambele servere și reconstruiește baza. `reset-e2e` refuză orice bază al
+cărei nume nu se termină în `_e2e` — un `DROP DATABASE` într-un CLI este exact
+unealta care distruge o bază reală la o variabilă de mediu pusă greșit.
+
+**Un defect găsit scriind suita:** ecranul de autentificare afișa, pe orice
+instalare, „Mod development — autentificare simulată, parola nu este
+verificată", cu parola `demo` deja completată. În modul `http` parola **este**
+verificată, iar `demo` nu funcționează. Un ecran de autentificare care minte
+despre autentificare este primul lucru pe care îl vede un utilizator nou.
+Bannerul și conturile de acces rapid apar acum doar pe backendul simulat.
 
 ### Punerea în funcțiune
 
@@ -580,7 +670,14 @@ Ce urcă în varianta fără backend este interfața completă pe **backendul si
 din browser**, cu date sintetice — o demonstrație care funcționează integral, dar
 nu aplicația legată la un API real.
 
-Următorul milestone rămâne **M7** (notificări, rapoarte), apoi M8 (E2E, CI).
+**MVP-ul este complet (M1–M8).** Ce rămâne este Faza 2: intrarea documentelor
+prin email (Microsoft Graph) și WhatsApp, OCR real pentru documente scanate,
+notificări și export ZIP. Până atunci, documentele intră prin panoul de
+încărcare.
+
+Ce urcă în varianta fără backend rămâne interfața completă pe **backendul
+simulat din browser**, cu date sintetice — o demonstrație care funcționează
+integral, dar nu aplicația legată la un API real.
 
 ---
 
@@ -603,10 +700,13 @@ Necesită input uman, nu sunt de rezolvat în cod:
    rezolva-o local (încă un binar de instalat, calitate variabilă pe fotografii);
    un serviciu cloud ar rezolva-o mai bine, dar înseamnă că documentele pleacă de
    pe infrastructura noastră. *Decizie cu implicații GDPR (R2), nu una tehnică.*
-4. **`OCR_PROVIDER=mock` în producție.** Implicit este `mock`, care **inventează**
-   furnizori, sume și date. Pentru demonstrație este exact ce trebuie; pentru un
-   cabinet real ar scrie date false în câmpuri contabile. Configurarea nu o
-   interzice azi. *De hotărât dacă pornirea în producție trebuie s-o refuze.*
+4. ~~**`OCR_PROVIDER=mock` în producție**~~ — **decis: pornirea o refuză.**
+   Providerul inventează furnizori, sume și date, iar ecranul de verificare le
+   arată cu proveniență și scor de încredere, adică exact ca pe niște valori
+   citite de pe document: operatorul nu are cum să le deosebească. Nu era o
+   decizie de business, ci un defect care aștepta o instalare. Pentru
+   demonstrații rămâne `ENVIRONMENT=staging`; `pdf_text` este, din punctul de
+   vedere al GDPR, identic cu `mock` — local, fără rețea — doar că adevărat.
 5. **Software-ul contabil țintă** pentru export — determină formatul.
 6. **Tenant unic vs. multi-firmă** de la lansare. Schema suportă ambele;
    `organization_id` există peste tot de la început.
@@ -623,5 +723,5 @@ Niciuna nu blochează deploy-ul.
 | `react-hook-form`, `zod`, `@hookform/resolvers` | instalate, nefolosite |
 | primitivele shadcn (`button`, `card`, `badge`, `separator`) | importate doar de componenta de demo; aplicația scrie Tailwind brut. Ori le adoptăm, ori recunoaștem că nu le folosim |
 | `"2026-08"` hardcodat în 6 locuri | doar în backendul simulat, unde `MOCK_NOW` este tot august: setul sintetic rămâne coerent oricând l-ai deschide. Backendul real urmărește datele, nu calendarul (`latest_active_month`). Rămâne totuși o valoare scrisă de mână acolo unde ar trebui derivată din `MOCK_NOW`. `MONTH_OPTIONS` din ecranul de perioade poate trece pe `MonthFilter`, care nu are nevoie de nicio listă |
-| `client_ip()` (`api/deps.py`) | ignoră `X-Forwarded-For`. **Devine vizibil la primul deploy în spatele unui proxy**: auditul va nota IP-ul platformei, nu al utilizatorului. Antetul trebuie citit, dar numai de la proxy-uri de încredere — altfel oricine își poate falsifica IP-ul din audit |
+| ~~`client_ip()` ignoră `X-Forwarded-For`~~ | rezolvat: `TRUSTED_PROXY_COUNT` spune câte proxy-uri stau obligatoriu în față, iar adresa se citește numărând **de la dreapta**. Implicit 0 — antetul se ignoră până când cineva declară explicit prin ce trece cererea. Pe Vercel se pune 1 |
 | `oxlint`: 2 warning-uri | `only-export-components` pe fișiere shadcn generate — cosmetic |

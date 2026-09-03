@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import { ChevronDown, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS, NAV_ROOT, type BadgeKey, type NavItem } from "@/lib/navigation";
+import { usePermissionCheck } from "@/features/auth/use-auth";
 
 export type SidebarBadges = Partial<Record<BadgeKey, number>>;
 
@@ -13,6 +14,18 @@ type AppSidebarProps = {
 };
 
 export function AppSidebar({ open, onToggle, badges = {} }: AppSidebarProps) {
+  const has = usePermissionCheck();
+
+  // Meniul arată doar ce se poate deschide. Înainte, un OPERATOR vedea
+  // „Utilizatori", „Roluri" și „Setări" — trei uși încuiate, care îl trimiteau
+  // într-un 403 și îl lăsau să creadă că aplicația e stricată. Refuzul adevărat
+  // rămâne al serverului, la fiecare cerere; asta este doar ergonomie.
+  const groups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.permission || has(item.permission)),
+    // Un grup rămas fără intrări nu mai are ce să deschidă.
+  })).filter((group) => group.items.length > 0);
+
   return (
     <nav
       aria-label="Navigație principală"
@@ -27,7 +40,7 @@ export function AppSidebar({ open, onToggle, badges = {} }: AppSidebarProps) {
       <div className="h-[calc(100vh-9.5rem)] space-y-1 overflow-y-auto pb-2">
         <SidebarLink item={NAV_ROOT} open={open} />
 
-        {NAV_GROUPS.map((group) =>
+        {groups.map((group) =>
           group.items.length === 1 && group.items[0] ? (
             <SidebarLink key={group.label} item={group.items[0]} open={open} badges={badges} />
           ) : (

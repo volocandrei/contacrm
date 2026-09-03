@@ -16,11 +16,14 @@ from __future__ import annotations
 import sys
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import create_engine, select, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 from app.core.db import session_scope
+from app.core.migrations import run_migrations
 from app.core.security import hash_password
 from app.domain.document_types import DEFAULT_DOCUMENT_TYPES
 from app.domain.enums import ClientStatus, TaskPriority, TaskStatus
@@ -38,6 +41,9 @@ DEV_PASSWORD = "contacrm-dev"
 # Lungimea minima ceruta primului administrator. Nu este o politica de parole —
 # doar pragul sub care o instalare noua ar porni deja compromisa.
 MIN_ADMIN_PASSWORD_LENGTH = 12
+
+# Sufixul fara de care `reset-e2e` refuza sa stearga ceva.
+E2E_SUFFIX = "_e2e"
 
 # Toate denumirile, CUI-urile și adresele sunt inventate. „Șerbănescu" există
 # intenționat: verifică vizual că sortarea și căutarea ignoră diacriticele.
@@ -382,11 +388,49 @@ def create_admin() -> None:
         print(f"tipuri de document: {types_created}")
 
 
+def reset_e2e() -> None:
+    """Reconstruiește de la zero baza pe care rulează testele end-to-end.
+
+    Testele E2E pornesc un server adevărat și îl conduc dintr-un browser
+    adevărat, deci au nevoie de o bază pe care o pot lăsa murdară. Comanda o
+    aruncă și o face din nou: migrări, apoi `seed-dev`.
+
+    **Garda contează mai mult decât comanda.** Un `DROP DATABASE` într-un CLI de
+    producție este exact felul de unealtă care distruge o bază reală la o
+    variabilă de mediu pusă greșit, așa că numele bazei trebuie să se termine în
+    `_e2e`. Fără sufixul acela nu se șterge nimic.
+    """
+    if settings.is_production:
+        sys.exit("reset-e2e nu rulează în producție.")
+
+    target = make_url(settings.database_url)
+    name = target.database or ""
+    if not name.endswith(E2E_SUFFIX):
+        sys.exit(
+            f"reset-e2e refuză baza {name!r}: numele trebuie să se termine în "
+            f"{E2E_SUFFIX!r}. Pune DATABASE_URL pe baza de E2E."
+        )
+
+    admin = create_engine(
+        target.set(database="postgres"), isolation_level="AUTOCOMMIT", poolclass=NullPool
+    )
+    with admin.connect() as connection:
+        connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        connection.execute(text(f'CREATE DATABASE "{name}"'))
+    admin.dispose()
+
+    # Schema se construiește rulând migrările, ca peste tot (§59).
+    run_migrations(target)
+    seed_dev()
+    print(f"baza {name} este gata")
+
+
 COMMANDS = {
     "sync-roles": sync_roles,
     "seed-dev": seed_dev,
     "create-admin": create_admin,
     "recover-processing": recover_processing,
+    "reset-e2e": reset_e2e,
 }
 
 

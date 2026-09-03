@@ -82,6 +82,61 @@ jobs:
       # separat că migrările chiar se aplică pe o bază goală.
       - run: uv run pytest
 
+  # Aplicația întreagă, într-un browser adevărat: build-ul frontendului servit
+  # prin `vite preview`, backendul real, PostgreSQL real. Aproape toate defectele
+  # serioase de până acum au apărut exact aici — la granița dintre cele două
+  # jumătăți — și au fost găsite de mână.
+  e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: contacrm
+          POSTGRES_PASSWORD: contacrm_dev_password
+          POSTGRES_DB: contacrm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U contacrm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - run: uv sync --frozen
+        working-directory: backend
+      - run: npm ci
+        working-directory: frontend
+      # Doar chromium, cu dependențele lui de sistem: trei browsere ar tripla
+      # timpul ca să verifice de trei ori aceeași logică de server.
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      # Playwright pornește singur cele două servere și reconstruiește baza —
+      # aceeași comandă care se rulează și pe laptop.
+      - run: npm run test:e2e
+        working-directory: frontend
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
   # Ce nu are voie să intre în repo, indiferent cine face push.
   hygiene:
     runs-on: ubuntu-latest

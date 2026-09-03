@@ -18,3 +18,14 @@ export function useHasPermission(permission: Permission): boolean {
   const { user } = useAuth();
   return user?.permissions.includes(permission) ?? false;
 }
+
+/**
+ * Aceeași regulă, dar ca funcție — pentru cine trebuie să verifice o listă.
+ *
+ * `useHasPermission` este un hook: nu poate fi chemat într-o buclă, iar meniul
+ * lateral exact asta are de făcut, pentru fiecare intrare.
+ */
+export function usePermissionCheck(): (permission: Permission) => boolean {
+  const { user } = useAuth();
+  return (permission) => user?.permissions.includes(permission) ?? false;
+}
