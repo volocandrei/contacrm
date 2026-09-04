@@ -33,7 +33,9 @@ import type {
   AuditLogEntry,
   Client,
   ClientStatus,
+  ClientExpectation,
   ClientNote,
+  DocumentTypeCode,
   Contact,
   CurrentUser,
   DashboardClosing,
@@ -1824,6 +1826,75 @@ export function listSettings(): SettingEntry[] {
     { key: "TRUSTED_PROXY_COUNT", group: "SECURITY", value: "0" },
     { key: "ONEDRIVE", group: "SECURITY", value: "true" },
   ];
+}
+
+/**
+ * Ce se așteaptă lunar de la un client.
+ *
+ * Pe server, checklistul fiecărei luni se **derivă** din `client_expectations`.
+ * Aici perioadele își poartă checklistul direct, deci așteptările se citesc din
+ * el și se scriu în el — comportamentul văzut din afară este același, care este
+ * tot ce promite contractul.
+ */
+export function listExpectations(clientId: string): ClientExpectation[] {
+  requirePermission("documents:read");
+  getClient(clientId);
+
+  const periods = state.periods.filter((period) => period.clientId === clientId);
+  const latest = periods.sort((a, b) => b.referenceMonth.localeCompare(a.referenceMonth))[0];
+  return (latest?.checklist ?? []).map((item) => ({
+    documentTypeCode: item.documentType,
+    documentTypeLabel: item.documentTypeLabel,
+    expectedMinCount: item.expectedMinCount,
+  }));
+}
+
+/** Înlocuiește lista întreagă. Ce nu mai apare nu se mai așteaptă. */
+export function setExpectations(
+  clientId: string,
+  wanted: Array<{ documentTypeCode: string; expectedMinCount: number }>,
+): ClientExpectation[] {
+  // `periods:manage`: a hotărî ce datorează un client este act contabil, nu
+  // editare de fișă. Aceeași permisiune ca închiderea lunii.
+  requirePermission("periods:manage");
+  getClient(clientId);
+
+  for (const entry of wanted) {
+    if (!DOCUMENT_TYPE_LABEL.has(entry.documentTypeCode as DocumentTypeCode)) {
+      throw new ApiError("NOT_FOUND", `Tip de document inexistent: ${entry.documentTypeCode}`, 404);
+    }
+    if (entry.expectedMinCount < 1) {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Se așteaptă cel puțin un document; absența se exprimă scoțând rândul.",
+        422,
+        { expectedMinCount: ["Minim 1."] },
+      );
+    }
+  }
+
+  for (const period of state.periods.filter((row) => row.clientId === clientId)) {
+    period.checklist = wanted.map((entry) => ({
+      documentType: entry.documentTypeCode as DocumentTypeCode,
+      documentTypeLabel:
+        DOCUMENT_TYPE_LABEL.get(entry.documentTypeCode as DocumentTypeCode) ??
+        entry.documentTypeCode,
+      expectedMinCount: entry.expectedMinCount,
+      receivedCount: 0,
+      isSatisfied: false,
+    }));
+  }
+  // Contoarele și statusul se re-derivă: altfel checklistul nou ar arăta zero
+  // primite pentru documente care există deja în lună.
+  refreshPeriods();
+
+  recordAudit(
+    "CLIENT_EXPECTATIONS_UPDATED",
+    "Client",
+    clientId,
+    `${wanted.length} tipuri așteptate lunar`,
+  );
+  return listExpectations(clientId);
 }
 
 export function listDocumentTypes() {

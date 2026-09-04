@@ -201,6 +201,19 @@ export type ChecklistItem = {
   isSatisfied: boolean;
 };
 
+/**
+ * Ce se așteaptă lunar de la un client.
+ *
+ * Fără ele, checklistul lunii este gol, „Documente lipsă" nu are ce raporta, iar
+ * fiecare perioadă apare completă — pentru că nu i se cere nimic.
+ */
+export type ClientExpectation = {
+  /** Tipul se numește prin cod, ca peste tot în contract — nu prin id intern. */
+  documentTypeCode: string;
+  documentTypeLabel: string;
+  expectedMinCount: number;
+};
+
 export type AccountingPeriod = {
   id: string;
   clientId: string;

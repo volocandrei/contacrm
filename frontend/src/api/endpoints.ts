@@ -9,6 +9,7 @@ import type {
   AuditLogEntry,
   ChecklistItem,
   Client,
+  ClientExpectation,
   ClientNote,
   ClientStatus,
   Contact,
@@ -101,6 +102,12 @@ export const clients = {
   notes: (id: string) => api.get<ClientNote[]>(`/clients/${id}/notes`),
   createNote: (id: string, body: string) =>
     api.post<ClientNote>(`/clients/${id}/notes`, { body }),
+  expectations: (id: string) => api.get<ClientExpectation[]>(`/clients/${id}/expectations`),
+  // PUT, nu PATCH: se trimite lista întreagă, adică starea de după.
+  setExpectations: (
+    id: string,
+    expectations: Array<{ documentTypeCode: string; expectedMinCount: number }>,
+  ) => api.put<ClientExpectation[]>(`/clients/${id}/expectations`, { expectations }),
   periods: (id: string) => api.get<AccountingPeriod[]>(`/clients/${id}/periods`),
 };
 

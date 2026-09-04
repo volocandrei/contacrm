@@ -17,12 +17,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
 from pydantic import Field
+from sqlalchemy import select
 
 from app.api.deps import DbSession, client_ip, require_permission
 from app.core.errors import NotFoundError
 from app.domain.enums import PeriodStatus
 from app.domain.periods import ChecklistEntry
 from app.domain.permissions import Permission
+from app.models.document import DocumentType
+from app.models.period import ClientExpectation
 from app.models.user import User
 from app.repositories.client import ClientRepository
 from app.schemas.common import ApiModel
@@ -36,6 +39,10 @@ PeriodManager = Annotated[User, require_permission(Permission.PERIODS_MANAGE)]
 
 REFERENCE_MONTH = r"^\d{4}-(0[1-9]|1[0-2])$"
 
+#: Cât de multe documente de un fel se pot aștepta într-o lună. Generos pentru un
+#: client cu multe facturi, strâmt cât o greșeală de tastare să nu treacă.
+MAX_EXPECTED_COUNT = 999
+
 
 class ChecklistItemOut(ApiModel):
     document_type: str
@@ -43,6 +50,39 @@ class ChecklistItemOut(ApiModel):
     expected_min_count: int
     received_count: int
     is_satisfied: bool
+
+
+class ExpectationOut(ApiModel):
+    """Un tip de document pe care îl așteptăm lunar de la un client.
+
+    Tipul se numește prin **cod**, nu prin identificator: așa îl numește tot
+    restul contractului (`documentTypeCode` pe document, `documentType` în
+    checklist), iar `GET /document-types` nici nu publică id-uri. Un id intern
+    scos aici doar pentru ruta asta ar fi fost un al doilea vocabular.
+    """
+
+    document_type_code: str
+    document_type_label: str
+    expected_min_count: int
+
+
+class ExpectationIn(ApiModel):
+    document_type_code: str = Field(min_length=1, max_length=64)
+    #: Cel puțin unul: o așteptare de zero documente nu este o așteptare, este
+    #: absența ei — și se exprimă scoțând rândul din listă.
+    expected_min_count: int = Field(ge=1, le=MAX_EXPECTED_COUNT)
+
+
+class ExpectationsIn(ApiModel):
+    """Lista completă, nu o modificare.
+
+    Ecranul arată toate tipurile de document deodată, cu bifă și număr; ce
+    trimite înapoi este starea de după, întreagă. O rută care primește
+    diferențe ar fi cerut interfeței să țină minte ce a schimbat, iar două
+    tab-uri deschise ar fi produs rezultate care depind de ordine.
+    """
+
+    expectations: list[ExpectationIn]
 
 
 class AccountingPeriodOut(ApiModel):
@@ -103,6 +143,39 @@ def _to_item(entry: ChecklistEntry) -> ChecklistItemOut:
         received_count=entry.received_count,
         is_satisfied=entry.is_satisfied,
     )
+
+
+def _known_types(session: DbSession, organization_id: uuid.UUID) -> dict[str, DocumentType]:
+    """Tipurile organizației, după cod — cum le numește contractul."""
+    return {
+        row.code: row
+        for row in session.scalars(
+            select(DocumentType).where(DocumentType.organization_id == organization_id)
+        )
+    }
+
+
+def _expectations_of(
+    session: DbSession, organization_id: uuid.UUID, client_id: uuid.UUID
+) -> list[ExpectationOut]:
+    """Așteptările clientului, în ordinea în care tipurile apar pe ecran."""
+    rows = session.execute(
+        select(ClientExpectation, DocumentType)
+        .join(DocumentType, DocumentType.id == ClientExpectation.document_type_id)
+        .where(
+            ClientExpectation.organization_id == organization_id,
+            ClientExpectation.client_id == client_id,
+        )
+        .order_by(DocumentType.sort_order, DocumentType.label)
+    ).all()
+    return [
+        ExpectationOut(
+            document_type_code=document_type.code,
+            document_type_label=document_type.label,
+            expected_min_count=expectation.expected_min_count,
+        )
+        for expectation, document_type in rows
+    ]
 
 
 def to_period(view: PeriodView) -> AccountingPeriodOut:
@@ -174,6 +247,96 @@ def client_periods(
 
     views = PeriodService(session).list_periods(user.organization_id, client_id=client_id)
     return [to_period(view) for view in views]
+
+
+@router.get("/clients/{client_id}/expectations", response_model=list[ExpectationOut])
+def client_expectations(
+    session: DbSession, user: PeriodReader, client_id: uuid.UUID
+) -> list[ExpectationOut]:
+    """Ce se așteaptă lunar de la un client.
+
+    Fără ea, checklistul lunii este gol, „Documente lipsă" nu are ce raporta, iar
+    o perioadă apare `COMPLETE` pentru că nu i se cerea nimic. Datele existau în
+    `client_expectations` de la M6; nu exista niciun drum prin care cineva să le
+    scrie sau măcar să le vadă.
+    """
+    if ClientRepository(session).get(user.organization_id, client_id) is None:
+        raise NotFoundError("Client", client_id)
+    return _expectations_of(session, user.organization_id, client_id)
+
+
+@router.put("/clients/{client_id}/expectations", response_model=list[ExpectationOut])
+def set_client_expectations(
+    session: DbSession,
+    user: PeriodManager,
+    request: Request,
+    client_id: uuid.UUID,
+    payload: ExpectationsIn,
+) -> list[ExpectationOut]:
+    """Înlocuiește lista, nu o modifică.
+
+    Cere `periods:manage`: a hotărî ce datorează un client în fiecare lună este
+    o decizie contabilă, nu o editare de fișă. Aceeași permisiune ca închiderea
+    lunii, și din același motiv.
+    """
+    if ClientRepository(session).get(user.organization_id, client_id) is None:
+        raise NotFoundError("Client", client_id)
+
+    known = _known_types(session, user.organization_id)
+    wanted: dict[uuid.UUID, int] = {}
+    for entry in payload.expectations:
+        document_type = known.get(entry.document_type_code)
+        if document_type is None:
+            raise NotFoundError("Tip de document", entry.document_type_code)
+        # Ultima valoare câștigă: un formular care trimite același tip de două ori
+        # este o greșeală de interfață, nu un motiv de 500.
+        wanted[document_type.id] = entry.expected_min_count
+
+    before = _expectations_of(session, user.organization_id, client_id)
+    existing = {
+        row.document_type_id: row
+        for row in session.scalars(
+            select(ClientExpectation).where(
+                ClientExpectation.organization_id == user.organization_id,
+                ClientExpectation.client_id == client_id,
+            )
+        )
+    }
+
+    for type_id, minimum in wanted.items():
+        row = existing.get(type_id)
+        if row is None:
+            session.add(
+                ClientExpectation(
+                    organization_id=user.organization_id,
+                    client_id=client_id,
+                    document_type_id=type_id,
+                    expected_min_count=minimum,
+                )
+            )
+        else:
+            row.expected_min_count = minimum
+    for type_id, row in existing.items():
+        if type_id not in wanted:
+            # Ce nu mai apare în listă nu se mai așteaptă. Documentele deja
+            # primite rămân — se schimbă așteptarea, nu istoria.
+            session.delete(row)
+    session.flush()
+
+    after = _expectations_of(session, user.organization_id, client_id)
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="CLIENT_EXPECTATIONS_UPDATED",
+        entity_type="Client",
+        entity_id=str(client_id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=f"{len(after)} tipuri așteptate lunar",
+        old_value={"expectations": [item.model_dump(mode="json") for item in before]},
+        new_value={"expectations": [item.model_dump(mode="json") for item in after]},
+        ip=client_ip(request),
+    )
+    return after
 
 
 @router.post(

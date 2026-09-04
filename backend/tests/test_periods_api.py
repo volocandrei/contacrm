@@ -632,3 +632,161 @@ class TestDocumentsTouchPeriods:
         ).first()
         assert period is not None, "luna trebuie să existe ca rând după procesare"
         assert period.reference_month == document.reference_month
+
+
+class TestExpectations:
+    """Ce se așteaptă lunar de la un client.
+
+    Datele existau în `client_expectations` de la M6 și nu exista niciun drum
+    prin care cineva să le scrie. Consecința tăcută: pe o instalare nouă,
+    checklistul lunii este gol, „Documente lipsă" nu are ce raporta, iar fiecare
+    perioadă apare completă — pentru că nu i se cerea nimic.
+    """
+
+    def test_the_list_says_what_is_expected_and_how_much(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        client_row: Client,
+        expectations: dict[str, ClientExpectation],
+    ) -> None:
+        login(api_storage, admin.email)
+
+        body = api_storage.get(f"/api/v1/clients/{client_row.id}/expectations").json()
+
+        by_code = {item["documentTypeCode"]: item["expectedMinCount"] for item in body}
+        assert by_code == {"FACTURA_INTRARE": 2, "EXTRAS_CONT": 1}
+
+    def test_the_whole_list_is_replaced_not_merged(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        client_row: Client,
+        types: dict[str, DocumentType],
+        expectations: dict[str, ClientExpectation],
+    ) -> None:
+        """Ce nu mai apare în listă nu se mai așteaptă."""
+        login(api_storage, admin.email)
+
+        response = api_storage.put(
+            f"/api/v1/clients/{client_row.id}/expectations",
+            json={"expectations": [{"documentTypeCode": "FACTURA_INTRARE", "expectedMinCount": 5}]},
+        )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert [item["documentTypeCode"] for item in body] == ["FACTURA_INTRARE"]
+        assert body[0]["expectedMinCount"] == 5
+
+    def test_the_checklist_follows_immediately(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        client_row: Client,
+        types: dict[str, DocumentType],
+        expectations: dict[str, ClientExpectation],
+    ) -> None:
+        """Rostul întreg al ecranului: luna trebuie să ceară ce s-a configurat."""
+        login(api_storage, admin.email)
+        api_storage.put(
+            f"/api/v1/clients/{client_row.id}/expectations",
+            json={"expectations": [{"documentTypeCode": "EXTRAS_CONT", "expectedMinCount": 3}]},
+        )
+
+        periods = api_storage.get(f"/api/v1/clients/{client_row.id}/periods").json()
+        if periods:
+            checklist = periods[0]["checklist"]
+            assert [item["documentType"] for item in checklist] == ["EXTRAS_CONT"]
+            assert checklist[0]["expectedMinCount"] == 3
+
+    def test_zero_is_not_an_expectation(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Absența se exprimă scoțând rândul, nu cerând zero documente."""
+        login(api_storage, admin.email)
+
+        response = api_storage.put(
+            f"/api/v1/clients/{client_row.id}/expectations",
+            json={"expectations": [{"documentTypeCode": "FACTURA_INTRARE", "expectedMinCount": 0}]},
+        )
+
+        assert response.status_code == 422
+
+    def test_a_document_type_from_another_office_is_not_found(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+    ) -> None:
+        """§72: tipul se caută printre cele ale organizației, nu global."""
+        other = Organization(name="Cabinet Rival SRL")
+        db.add(other)
+        db.flush()
+        foreign = DocumentType(
+            organization_id=other.id, code="STRAIN", label="Străin", sort_order=1
+        )
+        db.add(foreign)
+        db.flush()
+        login(api_storage, admin.email)
+
+        response = api_storage.put(
+            f"/api/v1/clients/{client_row.id}/expectations",
+            json={"expectations": [{"documentTypeCode": "STRAIN", "expectedMinCount": 1}]},
+        )
+
+        assert response.status_code == 404
+
+    def test_changing_what_is_expected_is_audited(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+        expectations: dict[str, ClientExpectation],
+    ) -> None:
+        login(api_storage, admin.email)
+        api_storage.put(
+            f"/api/v1/clients/{client_row.id}/expectations",
+            json={"expectations": [{"documentTypeCode": "FACTURA_INTRARE", "expectedMinCount": 9}]},
+        )
+
+        from sqlalchemy import select
+
+        entry = db.scalars(
+            select(AuditLog).where(AuditLog.action == "CLIENT_EXPECTATIONS_UPDATED")
+        ).one()
+        # Se vede ce era și ce a devenit: altfel „de ce cere luna asta 9 facturi?"
+        # nu are răspuns peste șase luni.
+        assert entry.old_value is not None
+        assert entry.new_value is not None
+
+    @pytest.mark.parametrize(
+        ("role", "allowed"),
+        [(RoleCode.ADMIN, True), (RoleCode.ACCOUNTANT, True), (RoleCode.OPERATOR, False)],
+    )
+    def test_setting_expectations_needs_periods_manage(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        org: Organization,
+        roles: dict[RoleCode, Role],
+        client_row: Client,
+        types: dict[str, DocumentType],
+        role: RoleCode,
+        allowed: bool,
+    ) -> None:
+        """A hotărî ce datorează un client este act contabil, nu editare de fișă."""
+        user = make_user(db, org, roles, email=f"exp-{role.value.lower()}@contacrm.test", role=role)
+        login(api_storage, user.email)
+
+        response = api_storage.put(
+            f"/api/v1/clients/{client_row.id}/expectations",
+            json={"expectations": [{"documentTypeCode": "FACTURA_INTRARE", "expectedMinCount": 1}]},
+        )
+        assert (response.status_code == 200) is allowed, response.text

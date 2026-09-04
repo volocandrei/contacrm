@@ -4,11 +4,14 @@ import { ArrowLeft, LoaderCircle, Mail, Pencil, Phone, Plus, StickyNote } from "
 import {
   useClient,
   useClientContacts,
+  useClientExpectations,
   useClientNotes,
   useClientPeriods,
   useClients,
   useCreateNote,
+  useDocumentTypes,
   useDocuments,
+  useSaveExpectations,
 } from "@/api/hooks";
 import { ApiError } from "@/api/types";
 import { ErrorState, LoadingState, Panel } from "@/components/page";
@@ -294,6 +297,7 @@ function AccountingTab({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4">
+      <ExpectationsPanel clientId={clientId} />
       {periods?.map((period) => (
         <Panel
           key={period.id}
@@ -502,6 +506,137 @@ function NoteComposer({ clientId }: { clientId: string }) {
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Ce se așteaptă lunar de la client.
+ *
+ * Piesa care lipsea din tot lanțul de contabilitate: checklistul fiecărei luni,
+ * ecranul „Documente lipsă" și starea perioadei se derivă **din lista asta**,
+ * care exista în baza de date de la M6 fără niciun drum prin care s-o scrie
+ * cineva. Pe o instalare nouă, consecința era tăcută: fiecare lună apărea
+ * completă, pentru că nu i se cerea nimic.
+ *
+ * Se trimite lista întreagă, nu diferențe: ecranul arată toate tipurile deodată,
+ * iar ce trimite înapoi este starea de după.
+ */
+function ExpectationsPanel({ clientId }: { clientId: string }) {
+  const { data: expectations, isLoading } = useClientExpectations(clientId);
+  const { data: types } = useDocumentTypes();
+  const save = useSaveExpectations(clientId);
+  const can = usePermissionCheck();
+
+  const [draft, setDraft] = useState<Record<string, number> | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  if (isLoading) return <LoadingState />;
+
+  const editable = can("periods:manage");
+  const current: Record<string, number> =
+    draft ??
+    Object.fromEntries((expectations ?? []).map((item) => [item.documentTypeCode, item.expectedMinCount]));
+
+  function set(code: string, value: number | null) {
+    const next = { ...current };
+    if (value === null) delete next[code];
+    else next[code] = value;
+    setDraft(next);
+  }
+
+  function submit() {
+    setProblem(null);
+    save.mutate(
+      Object.entries(current).map(([documentTypeCode, expectedMinCount]) => ({
+        documentTypeCode,
+        expectedMinCount,
+      })),
+      {
+        onSuccess: () => setDraft(null),
+        onError: (caught) =>
+          setProblem(
+            caught instanceof ApiError ? caught.message : "Așteptările nu au putut fi salvate.",
+          ),
+      },
+    );
+  }
+
+  return (
+    <Panel title="Ce așteptăm lunar de la client">
+      <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">
+        După lista asta se construiește checklistul fiecărei luni și raportul
+        „Documente lipsă". Un client fără nicio bifă apare mereu complet, pentru că
+        nu i se cere nimic.
+      </p>
+
+      {problem && (
+        <p role="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
+          {problem}
+        </p>
+      )}
+
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {(types ?? []).map((type) => {
+          const expected = current[type.code];
+          const checked = expected !== undefined;
+          return (
+            <li key={type.code} className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-800">
+              <input
+                type="checkbox"
+                id={`expect-${type.code}`}
+                checked={checked}
+                disabled={!editable || save.isPending}
+                onChange={(event) => set(type.code, event.target.checked ? 1 : null)}
+                className="h-4 w-4 rounded border-gray-300 dark:border-gray-600"
+              />
+              <label htmlFor={`expect-${type.code}`} className="flex-1 text-sm text-gray-800 dark:text-gray-200">
+                {type.label}
+              </label>
+              {checked && (
+                <>
+                  <label className="sr-only" htmlFor={`expect-count-${type.code}`}>
+                    Câte {type.label} pe lună
+                  </label>
+                  <input
+                    id={`expect-count-${type.code}`}
+                    type="number"
+                    min={1}
+                    max={999}
+                    value={expected}
+                    disabled={!editable || save.isPending}
+                    onChange={(event) => set(type.code, Math.max(1, Number(event.target.value) || 1))}
+                    className="h-8 w-16 rounded-md border border-gray-200 px-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  />
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      {editable && (
+        <div className="mt-3 flex items-center justify-end gap-3">
+          {draft !== null && (
+            <button
+              type="button"
+              onClick={() => setDraft(null)}
+              className="text-sm font-medium text-gray-600 hover:underline dark:text-gray-300"
+            >
+              Renunță
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={submit}
+            disabled={draft === null || save.isPending}
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+          >
+            {save.isPending && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            Salvează așteptările
+          </button>
+        </div>
+      )}
+    </Panel>
   );
 }
 

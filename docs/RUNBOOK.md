@@ -145,6 +145,19 @@ autentifici, aceeași treabă o face:
 uv run python -m app.cli add-client
 ```
 
+### Un client nu apare niciodată în „Documente lipsă"
+
+Cel mai probabil nu i s-a spus **ce** se așteaptă de la el. Checklistul lunii,
+raportul de documente lipsă și starea perioadei se derivă toate din aceeași
+listă: `Clienți → [client] → Contabilitate → Ce așteptăm lunar`.
+
+Un client fără nicio bifă apare mereu complet, pentru că nu i se cere nimic —
+tăcut, fără nicio eroare. Se bifează tipurile de document și, unde e cazul, câte
+bucăți pe lună (cinci facturi de intrare, un extras de cont).
+
+Se cere `periods:manage`: a hotărî ce datorează un client este un act contabil,
+nu o editare de fișă. Aceeași permisiune ca închiderea lunii.
+
 ### Un client vrea și facturile din e-Factura
 
 1. Clientul depune **împuternicirea în SPV** (formularul 150) pentru certificatul

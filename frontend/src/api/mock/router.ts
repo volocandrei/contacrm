@@ -15,7 +15,7 @@ type Ctx = {
 type Handler = (ctx: Ctx) => unknown;
 
 type Route = {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** Segmentele care încep cu ":" sunt parametri. */
   pattern: string;
   handler: Handler;
@@ -76,6 +76,20 @@ const routes: Route[] = [
     handler: ({ params }) => store.listContacts(params.id!),
   },
   { method: "GET", pattern: "/clients/:id/notes", handler: ({ params }) => store.listNotes(params.id!) },
+  {
+    method: "GET",
+    pattern: "/clients/:id/expectations",
+    handler: ({ params }) => store.listExpectations(params.id!),
+  },
+  {
+    method: "PUT",
+    pattern: "/clients/:id/expectations",
+    handler: ({ params, body }) =>
+      store.setExpectations(
+        params.id!,
+        body.expectations as Array<{ documentTypeCode: string; expectedMinCount: number }>,
+      ),
+  },
   {
     method: "POST",
     pattern: "/clients/:id/notes",

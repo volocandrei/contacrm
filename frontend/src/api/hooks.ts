@@ -29,6 +29,7 @@ export const queryKeys = {
   client: (id: string) => ["clients", id] as const,
   clientContacts: (id: string) => ["clients", id, "contacts"] as const,
   clientNotes: (id: string) => ["clients", id, "notes"] as const,
+  clientExpectations: (id: string) => ["clients", id, "expectations"] as const,
   clientPeriods: (id: string) => ["clients", id, "periods"] as const,
   documents: (params: QueryParams) => ["documents", params] as const,
   document: (id: string) => ["documents", id] as const,
@@ -109,6 +110,34 @@ export function useSaveContact(clientId: string) {
         : clients.createContact(clientId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.clientContacts(clientId) });
+    },
+  });
+}
+
+export function useClientExpectations(id: string) {
+  return useQuery({
+    queryKey: queryKeys.clientExpectations(id),
+    queryFn: () => clients.expectations(id),
+  });
+}
+
+/**
+ * Salvarea așteptărilor lunare.
+ *
+ * Se invalidează și perioadele: checklistul fiecărei luni se derivă din lista
+ * asta, deci ecranul de contabilitate trebuie să se schimbe odată cu ea. La fel
+ * panoul principal, care numără clienții în întârziere.
+ */
+export function useSaveExpectations(clientId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (expectations: Array<{ documentTypeCode: string; expectedMinCount: number }>) =>
+      clients.setExpectations(clientId, expectations),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.clientExpectations(clientId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.clientPeriods(clientId) });
+      queryClient.invalidateQueries({ queryKey: ["periods"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 }

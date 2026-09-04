@@ -357,6 +357,9 @@ export const api = {
   get: <T>(path: string, params?: QueryParams) => request<T>("GET", path, { params }),
   post: <T>(path: string, body?: Record<string, unknown>) => request<T>("POST", path, { body }),
   patch: <T>(path: string, body?: Record<string, unknown>) => request<T>("PATCH", path, { body }),
+  // `PUT` pentru înlocuirea unei liste întregi, unde `PATCH` ar minți: nu se
+  // trimite o modificare, ci starea de după.
+  put: <T>(path: string, body?: Record<string, unknown>) => request<T>("PUT", path, { body }),
   delete: <T>(path: string) => request<T>("DELETE", path),
   upload: <T>(path: string, file: File, fields?: Record<string, string>) =>
     uploadFile<T>(path, file, fields),
