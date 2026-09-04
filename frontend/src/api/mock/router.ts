@@ -230,6 +230,36 @@ const routes: Route[] = [
     handler: ({ params }) => store.untrackDriveFolder(params.id!),
   },
 
+  /* Integrare e-Factura / SPV ANAF (M11). Rutele fixe înaintea celor cu parametru. */
+  { method: "GET", pattern: "/integrations/anaf", handler: () => store.getAnafStatus() },
+  {
+    method: "POST",
+    pattern: "/integrations/anaf/authorize",
+    handler: () => store.anafAuthorizeUrl(),
+  },
+  {
+    method: "POST",
+    pattern: "/integrations/anaf/connect",
+    handler: ({ body }) => store.connectAnaf(body.certificateHolder as string | null | undefined),
+  },
+  { method: "DELETE", pattern: "/integrations/anaf", handler: () => store.disconnectAnaf() },
+  { method: "POST", pattern: "/integrations/anaf/sync", handler: () => store.syncAnaf() },
+  {
+    method: "POST",
+    pattern: "/integrations/anaf/mandates",
+    handler: ({ body }) => store.addAnafMandate(str(body, "clientId")),
+  },
+  {
+    method: "PATCH",
+    pattern: "/integrations/anaf/mandates/:id",
+    handler: ({ params, body }) => store.updateAnafMandate(params.id!, body.isActive as boolean),
+  },
+  {
+    method: "DELETE",
+    pattern: "/integrations/anaf/mandates/:id",
+    handler: ({ params }) => store.removeAnafMandate(params.id!),
+  },
+
   /* Contabilitate */
   { method: "GET", pattern: "/periods", handler: ({ query }) => store.listPeriods(query) },
   {

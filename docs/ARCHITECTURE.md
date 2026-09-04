@@ -110,9 +110,9 @@ entitățile de business au `deleted_at` (soft delete).
 | Tabel | Câmpuri cheie |
 |---|---|
 | `document_types` | id, code, label, is_active, validation_rules jsonb — extensibil, **fără hardcodare** (§6) |
-| `document_intakes` | id, organization_id, source (EMAIL/WHATSAPP/UPLOAD/API/ONEDRIVE), external_message_id, sender, recipient, subject, received_at, raw_payload jsonb, client_id?, status — **UNIQUE(source, external_message_id, attachment_id)** = idempotency (§56) |
+| `document_intakes` | id, organization_id, source (EMAIL/WHATSAPP/UPLOAD/API/ONEDRIVE/EFACTURA), external_message_id, sender, recipient, subject, received_at, raw_payload jsonb, client_id?, status — **UNIQUE(source, external_message_id, attachment_id)** = idempotency (§56) |
 | `documents` | vezi mai jos |
-| `document_versions` | id, document_id, version_number, kind, storage_key, sha256_hash, file_size, mime_type, uploaded_by, reason — originalul este versiunea 1 și nu se suprascrie niciodată |
+| `document_versions` | id, document_id, version_number, kind (`original` / `archive` / `anaf_zip` / `anaf_pdf`), storage_key, sha256_hash, file_size, mime_type, uploaded_by, reason — originalul este versiunea 1 și nu se suprascrie niciodată |
 | `document_field_overrides` | id, document_id, field_name, old_value, new_value, changed_by, changed_at — istoricul corecțiilor umane |
 | `document_processing_jobs` | id, document_id, job_type, status (PENDING/RUNNING/SUCCEEDED/FAILED/SKIPPED), attempt, error_code, error_detail, provider, duration_ms, started_at, finished_at, idempotency_key — **UNIQUE(idempotency_key)** |
 
@@ -137,12 +137,22 @@ extracție curentă, deci un tabel separat ar fi fost o indirecție fără conț
 > `document_date` ≠ `reference_month`. Nu se deduc una din alta automat fără regulă
 > configurată. **TODO — BUSINESS RULE REQUIRES ACCOUNTING VALIDATION.**
 
-### Surse externe (M9, M10)
+### Surse externe (M9, M10, M11)
 | Tabel | Câmpuri cheie |
 |---|---|
 | `microsoft_connections` | id, organization_id, provider, account_email, refresh token **criptat** (Fernet, cu cheie separată de `SECRET_KEY`), scopes, is_active, last_error |
 | `drive_folders` | id, organization_id, client_id, drive_id, item_id, path, delta_token, is_active — **dosarul dă clientul** |
 | `mail_folders` | id, organization_id, folder_id, display_name, delta_token, is_active — **fără** client_id: aici expeditorul dă clientul |
+| `anaf_connections` | id, organization_id, environment (prod/test), refresh token **criptat** cu aceeași cheie, certificate_holder, expires_at, is_active, last_error — **certificatul** prin care întrebăm |
+| `anaf_mandates` | id, organization_id, connection_id, client_id, tax_id, synced_through, is_active, last_error — **împuternicirea**: certificatul singur nu deschide nimic |
+
+**Cele trei surse diferă prin cine dă clientul**, și asta este toată diferența:
+la drive îl dă dosarul, la email expeditorul, la e-Factura **cererea însăși** —
+interogarea se face pe CUI-ul clientului, deci acolo atribuirea nu poate greși.
+
+ANAF nu dă tokenuri de continuare, ci ferestre de timp: `synced_through` ține
+locul lui `delta_token` și avansează **abia după** ce facturile din fereastră au
+intrat.
 
 ### Audit
 | Tabel | Câmpuri cheie |
@@ -239,7 +249,9 @@ Praguri (configurabile în `system_settings`, valori inițiale propuse):
 | **M6** | Coadă persistentă — outbox în Postgres, **nu** Celery+Redis (vezi `app/worker.py`) —, perioade + checklist, dashboard KPI, ecran audit, acțiuni în masă | ✅ |
 | **M7** | Notificări (abstracție + email), rapoarte |  |
 | **M8** | Teste E2E, Docker compose, CI |  |
-| **Faza 2** | Microsoft Graph, WhatsApp, OCR/AI real, remindere, bulk, export ZIP |  |
+| **M9–M10** | Microsoft Graph: dosare din OneDrive/SharePoint și atașamente din email | ✅ |
+| **M11** | e-Factura: preluarea facturilor din SPV-ul ANAF, cu toate trei fișierele | ✅ |
+| **Faza 2** | WhatsApp, OCR/AI real, remindere, bulk, export ZIP |  |
 | **Faza 3** | Integrare software contabil, rapoarte, detecție anomalii |  |
 
 **MVP = M1–M8.**

@@ -469,6 +469,7 @@ function buildDocument(
 
   return {
     id: `doc-${documentCounter}`,
+    files: [],
     originalFilename,
     storedFilename: archived
       ? buildDocumentFilename({

@@ -127,7 +127,8 @@ pasul următor este **Contacte → Contact nou**.
 
 **Emailul contactului contează cel mai mult**: după el ajunge un atașament primit
 la clientul potrivit. Un client fără contact primește documente doar prin dosarul
-lui din OneDrive, care se leagă din `Administrare → Surse documente`.
+lui din OneDrive, care se leagă din `Administrare → Surse documente`, sau prin
+e-Factura, dacă a depus împuternicirea în SPV (vezi mai jos).
 
 Două lucruri sunt refuzate, și amândouă din același motiv — altfel preluarea
 automată s-ar opri **fără nicio eroare**:
@@ -143,6 +144,48 @@ autentifici, aceeași treabă o face:
 ```bash
 uv run python -m app.cli add-client
 ```
+
+### Un client vrea și facturile din e-Factura
+
+1. Clientul depune **împuternicirea în SPV** (formularul 150) pentru certificatul
+   digital al cabinetului. Pasul ăsta nu se face din aplicație și nu depinde de
+   noi; fără el, ANAF nu întoarce eroare — **întoarce gol**.
+2. `Administrare → e-Factura` → **Adaugă împuternicirea** → alege clientul.
+   CUI-ul se ia din fișa lui, normalizat (`RO14399840` și `14399840` sunt același
+   cod, iar API-ul ANAF îl vrea pe al doilea).
+3. `Sincronizează acum`, ca să se vadă imediat dacă ANAF acceptă. Dacă
+   împuternicirea nu a ajuns încă, mesajul apare **pe rândul clientului**, nu pe
+   conexiune.
+
+Prima sincronizare se uită 30 de zile în urmă (`ANAF_LOOKBACK_DAYS`). ANAF nu
+acceptă ferestre mai lungi de 60 de zile, deci istoricul mai vechi nu se poate
+recupera pe drumul ăsta.
+
+Fiecare factură intră ca **trei fișiere pe un singur document** — XML-ul, arhiva
+ANAF cu sigiliul de acceptare și PDF-ul oficial — și se descarcă din fișa
+documentului, secțiunea *Fișierele documentului*. La un control, arhiva este cea
+care contează: ea poartă dovada acceptării și este singura care nu se poate
+reface.
+
+### Nu mai vine nicio factură din e-Factura
+
+1. `Administrare → e-Factura`. Trei lucruri, în ordinea în care se strică:
+   - **autorizarea a expirat.** Ține un an; ecranul o anunță cu 30 de zile
+     înainte. Reînnoirea se face de la calculatorul cu tokenul USB în port, și
+     păstrează toate împuternicirile.
+   - **împuternicirea unui client a expirat sau nu a fost depusă.** Apare pe
+     rândul lui. Se rezolvă la ANAF, de client, nu de noi.
+   - **mediul este `test`.** `ANAF_ENVIRONMENT=test` interoghează o bază complet
+     separată a ANAF, care nu conține nicio factură reală. Se raportează „nicio
+     factură" la nesfârșit, fără nicio eroare.
+2. Dacă totul e în regulă acolo, verifică dacă **workerul rulează** — la fel ca
+   la OneDrive.
+3. În log: `anaf_sync_run` la fiecare tur. `anaf_message_rejected` înseamnă un
+   mesaj care nu conținea o factură (de obicei un raport de erori al ANAF);
+   `anaf_pdf_failed` înseamnă că doar convertorul a căzut — factura și arhiva
+   sunt salvate, iar PDF-ul se reia singur la un tur următor (`anaf_pdf_recovered`
+   când reușește). **Reprocesarea nu ajută aici**: ea cheamă extracția, care
+   citește XML-ul deja stocat, nu convertorul ANAF.
 
 ### Documentele nu mai sosesc din OneDrive sau de pe email
 
@@ -207,3 +250,6 @@ un job întrerupt oricum ar fi fost recuperat.
 - **Nu scrie în OneDrive.** Accesul cerut este de citire; dosarele clienților nu
   se ating.
 - **Nu trimite mesaje.** Nici email, nici WhatsApp. Reminderele sunt Faza 2.
+- **Nu trimite facturi la ANAF.** e-Factura este, deocamdată, doar preluare: a
+  emite un document fiscal în numele unui client este altă răspundere decât a-l
+  descărca pe cel deja emis.

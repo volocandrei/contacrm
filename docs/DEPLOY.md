@@ -245,6 +245,80 @@ Nu tot ce e atașat este document: logo-urile din semnături sunt sărite (marca
 
 ---
 
+## 7. e-Factura — preluarea facturilor din SPV-ul ANAF
+
+De la 1 iulie 2024 factura electronică este obligatorie între firme. Practic asta
+înseamnă că partea covârșitoare a facturilor unui cabinet **nu mai vine pe email
+și nu mai ajunge în niciun dosar**: stă în Spațiul Privat Virtual al fiecărui
+client. Integrarea le aduce singură.
+
+Fiecare factură ajunge ca **trei fișiere**, pe un singur document:
+
+| Fișier | De unde vine | Se poate reface? |
+|---|---|---|
+| **XML-ul** (UBL 2.1) | membru al arhivei ANAF, scos nemodificat | — este originalul fiscal |
+| **Arhiva ZIP** cu sigiliul ANAF | `descarcare`, exact cum o dă ANAF | **nu** — este dovada acceptării |
+| **PDF-ul oficial** | convertorul public al ANAF | da, oricând, din XML |
+
+Toate trei se descarcă din fișa documentului, secțiunea *Fișierele documentului*.
+
+### Cele două condiții care nu se rezolvă din configurare
+
+**1. Autorizarea cere certificatul digital calificat**, prezentat de browser.
+Nu există cont de serviciu și nu există `client_credentials`: ANAF vrea o
+persoană identificată. Pasul se face **de la calculatorul cu tokenul USB în
+port**, o dată pe an — după el, preluarea merge nesupravegheat.
+
+**2. Fiecare client trebuie să depună împuternicirea în SPV** (formularul 150),
+pentru certificatul cabinetului. Fără ea, ANAF **nu întoarce eroare — întoarce
+gol**, ceea ce este mai neplăcut: nimic nu se strică vizibil, pur și simplu nu
+vine nicio factură. De aceea aplicația arată refuzul pe rândul clientului, cu ce
+are de făcut, în loc să îl lase în tăcere.
+
+Costul real al funcționalității este al doilea punct, și este administrativ:
+clienții se strâng unul câte unul.
+
+### Înregistrarea aplicației (o singură dată)
+
+În portalul OAuth al ANAF, cu certificatul în port, se înregistrează o aplicație
+și se declară adresa de redirect. Rezultatul sunt un `client_id` și un
+`client_secret`.
+
+| Variabilă | Valoare |
+|---|---|
+| `ANAF_CLIENT_ID` | id-ul aplicației înregistrate |
+| `ANAF_CLIENT_SECRET` | secretul ei |
+| `ANAF_REDIRECT_URI` | **identic** cu cel înregistrat: `https://<domeniu>/administrare/e-factura` |
+| `ANAF_ENVIRONMENT` | `prod`, sau `test` pentru mediul de test |
+| `DRIVE_TOKEN_KEY` | aceeași cheie ca la OneDrive — vezi mai sus |
+
+`ANAF_ENVIRONMENT` nu este un nivel de log: `test` și `prod` sunt **baze complet
+separate** la ANAF. Un token de test nu vede nimic în producție, iar o instalare
+lăsată pe `test` raportează „nicio factură" la nesfârșit.
+
+### Punerea în funcțiune
+
+Din aplicație: *Administrare → e-Factura* → scrie al cui este certificatul →
+**Autorizează la ANAF** → apoi, pentru fiecare client cu împuternicire depusă,
+**Adaugă împuternicirea**.
+
+De atunci, fiecare bătaie de cron aduce ce e nou. Prima sincronizare a unui
+client se uită `ANAF_LOOKBACK_DAYS` în urmă (implicit 30); ANAF nu acceptă
+ferestre mai lungi de 60 de zile într-o singură cerere, deci un client adăugat
+după un an nu recuperează tot istoricul.
+
+**Autorizarea expiră după un an.** Ecranul o anunță cu 30 de zile înainte.
+Reînnoirea este același drum, cu același token USB; împuternicirile rămân.
+
+### Ce nu face, deliberat
+
+**Nu trimite facturi.** `/upload` și `stareMesaj` există în API-ul ANAF și nu
+sunt implementate: a emite un document fiscal în numele unui client este altă
+răspundere decât a-l descărca pe cel deja emis, și nu se strecoară într-o
+funcție de preluare.
+
+---
+
 ## Alternativa: un singur serviciu cu proces continuu
 
 Railway, Render, Fly.io sau un VPS cu `docker compose` rulează API, worker și
@@ -269,15 +343,13 @@ uv run python -m app.cli add-client      # un client, cu emailul lui de contact
 `seed-dev` **nu** rulează în producție și bine face: parolele lui sunt publice, iar
 datele sunt inventate.
 
-`add-client` există pentru că aplicația nu are, deliberat, ecrane de creare a
-clienților — CRM-ul este de citire, iar drumul de scriere sunt documentele.
-Fără ea, un cabinet nou nu putea adăuga niciun client, deci nu putea lega niciun
-dosar din OneDrive. Comanda deblochează prima folosire; ecranul care ar trebui să
-existe rămâne de construit.
+`add-client` există pentru instalarea de la zero, când încă nu ai niciun cont cu
+care să te autentifici. După primul client, restul se adaugă din interfață:
+*Clienți → Client nou*.
 
 **Emailul de contact contează**: după el ajunge un atașament primit la clientul
 potrivit. Un client fără contact primește documente doar prin dosarul lui din
-OneDrive.
+OneDrive sau prin e-Factura, dacă a depus împuternicirea în SPV.
 
 ---
 
@@ -319,4 +391,7 @@ OCR/AI sunt configurați inconsistent. În plus, de verificat manual:
   `MAX_UPLOAD_SIZE_MB` **în timp ce le citește**, dar corpul cererii este primit
   de server înainte de asta;
 - antetele de securitate vin din aplicație (`SecurityHeadersMiddleware`), deci
-  există pe orice instalare. Cele din `vercel.json` rămân ca al doilea strat.
+  există pe orice instalare. Cele din `vercel.json` rămân ca al doilea strat;
+- dacă folosești e-Factura: `ANAF_ENVIRONMENT=prod`, nu `test`. Cele două sunt
+  baze separate la ANAF, iar o instalare lăsată pe `test` raportează „nicio
+  factură" la nesfârșit, fără nicio eroare.

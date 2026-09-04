@@ -118,6 +118,26 @@ class DocumentHistoryEntryOut(ApiModel):
     detail: str | None
 
 
+class DocumentFileOut(ApiModel):
+    """Un fișier al documentului, altul decât cel principal.
+
+    Există pentru factura electronică, unde „documentul" ajunge la noi ca trei
+    fișiere: XML-ul (originalul fiscal, servit de `/download`), arhiva ZIP cu
+    sigiliul ANAF și PDF-ul tipăribil. Un contabil vede o factură, dar trebuie să
+    poată scoate toate trei — dovada acceptării este cea mai importantă la
+    control, și este exact cea care nu se poate reface.
+    """
+
+    id: uuid.UUID
+    #: `original`, `archive`, `anaf_zip`, `anaf_pdf`. Vezi `models/document.py`.
+    kind: str
+    #: Eticheta lizibilă, ca interfața să nu țină propria hartă.
+    label: str
+    mime_type: str
+    file_size: int
+    created_at: datetime
+
+
 class DocumentDetailOut(DocumentListItemOut):
     mime_type: str
     file_size: int
@@ -137,6 +157,10 @@ class DocumentDetailOut(DocumentListItemOut):
     # `null` când reprocesarea este posibilă; altfel motivul, în cuvintele rutei.
     reprocess_blocked_reason: str | None
     history: list[DocumentHistoryEntryOut]
+    #: Toate fișierele documentului, în ordinea în care au apărut. Lista este
+    #: goală pentru documentele obișnuite: acolo fișierul este unul singur și se
+    #: ia de la `/download`.
+    files: list[DocumentFileOut]
 
 
 # ── Filtre și sortare ────────────────────────────────────────────────────────
@@ -209,6 +233,7 @@ __all__ = [
     "DocumentDetailOut",
     "DocumentExtractionOut",
     "DocumentFieldsOut",
+    "DocumentFileOut",
     "DocumentFilters",
     "DocumentHistoryEntryOut",
     "DocumentListItemOut",

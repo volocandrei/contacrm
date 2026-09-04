@@ -34,13 +34,14 @@ from app.core.logging import get_logger
 from app.domain.document_actions import available_actions, reprocess_check
 from app.domain.permissions import Permission, permissions_for
 from app.models.audit import AuditLog
-from app.models.document import Document
+from app.models.document import VERSION_KINDS, Document, DocumentVersion
 from app.models.user import User
 from app.repositories.document import DocumentRepository, DocumentRow
 from app.schemas.common import ApiModel, PageParams, Paginated
 from app.schemas.document import (
     DocumentDetailOut,
     DocumentExtractionOut,
+    DocumentFileOut,
     DocumentFilters,
     DocumentHistoryEntryOut,
     DocumentListItemOut,
@@ -49,9 +50,12 @@ from app.schemas.document import (
 )
 from app.services.document_archive import DocumentArchiveService
 from app.services.document_delivery import (
+    CHUNK_SIZE,
     SECURITY_HEADERS,
     RangeNotSatisfiableError,
+    companion_filename,
     content_disposition,
+    disposition_for,
     parse_range,
     safe_filename,
     stored_size,
@@ -163,6 +167,32 @@ def _history(session: DbSession, document: Document) -> list[DocumentHistoryEntr
     ]
 
 
+def _files(session: DbSession, document: Document) -> list[DocumentFileOut]:
+    """Fișierele documentului, în ordinea în care au apărut.
+
+    Se întoarce goală când nu există decât originalul: acolo lista ar fi un
+    element care duce unde duce deja butonul de descărcare.
+    """
+    versions = session.scalars(
+        select(DocumentVersion)
+        .where(DocumentVersion.document_id == document.id)
+        .order_by(DocumentVersion.version_number)
+    ).all()
+    if len(versions) < 2:
+        return []
+    return [
+        DocumentFileOut(
+            id=version.id,
+            kind=version.kind,
+            label=VERSION_KINDS.get(version.kind, version.kind),
+            mime_type=version.mime_type,
+            file_size=version.file_size,
+            created_at=version.created_at,
+        )
+        for version in versions
+    ]
+
+
 def _to_detail(session: DbSession, user: User, row: DocumentRow) -> DocumentDetailOut:
     document = row.document
     base = to_list_item(row)
@@ -203,6 +233,7 @@ def _to_detail(session: DbSession, user: User, row: DocumentRow) -> DocumentDeta
             max_attempts=settings.max_processing_attempts,
         )[1],
         history=_history(session, document),
+        files=_files(session, document),
     )
 
 
@@ -704,6 +735,65 @@ def download_document(
     )
     session.flush()
     return response
+
+
+@router.get("/documents/{document_id}/files/{file_id}")
+def download_document_file(
+    session: DbSession,
+    storage: StorageDep,
+    user: DocumentReader,
+    request: Request,
+    document_id: uuid.UUID,
+    file_id: uuid.UUID,
+) -> StreamingResponse:
+    """Un fișier care însoțește documentul — arhiva ANAF sau PDF-ul oficial.
+
+    Contează mai ales pentru arhiva cu sigiliul ANAF: la un control, ea este
+    dovada că factura a fost acceptată, iar spre deosebire de PDF nu se poate
+    reface. Se auditează, ca orice ieșire a unei probe contabile din sistem.
+
+    Fișierul se caută **prin document**, nu direct după id: altfel identificatorul
+    unei versiuni ar deschide fișiere din altă organizație (§72).
+    """
+    row = _fetch(session, user, document_id)
+    version = session.scalars(
+        select(DocumentVersion).where(
+            DocumentVersion.id == file_id, DocumentVersion.document_id == row.document.id
+        )
+    ).first()
+    if version is None:
+        raise NotFoundError("Fișierul documentului", file_id)
+
+    try:
+        chunks = storage.iter_chunks(version.storage_key, CHUNK_SIZE)
+    except ObjectNotFoundError as exc:
+        # Rândul există, fișierul nu. Nu spunem ce cheie lipsește (§73).
+        logger.error("document_file_missing", document_id=str(document_id), kind=version.kind)
+        raise NotFoundError("Fișierul documentului", file_id) from exc
+
+    name = companion_filename(row.document, kind=version.kind, mime_type=version.mime_type)
+    DocumentService(session).audit.record(
+        organization_id=user.organization_id,
+        action="DOCUMENT_FILE_DOWNLOADED",
+        entity_type="Document",
+        entity_id=str(document_id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=name,
+        ip=client_ip(request),
+        user_agent=request.headers.get("User-Agent"),
+    )
+    session.flush()
+
+    return StreamingResponse(
+        chunks,
+        media_type=version.mime_type,
+        headers={
+            **SECURITY_HEADERS,
+            "Content-Disposition": disposition_for(name, inline=False),
+            "Content-Length": str(version.file_size),
+        },
+    )
 
 
 @router.post(

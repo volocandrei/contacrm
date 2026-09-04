@@ -43,6 +43,7 @@ from app.core.db import session_scope
 from app.core.logging import configure_logging, get_logger
 from app.models.document import Document, DocumentProcessingJob
 from app.services import processing_queue as queue
+from app.services.anaf.runner import run_anaf_sync
 from app.services.microsoft.runner import run_drive_sync
 from app.services.processing_runner import run_processing
 from app.services.storage import StorageProvider
@@ -146,13 +147,18 @@ def run_once(storage: StorageProvider, *, limit: int = BATCH) -> int:
 
 
 def sync_sources(storage: StorageProvider) -> int:
-    """Un tur peste sursele externe. Nu aruncă: un cabinet căzut nu oprește workerul."""
-    try:
-        report = run_drive_sync(storage)
-    except Exception:
-        logger.exception("worker_sync_failed")
-        return 0
-    return report.ingested
+    """Un tur peste sursele externe. Nu aruncă: un cabinet căzut nu oprește workerul.
+
+    Cele două surse sunt independente și se încearcă amândouă: ANAF picat nu are
+    de ce să oprească preluarea din OneDrive, și invers.
+    """
+    ingested = 0
+    for name, run in (("drive", run_drive_sync), ("anaf", run_anaf_sync)):
+        try:
+            ingested += run(storage).ingested
+        except Exception:
+            logger.exception("worker_sync_failed", source=name)
+    return ingested
 
 
 def run_forever(storage: StorageProvider, stopper: Stopper) -> None:

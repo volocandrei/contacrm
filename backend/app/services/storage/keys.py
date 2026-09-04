@@ -32,6 +32,15 @@ MAX_SEGMENTS: Final = 12
 
 ORIGINAL = "original"
 ARCHIVE = "archive"
+EFACTURA = "efactura"
+
+#: Fișierele care însoțesc o factură electronică descărcată din SPV, cu extensia
+#: lor fixă. Sunt **generate**, nu compuse: numele nu vine niciodată din arhiva
+#: primită, deci nu poate participa la construirea unei căi.
+#:
+#: `seal` este arhiva ZIP întreagă, cu sigiliul ANAF — dovada acceptării.
+#: `render` este PDF-ul oficial, refăcut oricând din XML.
+EFACTURA_FILES: Final = {"seal": "zip", "render": "pdf"}
 
 
 class InvalidStorageKeyError(ValueError):
@@ -112,6 +121,23 @@ def archive_key(
         f"{_prefix(organization_id, document_id)}/{ARCHIVE}/"
         f"document{suffix}.{extension_for(mime_type)}"
     )
+
+
+def efactura_key(organization_id: uuid.UUID, document_id: uuid.UUID, *, name: str) -> str:
+    """Cheia unui fișier care însoțește factura electronică (§8, §74).
+
+    `name` se alege dintr-o listă închisă, nu se primește liber: extensia și
+    numele sunt amândouă ale noastre, deci nimic din ce vine de la ANAF nu ajunge
+    într-o cale. Originalul rămâne unde este — XML-ul, sub `original/` — iar
+    fișierele astea stau lângă el, nu în locul lui (§16).
+    """
+    extension = EFACTURA_FILES.get(name)
+    if extension is None:
+        raise InvalidStorageKeyError(
+            f"Fișier e-Factura necunoscut: {name!r}. Valori acceptate: "
+            + ", ".join(sorted(EFACTURA_FILES))
+        )
+    return validate_key(f"{_prefix(organization_id, document_id)}/{EFACTURA}/{name}.{extension}")
 
 
 def is_within(key: str, organization_id: uuid.UUID) -> bool:

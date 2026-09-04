@@ -513,6 +513,7 @@ Niciunul nu este cod.
 | Codul `INTERNAL_ERROR` pe un răspuns `405` | Cosmetic | Eticheta e greșită, comportamentul nu: frontendul decide reîncercarea după status, nu după cod |
 | O eroare de teardown, văzută **o singură dată** | Mică | La una dintre rulările complete, ultimul test a raportat `ERROR` (972 trecute, 1 eroare). Nu s-a reprodus în trei rulări complete consecutive și mesajul a fost trunchiat. Ipoteza este o cursă la `DROP DATABASE ... WITH (FORCE)` din teardown-ul fixture-ului de sesiune. Dacă reapare, trebuie rulat cu ieșirea completă salvată — nu tratat ca zgomot |
 | Integrările Microsoft, neverificate cu credențiale reale | — | Vezi punctul 1 de mai sus |
+| Integrarea ANAF (M11), neverificată cu certificat real | — | Autorizarea cere un certificat digital calificat prezentat de browser; nu există cont de serviciu, iar mediul de test al ANAF îl cere la fel. Se verifică o singură dată, manual, la instalare |
 
 ---
 
@@ -523,10 +524,13 @@ Niciunul nu este cod.
 1. ~~**Ecranul de administrare a clienților.**~~ Construit imediat după audit —
    vezi A-10. Rămâne fără interfață un singur lucru din CRM: etichetele, care au
    propria semantică și propriul ecran.
-2. **ANAF SPV — e-Factura.** Prin lege, facturile B2B trec pe acolo, iar XML-ul îl
-   citim deja cu certitudine. Ar însemna că facturile de intrare apar singure.
-   Blocajul nu este tehnic: cere certificat digital în SPV și împuternicire de la
-   fiecare client.
+2. ~~**ANAF SPV — e-Factura.**~~ Construit imediat după ecranul de clienți (M11):
+   facturile de intrare apar singure, cu toate trei fișierele — XML, arhiva cu
+   sigiliul ANAF, PDF-ul oficial. Vezi [ADR-009](adr/ADR-009-efactura-anaf.md).
+   Blocajul rămas nu este tehnic și nu se poate rezolva de aici: cere certificat
+   digital înrolat în SPV și **împuternicire de la fiecare client** (formular
+   150). Drumul întreg către ANAF rămâne **NOT VERIFIED — EXTERNAL CREDENTIAL
+   REQUIRED**.
 3. **Remindere automate.** Ecranul „Documente lipsă" știe deja ce nu a venit de la
    fiecare client. Cu conexiunea Microsoft de acum, trimiterea este la un pas
    (`Mail.Send`). Ar închide bucla: sistemul nu doar așteaptă documentele, ci le

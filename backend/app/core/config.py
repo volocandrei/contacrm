@@ -39,6 +39,10 @@ EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text", "efactura", "local"})
 # nimeni, deci nu are ce să fie „inconsistent" cu `AI_PROVIDER=mock`.
 LOCAL_EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text", "efactura", "local"})
 
+#: Mediile ANAF. `test` și `prod` sunt baze separate la ANAF, nu niveluri de log:
+#: o factură din mediul de test nu există în producție și invers.
+ANAF_ENVIRONMENTS = frozenset({"prod", "test"})
+
 
 class Environment(StrEnum):
     DEVELOPMENT = "development"
@@ -117,6 +121,28 @@ class Settings(BaseSettings):
     # Cate mesaje ia un tur, per dosar de email. Mai mic decat la drive: fiecare
     # mesaj cu atasamente costa inca o cerere pentru metadatele lor.
     mail_sync_batch: int = 25
+
+    # ── ANAF SPV / e-Factura (M11) ───────────────────────────────────────────
+    # Aplicația înregistrată în portalul OAuth al ANAF. Fără `anaf_client_id`,
+    # ecranul spune că integrarea nu este configurată — nu oferă un buton care
+    # eșuează.
+    #
+    # Autorizarea inițială **nu se poate automatiza**: pasul `authorize` cere
+    # certificatul digital calificat prezentat de browser, la propriu. După el,
+    # refresh tokenul ține un an. O intervenție umană pe an, nu una pe zi.
+    anaf_client_id: str = ""
+    anaf_client_secret: str = ""
+    anaf_redirect_uri: str = "http://localhost:5173/administrare/anaf"
+    # `prod` lucrează pe facturile reale, `test` pe mediul de test al ANAF. Cele
+    # două au baze complet separate: un token de test nu vede nimic în producție.
+    anaf_environment: str = "prod"
+    # Câte facturi ia un tur, per client. ANAF limitează cererile pe zi, iar o
+    # împuternicire nouă poate avea un an de facturi în urmă: se iau pe bucăți,
+    # iar turul următor continuă de unde a rămas.
+    anaf_sync_batch: int = 25
+    # Cât în urmă se uită prima sincronizare a unui client. ANAF nu acceptă
+    # ferestre mai lungi de 60 de zile într-o singură cerere.
+    anaf_lookback_days: int = 30
 
     # ── Bază de date ─────────────────────────────────────────────────────────
     database_url: str = (
@@ -199,6 +225,16 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"OCR_PROVIDER necunoscut sau neimplementat: {value!r}. Valori acceptate: "
                 + ", ".join(sorted(EXTRACTION_PROVIDERS))
+            )
+        return value
+
+    @field_validator("anaf_environment")
+    @classmethod
+    def _known_anaf_environment(cls, value: str) -> str:
+        if value not in ANAF_ENVIRONMENTS:
+            raise ValueError(
+                f"ANAF_ENVIRONMENT necunoscut: {value!r}. Valori acceptate: "
+                + ", ".join(sorted(ANAF_ENVIRONMENTS))
             )
         return value
 

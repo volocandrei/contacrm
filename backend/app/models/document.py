@@ -22,7 +22,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Final
 
 from sqlalchemy import (
     CheckConstraint,
@@ -54,6 +54,35 @@ from app.models.base import (
     enum_check,
     uuid_pk,
 )
+
+#: Felurile de fișier pe care le poate avea un document.
+#:
+#: `original` este fișierul primit, care nu se transformă niciodată (§16);
+#: `archive` este copia standardizată, creată la arhivare.
+#:
+#: Celelalte două există pentru factura electronică descărcată din SPV, unde
+#: „documentul" ajunge la noi ca **trei** fișiere: XML-ul (originalul fiscal),
+#: arhiva ZIP cu sigiliul ANAF — dovada că factura a fost acceptată — și PDF-ul
+#: în forma tipăribilă oficială. Un contabil vede o singură factură, nu trei
+#: documente, deci cele trei fișiere stau pe același document.
+VERSION_ORIGINAL: Final = "original"
+VERSION_ARCHIVE: Final = "archive"
+VERSION_ANAF_ZIP: Final = "anaf_zip"
+VERSION_ANAF_PDF: Final = "anaf_pdf"
+
+#: Eticheta lizibilă a fiecărui fel, pentru lista de fișiere din interfață.
+VERSION_KINDS: Final[dict[str, str]] = {
+    VERSION_ORIGINAL: "Fișierul primit",
+    VERSION_ARCHIVE: "Copia din arhivă",
+    VERSION_ANAF_ZIP: "Arhiva ANAF (cu sigiliul de acceptare)",
+    VERSION_ANAF_PDF: "PDF oficial ANAF",
+}
+
+#: Tipul de conținut al fiecărui fel care are unul fix.
+VERSION_MIME: Final[dict[str, str]] = {
+    VERSION_ANAF_ZIP: "application/zip",
+    VERSION_ANAF_PDF: "application/pdf",
+}
 
 
 class DocumentType(Base, OrganizationMixin, TimestampMixin):
@@ -329,8 +358,8 @@ class DocumentVersion(Base, TimestampMixin):
         ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
     )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    # `original` pentru fișierul primit, `archive` pentru cel standardizat.
-    kind: Mapped[str] = mapped_column(String(16), default="original", nullable=False)
+    #: Ce reprezintă fișierul. Vezi `VERSION_KINDS` de mai sus.
+    kind: Mapped[str] = mapped_column(String(16), default=VERSION_ORIGINAL, nullable=False)
     storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
     sha256_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)

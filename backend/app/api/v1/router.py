@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    anaf,
     audit,
     auth,
     clients,
@@ -32,6 +33,7 @@ api_router.include_router(clients.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(documents.router)
 api_router.include_router(integrations.router)
+api_router.include_router(anaf.router)
 api_router.include_router(periods.router)
 api_router.include_router(reports.router)
 api_router.include_router(settings.router)

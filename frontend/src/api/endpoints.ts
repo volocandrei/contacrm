@@ -3,6 +3,9 @@ import { api } from "@/api/client";
 import type { Paginated, QueryParams } from "@/api/types";
 import type {
   AccountingPeriod,
+  AnafMandate,
+  AnafStatus,
+  AnafSyncResult,
   AuditLogEntry,
   ChecklistItem,
   Client,
@@ -145,6 +148,26 @@ export const administration = {
   auditLogs: (params: QueryParams) => api.get<Paginated<AuditLogEntry>>("/audit-logs", params),
   users: () => api.get<UserSummary[]>("/users"),
   settings: () => api.get<SettingEntry[]>("/settings"),
+};
+
+/**
+ * Integrarea e-Factura / SPV ANAF (M11). Tokenul nu circulă niciodată pe aici (§73).
+ *
+ * `authorize` întoarce o adresă care **cere certificatul digital** în browser.
+ * Pasul acela nu se poate face de pe server și nu se poate automatiza.
+ */
+export const anaf = {
+  status: () => api.get<AnafStatus>("/integrations/anaf"),
+  authorize: () => api.post<{ authorizeUrl: string }>("/integrations/anaf/authorize"),
+  connect: (code: string, state: string, certificateHolder?: string) =>
+    api.post<AnafStatus>("/integrations/anaf/connect", { code, state, certificateHolder }),
+  disconnect: () => api.delete<void>("/integrations/anaf"),
+  addMandate: (clientId: string) =>
+    api.post<AnafMandate>("/integrations/anaf/mandates", { clientId }),
+  updateMandate: (id: string, isActive: boolean) =>
+    api.patch<AnafMandate>(`/integrations/anaf/mandates/${id}`, { isActive }),
+  removeMandate: (id: string) => api.delete<void>(`/integrations/anaf/mandates/${id}`),
+  sync: () => api.post<AnafSyncResult>("/integrations/anaf/sync"),
 };
 
 /** Integrarea OneDrive (M9). Tokenul nu circulă niciodată pe aici (§73). */

@@ -19,8 +19,11 @@ review uman → standardizare → arhivare → dashboard/audit.
 | Backend M2: FastAPI, settings, logging structurat, erori, health, Alembic | ✅ `backend/` |
 | Backend M3: auth JWT + refresh rotativ, Argon2id, RBAC, audit log | ✅ `backend/app/services/auth.py` |
 | Backend M4: CRM — clienți, contacte, note, etichete, sarcini | ✅ `backend/app/api/v1/clients.py` |
+| Backend M5–M6: documente, stocare, procesare, verificare, arhivare, perioade, audit | ✅ `backend/app/services/` |
+| Backend M7–M8: rapoarte, setări reale, extracție din PDF și e-Factura, CI, teste E2E | ✅ |
+| Backend M9–M10: preluare automată din OneDrive/SharePoint și din email | ✅ `backend/app/services/microsoft/` |
+| Backend M11: e-Factura — preluarea din SPV-ul ANAF, cu toate trei fișierele | ✅ `backend/app/services/anaf/` |
 | Infrastructură dev: PostgreSQL + API + worker prin Docker | ✅ `docker-compose.yml` |
-| Documente, procesare (M5–M6) | ⏳ urmează |
 
 ## Rulare
 
@@ -116,7 +119,7 @@ CONTACRM/
 │   ├── RUNBOOK.md          # operare, copii de siguranță, restaurare, incidente
 │   ├── STATUS.md           # starea proiectului, pornire pe o mașină nouă
 │   ├── FINAL_PRODUCTION_AUDIT.md
-│   └── adr/                # ADR-001 … ADR-008
+│   └── adr/                # ADR-001 … ADR-009
 ├── docker-compose.yml      # postgres (+ migrate, backend, worker pe profilul `api`)
 ├── .env.example            # toate variabilele de configurare (fără valori reale)
 └── .claude/launch.json

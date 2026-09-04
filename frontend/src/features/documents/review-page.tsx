@@ -10,6 +10,7 @@ import {
   Inbox,
   LoaderCircle,
   Lock,
+  Paperclip,
   RefreshCw,
   Save,
   ScanLine,
@@ -30,6 +31,7 @@ import {
   useReprocessDocument,
   useUpdateDocumentFields,
 } from "@/api/hooks";
+import { ApiError } from "@/api/types";
 import { ErrorState, LoadingState, Panel } from "@/components/page";
 import { ConfidenceBadge, DocumentStatusBadge } from "@/components/status-badge";
 import { DocumentPreview } from "@/features/documents/document-preview";
@@ -306,6 +308,8 @@ function ReviewScreen({
         </div>
       )}
 
+      {document.files.length > 0 && <FilesBlock document={document} />}
+
       {feedback && (
         <div
           role="status"
@@ -577,6 +581,60 @@ function ReviewScreen({
           </Panel>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Fișierele documentului, când sunt mai multe decât unul.
+ *
+ * Cazul real este factura electronică: ajunge ca **trei** fișiere — XML-ul
+ * (originalul fiscal, cel de la butonul „Descarcă"), arhiva ANAF cu sigiliul de
+ * acceptare și PDF-ul tipăribil. La un control, arhiva este dovada că factura a
+ * fost acceptată, iar spre deosebire de PDF nu se poate reface. De aceea sunt
+ * toate trei scoase de aici, nu doar cea pe care o citește aplicația.
+ */
+function FilesBlock({ document }: { document: DocumentDetail }) {
+  const { downloadFile, isPending } = useDownloadDocument();
+  const [problem, setProblem] = useState<string | null>(null);
+
+  return (
+    <div className="mb-4 rounded-lg border border-gray-200 px-4 py-3 text-sm dark:border-gray-800">
+      <p className="mb-2 flex items-center gap-1.5 font-medium text-gray-900 dark:text-gray-100">
+        <Paperclip className="h-4 w-4" aria-hidden="true" />
+        Fișierele documentului
+      </p>
+      {problem && (
+        <p role="alert" className="mb-2 text-xs text-red-600 dark:text-red-400">
+          {problem}
+        </p>
+      )}
+      <ul className="space-y-1">
+        {document.files.map((file) => (
+          <li key={file.id} className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => {
+                setProblem(null);
+                void downloadFile(document, file).catch((caught: unknown) =>
+                  setProblem(
+                    caught instanceof ApiError
+                      ? caught.message
+                      : "Fișierul nu a putut fi descărcat.",
+                  ),
+                );
+              }}
+              className="font-medium text-blue-600 hover:underline disabled:opacity-50 dark:text-blue-400"
+            >
+              {file.label}
+            </button>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {formatFileSize(file.fileSize)}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

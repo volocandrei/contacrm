@@ -26,6 +26,9 @@ import {
 } from "@/api/mock/seed";
 import { buildArchivePath, buildDocumentFilename, type FilenameInput } from "@/lib/filename";
 import type {
+  AnafMandate,
+  AnafStatus,
+  AnafSyncResult,
   AuditLogEntry,
   Client,
   ClientStatus,
@@ -771,6 +774,9 @@ export function uploadDocument(input: UploadInput): StoredDocument {
       durationMs: null,
     },
     validationIssues: [],
+    // Un fișier încărcat de om este unul singur. Lista are conținut doar pentru
+    // factura electronică din SPV, care vine cu trei.
+    files: [],
     history: [
       {
         id: `${id}-h1`,
@@ -1524,6 +1530,208 @@ export function syncDrive(): DriveSyncResult {
     failed: 0,
     hasMore: false,
     folders: [...active.map((f) => f.path), ...activeMail.map((f) => f.displayName)],
+  };
+}
+
+/* ─── e-Factura / SPV ANAF (M11) ──────────────────────────────────────────── */
+
+type MockAnafState = {
+  connected: boolean;
+  certificateHolder: string | null;
+  connectedAt: string | null;
+  expiresAt: string | null;
+  lastSyncAt: string | null;
+  mandates: AnafMandate[];
+};
+
+const anafState: MockAnafState = {
+  connected: false,
+  certificateHolder: null,
+  connectedAt: null,
+  expiresAt: null,
+  lastSyncAt: null,
+  mandates: [],
+};
+
+let anafMandateCounter = 0;
+
+/** Cât ține autorizarea ANAF: un an. Reînnoirea cere din nou certificatul. */
+const ANAF_AUTHORISATION_DAYS = 365;
+
+export function getAnafStatus(): AnafStatus {
+  requirePermission("admin:settings");
+  return {
+    // În demonstrație integrarea este întotdeauna „configurată": nu există server
+    // pe care să lipsească ceva. Ecranul real citește valorile adevărate.
+    configured: true,
+    encryptionReady: true,
+    connected: anafState.connected,
+    environment: "test",
+    certificateHolder: anafState.certificateHolder,
+    connectedAt: anafState.connectedAt,
+    expiresAt: anafState.expiresAt,
+    lastSyncAt: anafState.lastSyncAt,
+    lastError: null,
+    mandates: anafState.mandates,
+  };
+}
+
+export function anafAuthorizeUrl(): { authorizeUrl: string } {
+  requirePermission("admin:settings");
+  // Fără ANAF, „autorizarea" este o întoarcere imediată în aplicație cu un cod
+  // inventat — exact drumul pe care îl face și cea reală. Ce nu se poate simula
+  // este pasul de dinaintea ei: certificatul digital cerut de browser.
+  return { authorizeUrl: "/administrare/e-factura?code=cod-simulat&state=stare-simulata" };
+}
+
+export function connectAnaf(certificateHolder?: string | null): AnafStatus {
+  requirePermission("admin:settings");
+  anafState.connected = true;
+  anafState.certificateHolder = cleanText(certificateHolder) ?? "Certificat cabinet (simulat)";
+  anafState.connectedAt = MOCK_NOW;
+  anafState.expiresAt = new Date(
+    new Date(MOCK_NOW).getTime() + ANAF_AUTHORISATION_DAYS * 86_400_000,
+  ).toISOString();
+  recordAudit("ANAF_CONNECTED", "AnafConnection", "anaf-demo", anafState.certificateHolder);
+  return getAnafStatus();
+}
+
+export function disconnectAnaf(): void {
+  requirePermission("admin:settings");
+  recordAudit("ANAF_DISCONNECTED", "AnafConnection", "anaf-demo", anafState.certificateHolder);
+  anafState.connected = false;
+  anafState.certificateHolder = null;
+  anafState.connectedAt = null;
+  anafState.expiresAt = null;
+  anafState.lastSyncAt = null;
+  // Împuternicirile sunt afirmații despre un certificat care nu mai e conectat.
+  anafState.mandates = [];
+}
+
+function requireAnafConnection(): void {
+  if (!anafState.connected) {
+    throw new ApiError("CONFLICT", "SPV-ul ANAF nu este conectat.", 409);
+  }
+}
+
+export function addAnafMandate(clientId: string): AnafMandate {
+  requirePermission("admin:settings");
+  requireAnafConnection();
+
+  const client = state.clients.find((row) => row.id === clientId) ?? notFound("Client", clientId);
+  const taxId = normalizeTaxId(client.taxId);
+  if (!taxId) {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      `${client.name} nu are CUI. Completează-l în fișa clientului sau trimite-l aici.`,
+      422,
+      { taxId: ["CUI lipsă."] },
+    );
+  }
+  // Două rânduri pe același CUI ar aduce fiecare factură de două ori și ar dubla
+  // cererile către ANAF, care le numără.
+  if (anafState.mandates.some((row) => row.taxId === taxId || row.clientId === client.id)) {
+    throw new ApiError(
+      "CONFLICT",
+      "Există deja o împuternicire pentru clientul sau CUI-ul acesta.",
+      409,
+    );
+  }
+
+  anafMandateCounter += 1;
+  const mandate: AnafMandate = {
+    id: `anaf-mandate-${anafMandateCounter}`,
+    clientId: client.id,
+    clientName: client.name,
+    taxId,
+    syncedThrough: null,
+    lastSyncedAt: null,
+    lastError: null,
+    invoicesIngested: 0,
+    isActive: true,
+  };
+  anafState.mandates.push(mandate);
+  recordAudit("ANAF_MANDATE_ADDED", "AnafMandate", mandate.id, `${client.name} · CUI ${taxId}`);
+  return mandate;
+}
+
+export function updateAnafMandate(id: string, isActive: boolean): AnafMandate {
+  requirePermission("admin:settings");
+  const mandate = anafState.mandates.find((row) => row.id === id) ?? notFound("AnafMandate", id);
+  mandate.isActive = isActive;
+  if (isActive) {
+    // Reactivată, nu mai arată eroarea de acum două luni.
+    mandate.lastError = null;
+  }
+  recordAudit("ANAF_MANDATE_UPDATED", "AnafMandate", mandate.id, mandate.clientName);
+  return mandate;
+}
+
+export function removeAnafMandate(id: string): void {
+  requirePermission("admin:settings");
+  const mandate = anafState.mandates.find((row) => row.id === id) ?? notFound("AnafMandate", id);
+  anafState.mandates = anafState.mandates.filter((row) => row.id !== id);
+  recordAudit("ANAF_MANDATE_REMOVED", "AnafMandate", id, `CUI ${mandate.taxId}`);
+}
+
+export function syncAnaf(): AnafSyncResult {
+  requirePermission("admin:settings");
+  requireAnafConnection();
+
+  const active = anafState.mandates.filter((mandate) => mandate.isActive);
+  let ingested = 0;
+
+  for (const mandate of active) {
+    // O factură nouă per client, la fiecare tur: destul cât demonstrația să arate
+    // facturile apărând singure, fără să umple setul sintetic.
+    const document = uploadDocument({
+      filename: `${3000 + anafMandateCounter + ingested}.xml`,
+      size: 24_000,
+      mimeType: "application/xml",
+    });
+    document.source = "EFACTURA";
+    document.clientId = mandate.clientId;
+    document.clientName = mandate.clientName;
+    // Cele trei fișiere ale unei facturi electronice, pe un singur document.
+    document.files = [
+      {
+        id: `${document.id}-original`,
+        kind: "original",
+        label: "Fișierul primit",
+        mimeType: "application/xml",
+        fileSize: 24_000,
+        createdAt: MOCK_NOW,
+      },
+      {
+        id: `${document.id}-anaf-zip`,
+        kind: "anaf_zip",
+        label: "Arhiva ANAF (cu sigiliul de acceptare)",
+        mimeType: "application/zip",
+        fileSize: 31_000,
+        createdAt: MOCK_NOW,
+      },
+      {
+        id: `${document.id}-anaf-pdf`,
+        kind: "anaf_pdf",
+        label: "PDF oficial ANAF",
+        mimeType: "application/pdf",
+        fileSize: 84_000,
+        createdAt: MOCK_NOW,
+      },
+    ];
+
+    mandate.invoicesIngested += 1;
+    mandate.lastSyncedAt = MOCK_NOW;
+    mandate.syncedThrough = MOCK_NOW;
+    ingested += 1;
+  }
+
+  anafState.lastSyncAt = MOCK_NOW;
+  return {
+    ingested,
+    failed: 0,
+    hasMore: false,
+    mandates: active.map((mandate) => mandate.taxId),
   };
 }
 

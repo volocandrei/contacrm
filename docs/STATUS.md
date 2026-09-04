@@ -152,7 +152,7 @@ Alte lucruri gata: temă light/dark persistată, filtre în URL (o listă filtra
 poate trimite unui coleg), sidebar colapsabil cu contoare live, accesibilitate
 consecventă (`scope`, `role="alert"`, `sr-only`, `aria-label`).
 
-### Backend — M2–M10 complet ✅
+### Backend — M2–M11 complet ✅
 
 **M2 — schelet**
 - FastAPI cu fabrică `create_app()`, fără efecte secundare la import
@@ -477,6 +477,7 @@ fiecare ecran și cade dacă vreunul cere ceva ce serverul nu are.
 | ~~`POST /documents/bulk`, `GET /audit-logs`~~ | ✅ M6 |
 | ~~`GET /reports/summary`, `GET /settings`, `POST /documents/upload`~~ | ✅ M7 |
 | ~~`/integrations/onedrive/*` — 13 rute~~ | ✅ M9, M10 |
+| ~~`/integrations/anaf/*` — 8 rute, `GET /documents/:id/files/:fileId`~~ | ✅ M11 |
 | ~~`GET /messages`, `GET /clients/:id/messages`~~ | scoase din interfață la auditul de producție; cronologia reală se poate construi pe `document_intakes` |
 
 Contractul fiecăreia este deja definit: `frontend/src/types/domain.ts` spune exact
@@ -500,7 +501,8 @@ ci portat.**
 | **M8** | CI + teste E2E | ✅ |
 | **M9** | **Preluare automată din OneDrive/SharePoint, un dosar per client** | ✅ |
 | **M10** | **Preluare automată din email; expeditorul identifică clientul** | ✅ |
-| Faza 2 | WhatsApp, sincronizare ANAF (descărcare/trimitere e-Factura), OCR real pentru scanuri, remindere, export ZIP | |
+| **M11** | **e-Factura: preluarea din SPV-ul ANAF, cu toate trei fișierele** | ✅ (descărcarea; trimiterea rămâne în Faza 2) |
+| Faza 2 | WhatsApp, trimiterea e-Facturii către ANAF, OCR real pentru scanuri, remindere, export ZIP | |
 | Faza 3 | Integrare software contabil, rapoarte avansate, detecție anomalii | |
 
 **MVP = M1–M8.**
@@ -770,6 +772,80 @@ aceeași conexiune. Tabela este acum `microsoft_connections`, iar pachetul
 **Ce rămâne neverificat, la fel ca la M9:** clientul HTTP care chiar vorbește cu
 Graph. Restul — potrivirea expeditorului, idempotența, filtrarea semnăturilor,
 erorile, granița organizației — se exercită cu un client fals, prin protocol.
+
+**M11 — e-Factura: preluarea din SPV-ul ANAF**
+
+A treia sursă, și cea care aduce astăzi cele mai multe documente: de la 1 iulie
+2024 factura electronică este obligatorie între firme, deci partea covârșitoare a
+facturilor unui cabinet nu mai vine nici pe email, nici într-un dosar — stă în
+SPV-ul fiecărui client.
+
+**Trei fișiere, un singur document.** ANAF dă o arhivă ZIP care conține factura
+(XML, UBL 2.1) și sigiliul lui electronic; din XML se obține, de la convertorul
+public al ANAF, PDF-ul în forma tipăribilă oficială. Toate trei se păstrează, pe
+același document: un contabil vede *o factură*, iar dacă ar fi trei documente,
+detectarea duplicatelor, luna contabilă și arhivarea ar trebui fiecare să știe
+care dintre ele „este" factura. `document_versions.kind` avea deja forma
+potrivită — a primit două valori noi, `anaf_zip` și `anaf_pdf`.
+
+**Care dintre ele contează cel mai mult.** Arhiva. Ea poartă sigiliul, adică
+dovada că factura a fost acceptată, și este singura care **nu se poate reface**:
+XML-ul este membru al ei, iar PDF-ul se regenerează oricând. De aceea se
+stochează octet cu octet, nerecompusă — un ZIP rescris de noi ar avea alt hash și
+ar înceta să mai fie o dovadă — și de aceea se scrie **înaintea** PDF-ului. Când
+convertorul ANAF cade, factura și dovada sunt deja salvate, iar lipsa PDF-ului se
+scrie pe document, unde o vede un om, nu doar în log.
+
+Nota aceea promitea, în prima variantă, că PDF-ul „se reface prin reprocesare".
+Nu era adevărat: reprocesarea cheamă extracția, care citește XML-ul deja stocat,
+nu convertorul ANAF. O oră proastă a ANAF ar fi lăsat facturile din ea fără forma
+tipăribilă **pentru totdeauna**, cu o promisiune scrisă pe un document contabil.
+Turul de sincronizare reia acum conversiile lipsă (cel mult cinci pe tur) și
+șterge nota odată cu motivul ei — iar reluarea nu are nevoie de certificat,
+pentru că convertorul este public: merge și când autorizarea a expirat, adică
+exact când nimic altceva nu merge.
+
+**Aici clientul nu se ghicește.** Este singura sursă din tot sistemul cu această
+proprietate: interogarea se face pe CUI-ul clientului, deci apartenența vine din
+cerere, nu dintr-o citire. La drive o dă dosarul, la email expeditorul — amândouă
+pot greși; aici nu are ce.
+
+**Ce ține locul tokenului delta.** ANAF nu dă tokenuri de continuare, ci ferestre
+de timp în milisecunde. `anaf_mandates.synced_through` ține minte până unde am
+citit și avansează **abia după** ce facturile din fereastră au intrat — la fel ca
+tokenul delta, din același motiv: închisă pe o eroare, fereastra ar pierde tăcut
+tot ce nu s-a apucat să citească. Fereastra nouă se suprapune cinci minute peste
+cea închisă, pentru că un mesaj apărut chiar în secunda închiderii ar cădea
+altfel exact între două ferestre; repetarea nu costă nimic, `id_descarcare`
+oprește orice al doilea document.
+
+**Adevăratul cost al funcționalității nu este tehnic.** Certificatul digital
+singur nu deschide nimic: pentru fiecare client, ANAF cere o împuternicire
+depusă în SPV (formularul 150). Fără ea, interogarea **nu întoarce eroare —
+întoarce gol**, care este forma cea mai neplăcută de refuz, pentru că nu se
+strică nimic vizibil. De aceea `anaf_mandates` există ca tabel separat și de
+aceea refuzul apare pe rândul clientului, cu ce are de făcut, nu într-un log.
+
+Trei ciudățenii ale API-ului ANAF, toate tratate explicit pentru că fiecare
+produce un defect tăcut: „nu există mesaje" vine ca **eroare** în corpul
+răspunsului, nu ca listă goală; cererile fără `User-Agent` primesc 403, ceea ce
+seamănă cu o problemă de drepturi; iar convertorul XML→PDF întoarce erorile de
+validare tot cu 200, deci un „PDF" care începe cu `{` ar ajunge în arhivă și s-ar
+descoperi abia când l-ar deschide cineva.
+
+**Nu trimite facturi**, deliberat. `/upload` și `stareMesaj` există în API și nu
+sunt implementate: a emite un document fiscal în numele unui client este altă
+răspundere decât a-l descărca pe cel deja emis, și nu se strecoară într-o funcție
+de preluare.
+
+**Ce rămâne neverificat: drumul întreg către ANAF.** Autorizarea cere un
+certificat digital calificat prezentat fizic de browser — nu există cont de
+serviciu, iar mediul de test al ANAF îl cere la fel. **NOT VERIFIED — EXTERNAL
+CREDENTIAL REQUIRED.** Ce *se* verifică: despachetarea arhivei, idempotența,
+atribuirea, fereastra de timp, împuternicirea lipsă, convertorul căzut, granița
+organizației — toate prin protocol, cu un client fals; plus clientul HTTP însuși,
+cu un transport fals, care acoperă construcția URL-urilor și cele trei ciudățenii
+de mai sus.
 
 **M8 — CI**
 

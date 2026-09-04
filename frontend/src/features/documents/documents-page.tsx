@@ -41,6 +41,7 @@ const SOURCE_LABEL: Record<DocumentSource, string> = {
   UPLOAD: "Încărcare",
   API: "API",
   ONEDRIVE: "OneDrive",
+  EFACTURA: "e-Factura",
 };
 
 const CONFIDENCE_OPTIONS = [

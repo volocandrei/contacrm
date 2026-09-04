@@ -57,6 +57,29 @@ class DocumentSource(StrEnum):
     # Dosarul din OneDrive/SharePoint al unui client, citit automat. Sursa nu spune
     # cine a pus fișierul acolo — spune de unde l-am luat noi.
     ONEDRIVE = "ONEDRIVE"
+    # Spațiul Privat Virtual al ANAF: factura electronică descărcată direct de la
+    # sursă. Este singura sursă în care clientul **nu se ghicește** — interogarea
+    # se face pe CUI-ul lui, deci apartenența este dată de cerere, nu dedusă din
+    # document.
+    EFACTURA = "EFACTURA"
+
+
+class EFacturaMessageKind(StrEnum):
+    """Tipurile de mesaj din lista SPV, așa cum le denumește ANAF.
+
+    Se păstrează exact cum vin, pentru că `tip` este singurul lucru care spune
+    dacă factura a fost **primită** de client sau **emisă** de el. Aceeași factură
+    apare la ambele părți, iar direcția schimbă complet înregistrarea contabilă.
+
+    `ERORI FACTURA` și `MESAJ` privesc facturile trimise de noi; faza de preluare
+    nu trimite nimic, deci le recunoaște ca să le poată ignora explicit — nu
+    tăcut, printr-un `else`.
+    """
+
+    RECEIVED = "FACTURA PRIMITA"
+    SENT = "FACTURA TRIMISA"
+    ERRORS = "ERORI FACTURA"
+    MESSAGE = "MESAJ"
 
 
 class ProcessingJobStatus(StrEnum):

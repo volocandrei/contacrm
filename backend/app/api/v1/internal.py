@@ -36,6 +36,7 @@ from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
 from app.schemas.common import ApiModel
+from app.services.anaf.runner import run_anaf_sync
 from app.services.microsoft.runner import run_drive_sync
 from app.services.processing_recovery import recover
 from app.worker import run_once
@@ -58,7 +59,8 @@ class QueueRunOut(ApiModel):
 
     requeued: int
     executed: int
-    #: Documente aduse din OneDrive în bătaia asta.
+    #: Documente aduse din surse externe — OneDrive, email, e-Factura — în
+    #: bătaia asta. Un singur număr: planificatorul citește o linie, nu un raport.
     ingested: int
 
 
@@ -95,15 +97,19 @@ def run_queue(
         stale_after=timedelta(minutes=settings.processing_stale_after_minutes),
         execute=False,
     )
-    # Întâi aducem ce e nou în dosarele urmărite, apoi procesăm coada: altfel un
+    # Întâi aducem ce e nou din sursele externe, apoi procesăm coada: altfel un
     # fișier apărut acum ar aștepta degeaba bătaia următoare.
     drive = run_drive_sync(storage, limit=DRIVE_BATCH)
+    anaf = run_anaf_sync(storage, limit=DRIVE_BATCH)
     executed = run_once(storage, limit=CRON_BATCH)
 
+    ingested = drive.ingested + anaf.ingested
     logger.info(
         "cron_queue_run",
         requeued=report.requeued,
         executed=executed,
-        ingested=drive.ingested,
+        ingested=ingested,
+        from_drive=drive.ingested,
+        from_anaf=anaf.ingested,
     )
-    return QueueRunOut(requeued=report.requeued, executed=executed, ingested=drive.ingested)
+    return QueueRunOut(requeued=report.requeued, executed=executed, ingested=ingested)

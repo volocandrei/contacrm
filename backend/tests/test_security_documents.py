@@ -152,6 +152,10 @@ def upload(api: TestClient, *, content: bytes = PDF, name: str = "factura.pdf") 
 # ── Ce rute există ───────────────────────────────────────────────────────────
 
 
+#: Un fișier care nu există, ca formă validă. Vezi `document_routes`.
+UNKNOWN_FILE_ID = uuid.uuid4()
+
+
 def document_routes(document_id: str) -> list[tuple[str, str, dict[str, object] | None]]:
     """Fiecare rută care atinge un document anume.
 
@@ -172,6 +176,11 @@ def document_routes(document_id: str) -> list[tuple[str, str, dict[str, object] 
         ("POST", f"/api/v1/documents/{document_id}/reprocess", {}),
         ("GET", f"/api/v1/documents/{document_id}/preview", None),
         ("GET", f"/api/v1/documents/{document_id}/download", None),
+        # Fișierele care însoțesc documentul — arhiva ANAF, PDF-ul oficial.
+        # Identificatorul fișierului este unul inexistent, dar valid ca formă:
+        # granița pe care o verificăm aici este a **documentului**, iar ea
+        # trebuie să se închidă înainte ca fișierul să conteze.
+        ("GET", f"/api/v1/documents/{document_id}/files/{UNKNOWN_FILE_ID}", None),
     ]
 
 
@@ -224,7 +233,8 @@ def test_the_list_covers_every_route(api_storage: TestClient) -> None:
 
     # Formele din sweep, cu parametrul de cale înapoi în formă simbolică.
     covered = {
-        (m, p.replace("PLACEHOLDER", "{document_id}")) for m, p, _ in document_routes("PLACEHOLDER")
+        (m, p.replace("PLACEHOLDER", "{document_id}").replace(str(UNKNOWN_FILE_ID), "{file_id}"))
+        for m, p, _ in document_routes("PLACEHOLDER")
     }
     covered |= {(method, path.split("?")[0]) for method, path in COLLECTION_ROUTES}
     covered |= {

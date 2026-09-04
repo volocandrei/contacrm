@@ -11,6 +11,7 @@ import {
   clients,
   dashboard,
   documents,
+  anaf,
   drive,
   periods,
   reports,
@@ -41,6 +42,7 @@ export const queryKeys = {
   users: ["users"] as const,
   settings: ["settings"] as const,
   driveStatus: ["drive", "status"] as const,
+  anafStatus: ["anaf", "status"] as const,
   driveBrowse: (parentId?: string) => ["drive", "browse", parentId ?? null] as const,
   driveMailFolders: ["drive", "mail-folders"] as const,
 };
@@ -257,6 +259,55 @@ export function useUntrackMailFolder() {
 
 export function useSyncDrive() {
   return useDriveMutation(() => drive.sync());
+}
+
+/* ─── e-Factura / SPV ANAF (M11) ──────────────────────────────────────────── */
+
+export function useAnafStatus() {
+  return useQuery({ queryKey: queryKeys.anafStatus, queryFn: anaf.status });
+}
+
+/** Orice atingere a integrării schimbă starea afișată. */
+function useAnafMutation<TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["anaf"] });
+      // Facturile aduse din SPV apar în liste și în contoare.
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+export function useConnectAnaf() {
+  return useAnafMutation(
+    ({ code, state, holder }: { code: string; state: string; holder?: string }) =>
+      anaf.connect(code, state, holder),
+  );
+}
+
+export function useDisconnectAnaf() {
+  return useAnafMutation(() => anaf.disconnect());
+}
+
+export function useAddAnafMandate() {
+  return useAnafMutation((clientId: string) => anaf.addMandate(clientId));
+}
+
+export function useUpdateAnafMandate() {
+  return useAnafMutation(({ id, isActive }: { id: string; isActive: boolean }) =>
+    anaf.updateMandate(id, isActive),
+  );
+}
+
+export function useRemoveAnafMandate() {
+  return useAnafMutation((id: string) => anaf.removeMandate(id));
+}
+
+export function useSyncAnaf() {
+  return useAnafMutation(() => anaf.sync());
 }
 
 /* ─── Mutații ──────────────────────────────────────────────────────────────── */

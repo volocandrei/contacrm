@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { apiMode, fetchFile } from "@/api/client";
 import { ApiError } from "@/api/types";
 import { buildDocumentFilename } from "@/lib/filename";
-import type { DocumentDetail } from "@/types/domain";
+import type { DocumentDetail, DocumentFile } from "@/types/domain";
 
 /**
  * Descărcarea unui document.
@@ -45,7 +45,42 @@ export function useDownloadDocument() {
     }
   }, []);
 
-  return { download, isPending };
+  /**
+   * Un fișier care însoțește documentul — arhiva ANAF, PDF-ul oficial.
+   *
+   * Contează cel mai mult pentru arhiva cu sigiliul ANAF: la un control, ea este
+   * dovada că factura a fost acceptată, iar spre deosebire de PDF nu se poate
+   * reface din nimic. Numele îl propune tot serverul, ca la document.
+   */
+  const downloadFile = useCallback(async (document: DocumentDetail, file: DocumentFile) => {
+    if (apiMode() === "mock") {
+      throw new ApiError(
+        "NOT_FOUND",
+        "În modul simulat nu există fișiere reale de descărcat.",
+        404,
+      );
+    }
+
+    setPending(true);
+    try {
+      const fetched = await fetchFile(`/documents/${document.id}/files/${file.id}`);
+      const url = URL.createObjectURL(fetched.blob);
+      try {
+        const anchor = window.document.createElement("a");
+        anchor.href = url;
+        anchor.download = fetched.filename ?? `${document.id}-${file.kind}`;
+        window.document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+    } finally {
+      setPending(false);
+    }
+  }, []);
+
+  return { download, downloadFile, isPending };
 }
 
 function fallbackName(document: DocumentDetail): string {

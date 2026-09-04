@@ -5,6 +5,7 @@ import {
   CalendarRange,
   ChartColumn,
   Cloud,
+  Landmark,
   ClipboardList,
   Contact,
   FileSearch,
@@ -188,6 +189,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Surse documente",
         path: "/administrare/surse",
         Icon: Cloud,
+        permission: "admin:settings",
+      },
+      {
+        label: "e-Factura",
+        path: "/administrare/e-factura",
+        Icon: Landmark,
         permission: "admin:settings",
       },
       {

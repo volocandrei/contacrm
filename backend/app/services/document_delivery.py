@@ -115,13 +115,35 @@ def safe_filename(document: Document) -> str:
     return cleaned[:200]
 
 
+def companion_filename(document: Document, *, kind: str, mime_type: str) -> str:
+    """Numele sub care iese un fișier care **însoțește** documentul.
+
+    Se pleacă de la numele documentului și i se schimbă coada: arhiva ANAF a
+    facturii `2024-06-15_AlfaSRL_FCT-118.xml` iese ca
+    `2024-06-15_AlfaSRL_FCT-118_anaf-zip.zip`. Contabilul care descarcă toate trei
+    fișierele le vede unul lângă altul, în aceeași ordine alfabetică — altfel ar
+    avea în „Descărcări" trei nume care nu par să aibă legătură.
+    """
+    stem = safe_filename(document).rsplit(".", 1)[0][:180]
+    extension = extension_by_mime(mime_type) or "bin"
+    if mime_type == "application/zip":
+        # `application/zip` nu are extensie în harta documentelor, și nici nu are
+        # de ce: un ZIP nu este un document care se încarcă.
+        extension = "zip"
+    return f"{stem}_{kind.replace('_', '-')}.{extension}"
+
+
 def content_disposition(document: Document, *, inline: bool) -> str:
     """Antetul de dispoziție, cu nume ASCII plus varianta UTF-8 (RFC 5987).
 
     Numele românești conțin diacritice, iar un antet HTTP este ASCII: fără
     `filename*`, browserul ar salva fișierul cu numele stricat.
     """
-    name = safe_filename(document)
+    return disposition_for(safe_filename(document), inline=inline)
+
+
+def disposition_for(name: str, *, inline: bool) -> str:
+    """Antetul, pentru un nume deja compus."""
     ascii_name = name.encode("ascii", "replace").decode("ascii")
     disposition = "inline" if inline else "attachment"
     return f"{disposition}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"

@@ -32,7 +32,14 @@ export const PERIOD_STATUS = [
 ] as const;
 export type PeriodStatus = (typeof PERIOD_STATUS)[number];
 
-export const DOCUMENT_SOURCE = ["EMAIL", "WHATSAPP", "UPLOAD", "API", "ONEDRIVE"] as const;
+export const DOCUMENT_SOURCE = [
+  "EMAIL",
+  "WHATSAPP",
+  "UPLOAD",
+  "API",
+  "ONEDRIVE",
+  "EFACTURA",
+] as const;
 export type DocumentSource = (typeof DOCUMENT_SOURCE)[number];
 
 /** Motivul structurat al unui eșec de procesare — se afișează, nu se aruncă (§53). */
@@ -317,6 +324,24 @@ export type DocumentDetail = DocumentListItem & {
   /** `null` când reprocesarea este posibilă; altfel motivul, în cuvintele serverului. */
   reprocessBlockedReason: string | null;
   history: DocumentHistoryEntry[];
+  /**
+   * Fișierele documentului, când sunt mai multe decât unul.
+   *
+   * Există pentru factura electronică, unde „documentul" ajunge ca trei fișiere:
+   * XML-ul (originalul fiscal, cel de la butonul de descărcare), arhiva ZIP cu
+   * sigiliul ANAF și PDF-ul tipăribil. Goală pentru restul documentelor.
+   */
+  files: DocumentFile[];
+};
+
+/** Un fișier al documentului. Eticheta vine de la server, nu dintr-o hartă locală. */
+export type DocumentFile = {
+  id: string;
+  kind: string;
+  label: string;
+  mimeType: string;
+  fileSize: number;
+  createdAt: string;
 };
 
 /* ─── Dashboard ────────────────────────────────────────────────────────────── */
@@ -507,6 +532,55 @@ export type DriveSyncResult = {
   failed: number;
   hasMore: boolean;
   folders: string[];
+};
+
+/* ─── e-Factura / SPV ANAF (M11) ──────────────────────────────────────────── */
+
+/**
+ * Împuternicirea unui client, plus starea preluării lui.
+ *
+ * Rândul **nu creează** dreptul: acela se depune în SPV, de către client
+ * (formularul 150). Aici spunem doar pentru ce CUI să întrebăm. Când
+ * împuternicirea lipsește la ANAF, refuzul apare în `lastError` — pe rândul
+ * clientului, nu pe conexiune, pentru că îl privește doar pe el.
+ */
+export type AnafMandate = {
+  id: string;
+  clientId: string;
+  clientName: string;
+  /** Forma normalizată, cea pe care o cere API-ul ANAF: fără `RO`, doar cifre. */
+  taxId: string;
+  /** Până când am citit lista de mesaje. `null` = împuternicire nouă. */
+  syncedThrough: string | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  invoicesIngested: number;
+  isActive: boolean;
+};
+
+/** Starea integrării, într-un singur răspuns. Tokenul nu apare niciodată (§73). */
+export type AnafStatus = {
+  /** Lipsesc ANAF_CLIENT_ID / ANAF_CLIENT_SECRET? Ecranul o spune. */
+  configured: boolean;
+  /** Lipsește DRIVE_TOKEN_KEY? Fără ea nu stocăm tokenul, deci nu conectăm. */
+  encryptionReady: boolean;
+  connected: boolean;
+  /** `prod` sau `test`. Sunt baze separate la ANAF, nu niveluri de log. */
+  environment: string;
+  certificateHolder: string | null;
+  connectedAt: string | null;
+  /** Autorizarea ține un an, iar reînnoirea cere din nou certificatul. */
+  expiresAt: string | null;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  mandates: AnafMandate[];
+};
+
+export type AnafSyncResult = {
+  ingested: number;
+  failed: number;
+  hasMore: boolean;
+  mandates: string[];
 };
 
 /* ─── Setări (§16, §73) ────────────────────────────────────────────────────── */
