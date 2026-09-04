@@ -59,7 +59,7 @@ CONTACRM/
 │   │   └── worker.py          # ✅ consumă coada și întreabă sursele externe
 │   ├── alembic/versions/      # ✅
 │   ├── Dockerfile             # ✅ multi-stage, rulează ca utilizator neprivilegiat
-│   └── tests/                 # ✅ 1.114 teste, pe PostgreSQL construit cu migrări
+│   └── tests/                 # ✅ 1.118 teste, pe PostgreSQL construit cu migrări
 ├── frontend/                  # ✅ Vite + React + TS strict + Tailwind
 │   └── src/
 │       ├── api/               # client + endpoints + hooks + mock/ (backend simulat)

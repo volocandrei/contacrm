@@ -57,7 +57,7 @@ Pe serviciul **backend**:
 | Variabilă | Valoare | De ce |
 |---|---|---|
 | `ENVIRONMENT` | `production` | ascunde `/docs` și pune `Secure` pe cookie-uri |
-| `SECRET_KEY` | `python -c "import secrets; print(secrets.token_urlsafe(64))"` | pornirea se oprește dacă a rămas cel implicit |
+| `SECRET_KEY` | `python -c "import secrets; print(secrets.token_urlsafe(64))"` | pornirea se oprește dacă a rămas cel implicit **sau dacă are sub 32 de caractere** — cheia semnează tokenurile de acces |
 | `DATABASE_URL` | `postgresql+psycopg://…` | endpointul **cu pooler** al furnizorului |
 | `DB_EXTERNAL_POOLER` | `true` | vezi §3 |
 | `CORS_ALLOWED_ORIGINS` | domeniul real | caracterul universal este refuzat de configurare |

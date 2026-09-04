@@ -118,12 +118,12 @@ placeholdere evidente din `.env.example`.
 
 ```
 frontend  11.743 linii sursă +  1.785 linii teste  →   146 teste
-backend   18.817 linii sursă + 16.265 linii teste  → 1.114 teste
+backend   18.836 linii sursă + 16.291 linii teste  → 1.118 teste
 end-to-end   932 linii                             →    32 teste (browser real)
 migrări    1.857 linii
 ```
 
-Toate verificările trec: **1.292 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.296 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -395,6 +395,27 @@ erau 37.
   reîmprospătarea automată a sesiunii după ștergerea cookie-ului de acces, butoanele
   care dispar corect pentru un OPERATOR, și ecranul care se actualizează singur cât
   timp documentul este reprocesat
+
+### Două defecte găsite curățând, nu construind
+
+Amândouă erau în afara e-Facturii, și amândouă s-au văzut punând întrebarea „ce
+se întâmplă dacă cineva chiar rulează asta așa cum scrie în documentație".
+
+**`SECRET_KEY` gol trecea verificarea de producție.** Ea se uita doar dacă
+valoarea a rămas cea implicită — `startswith("dev-only")` —, iar șirul gol nu
+începe cu nimic. Pe multe platforme o variabilă nedefinită ajunge la proces exact
+ca șir gol, iar `docker-compose.yml` folosește chiar tiparul `${VAR:-}`. Cu o
+cheie goală, HMAC-ul care semnează tokenurile de acces devine ghicibil: oricine
+își semnează singur o sesiune de administrator. Acum se cere o lungime minimă de
+32 de caractere, cât rezultatul lui SHA-256.
+
+**Sub `docker compose`, nicio integrare nu putea funcționa.** Fișierul trecea
+proceselor doar baza de date, storage-ul și providerii de extracție —
+`MS_CLIENT_ID`, `ANAF_CLIENT_ID` și `DRIVE_TOKEN_KEY` nu ajungeau nici la API,
+nici la worker. Ecranele spuneau cinstit „nu este configurată", deci nimic nu
+minte; dar `DEPLOY.md` recomanda compose-ul ca stivă completă, iar el nu era.
+Workerul are nevoie de aceleași valori ca API-ul: el sincronizează, și fără cheia
+de criptare nu poate descifra tokenurile pe care le-a stocat API-ul.
 
 ### Defecte găsite și reparate pe parcurs
 

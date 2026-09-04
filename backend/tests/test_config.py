@@ -41,6 +41,21 @@ def test_production_refuses_default_secret_key() -> None:
         settings.assert_production_ready()
 
 
+@pytest.mark.parametrize("key", ["", "   ", "abc", "x" * 31])
+def test_production_refuses_a_secret_key_too_short_to_sign_with(key: str) -> None:
+    """Cheia asta semnează tokenurile de acces. Scurtă, oricine își face unul.
+
+    Verificarea se uita doar la valoarea implicită, deci `SECRET_KEY=` gol trecea:
+    șirul gol nu începe cu „dev-only". Pe multe platforme o variabilă nedefinită
+    ajunge la proces exact așa — ca șir gol.
+    """
+    settings = _settings(
+        environment=Environment.PRODUCTION, secret_key=key, ocr_provider="pdf_text"
+    )
+    with pytest.raises(RuntimeError, match="SECRET_KEY"):
+        settings.assert_production_ready()
+
+
 def test_production_accepts_a_real_secret_key() -> None:
     settings = _settings(
         environment=Environment.PRODUCTION, secret_key="x" * 64, ocr_provider="pdf_text"

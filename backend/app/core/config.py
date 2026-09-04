@@ -43,6 +43,11 @@ LOCAL_EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text", "efactura", "local"}
 #: o factură din mediul de test nu există în producție și invers.
 ANAF_ENVIRONMENTS = frozenset({"prod", "test"})
 
+#: Lungimea minimă a cheii care semnează tokenurile. HS256 folosește SHA-256, iar
+#: sub 32 de octeți cheia este mai scurtă decât rezultatul funcției — PyJWT însuși
+#: avertizează. Nu este o preferință de stil: sub prag, semnătura devine ghicibilă.
+MIN_SECRET_KEY_LENGTH = 32
+
 
 class Environment(StrEnum):
     DEVELOPMENT = "development"
@@ -274,6 +279,16 @@ class Settings(BaseSettings):
         problems: list[str] = []
         if self.secret_key.startswith(("dev-only", "schimba")):
             problems.append("SECRET_KEY are încă valoarea implicită.")
+        elif len(self.secret_key.strip()) < MIN_SECRET_KEY_LENGTH:
+            # Verificarea de mai sus se uita **doar** la valoarea implicită, deci
+            # un `SECRET_KEY=` gol o trecea: șirul gol nu începe cu „dev-only".
+            # Iar cheia asta semnează tokenurile de acces — cu una goală, oricine
+            # își semnează singur unul valabil. Cazul nu este teoretic: pe multe
+            # platforme o variabilă nedefinită ajunge la proces ca șir gol.
+            problems.append(
+                f"SECRET_KEY are sub {MIN_SECRET_KEY_LENGTH} de caractere. "
+                'Generează una cu: python -c "import secrets; print(secrets.token_urlsafe(64))"'
+            )
         if self.ocr_provider == "mock":
             # `mock` inventează furnizori, sume și date. Într-o demonstrație este
             # exact ce trebuie; într-o instalare de producție ar scrie valori

@@ -58,6 +58,19 @@ services:
       AI_PROVIDER: ${AI_PROVIDER:-mock}
       STORAGE_PATH: /var/lib/contacrm/storage
       ARCHIVE_ROOT: /var/lib/contacrm/storage/ARHIVA
+      # Integrările externe. Fără ele, ecranele spun cinstit că nu sunt
+      # configurate — dar workerul are nevoie de aceleași valori ca API-ul:
+      # el este cel care sincronizează, și fără `DRIVE_TOKEN_KEY` nu poate
+      # descifra tokenurile pe care le-a stocat API-ul.
+      MS_CLIENT_ID: ${MS_CLIENT_ID:-}
+      MS_CLIENT_SECRET: ${MS_CLIENT_SECRET:-}
+      MS_TENANT_ID: ${MS_TENANT_ID:-common}
+      MS_REDIRECT_URI: ${MS_REDIRECT_URI:-http://localhost:5173/administrare/surse}
+      ANAF_CLIENT_ID: ${ANAF_CLIENT_ID:-}
+      ANAF_CLIENT_SECRET: ${ANAF_CLIENT_SECRET:-}
+      ANAF_REDIRECT_URI: ${ANAF_REDIRECT_URI:-http://localhost:5173/administrare/e-factura}
+      ANAF_ENVIRONMENT: ${ANAF_ENVIRONMENT:-prod}
+      DRIVE_TOKEN_KEY: ${DRIVE_TOKEN_KEY:-}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -85,6 +98,19 @@ services:
       AI_PROVIDER: ${AI_PROVIDER:-mock}
       STORAGE_PATH: /var/lib/contacrm/storage
       ARCHIVE_ROOT: /var/lib/contacrm/storage/ARHIVA
+      # Integrările externe. Fără ele, ecranele spun cinstit că nu sunt
+      # configurate — dar workerul are nevoie de aceleași valori ca API-ul:
+      # el este cel care sincronizează, și fără `DRIVE_TOKEN_KEY` nu poate
+      # descifra tokenurile pe care le-a stocat API-ul.
+      MS_CLIENT_ID: ${MS_CLIENT_ID:-}
+      MS_CLIENT_SECRET: ${MS_CLIENT_SECRET:-}
+      MS_TENANT_ID: ${MS_TENANT_ID:-common}
+      MS_REDIRECT_URI: ${MS_REDIRECT_URI:-http://localhost:5173/administrare/surse}
+      ANAF_CLIENT_ID: ${ANAF_CLIENT_ID:-}
+      ANAF_CLIENT_SECRET: ${ANAF_CLIENT_SECRET:-}
+      ANAF_REDIRECT_URI: ${ANAF_REDIRECT_URI:-http://localhost:5173/administrare/e-factura}
+      ANAF_ENVIRONMENT: ${ANAF_ENVIRONMENT:-prod}
+      DRIVE_TOKEN_KEY: ${DRIVE_TOKEN_KEY:-}
     volumes:
       # Același volum ca API-ul: workerul citește originalul pe care l-a scris
       # uploadul și scrie arhiva pe care o va descărca cineva prin API.
