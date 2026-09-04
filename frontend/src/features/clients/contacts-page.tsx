@@ -51,12 +51,9 @@ export function ContactsPage() {
       <SearchInput
         label="Caută în agendă"
         value={values.q}
-        onChange={(value) => {
-          setValue("q", value);
-          // Un filtru nou pornește de la prima pagină: altfel căutarea pare fără
-          // rezultate doar pentru că pagina 3 nu mai există.
-          setValue("page", "1");
-        }}
+        // `useFilterParams` readuce singur paginarea la prima pagină: altfel
+        // căutarea ar părea fără rezultate doar pentru că pagina 3 nu mai există.
+        onChange={(value) => setValue("q", value)}
         placeholder="Nume, firmă, email, telefon…"
         className="mb-4 w-full sm:w-96"
       />

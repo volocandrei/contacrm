@@ -64,8 +64,8 @@ export const iconChip: Record<Tone, string> = {
   slate: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
 };
 
-/** Eticheta rotunjită de lângă un text: contoare, stări scurte. */
-export const pill: Record<Tone, string> = {
+/** Eticheta rotunjită de lângă un text: contoare, stări scurte. Se folosește prin `pillClass`. */
+const pill: Record<Tone, string> = {
   blue: "bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-400/30",
   green:
     "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-400/30",

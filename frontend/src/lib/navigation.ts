@@ -52,8 +52,11 @@ export type BadgeKey = "inbox" | "review" | "unmatched" | "tasks";
 
 /**
  * Structura de navigație conform specificației (§51).
- * Rutele placeholder există pentru ca shell-ul să fie navigabil înainte de
- * implementarea fiecărui modul.
+ *
+ * Fiecare intrare duce la un ecran real. Comentariul de aici spunea, până acum,
+ * că unele sunt placeholdere pentru ca shell-ul să fie navigabil — a fost
+ * adevărat la M1 și a rămas scris cu mult după ce ultimul a fost înlocuit.
+ * Lista este și sursa paletei de comenzi (Ctrl+K), care caută în ea.
  */
 export const NAV_ROOT: NavItem = {
   label: "Panou principal",
