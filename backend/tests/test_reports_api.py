@@ -27,6 +27,7 @@ from app.models.client import Client
 from app.models.document import Document, DocumentType
 from app.models.organization import Organization
 from app.models.user import Permission, Role, User
+from app.services import report_export
 from app.services.report_service import TOP_CLIENTS
 from tests.conftest import requires_db
 
@@ -431,3 +432,116 @@ class TestAuthorization:
         login(api, viewer.email)
 
         assert api.get(URL).status_code == 200
+
+
+@pytest.mark.usefixtures("as_admin")
+class TestTheExport:
+    """Raportul, ca fișier.
+
+    Numerele se vedeau pe ecran și nu puteau ieși din aplicație; un cabinet care
+    trebuie să pună situația lunii într-un raport intern o retasta.
+
+    Trei detalii par mărunte și fără ele fișierul nu se poate folosi în România:
+    separatorul `;`, BOM-ul de la început și sfârșitul de linie CRLF. Fiecare are
+    testul lui, pentru că fiecare, lipsă, produce un fișier care *se deschide* și
+    arată prost — nu o eroare pe care s-o vadă cineva.
+    """
+
+    def _csv(self, api: TestClient, **params: str) -> str:
+        response = api.get(f"{URL}.csv", params=params)
+        assert response.status_code == 200, response.text
+        assert response.headers["content-type"].startswith("text/csv")
+        return response.text
+
+    def test_the_numbers_are_the_same_as_on_screen(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Două căi de calcul ar ajunge, într-o zi, la două numere diferite."""
+        for _ in range(3):
+            add_document(db, org, client=client_row, document_type=types["FACTURA_INTRARE"])
+
+        on_screen = fetch(api)
+        exported = self._csv(api)
+
+        assert f"Documente în interval{report_export.DELIMITER}{on_screen['total']}" in exported
+
+    def test_excel_in_romania_gets_columns_not_one_long_line(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Cu virgulă, Excel în setările românești pune totul într-o coloană."""
+        add_document(db, org, client=client_row)
+
+        assert report_export.DELIMITER == ";"
+        assert ";" in self._csv(api)
+
+    def test_the_file_starts_with_a_byte_order_mark(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Fără el, Excel citește UTF-8 ca ANSI și „Rată" devine „RatÄƒ"."""
+        add_document(db, org, client=client_row)
+
+        assert self._csv(api).startswith(report_export.BOM)
+
+    def test_lines_end_the_way_windows_expects(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        add_document(db, org, client=client_row)
+
+        assert report_export.LINE_ENDING in self._csv(api)
+
+    def test_a_semicolon_in_a_client_name_does_not_break_the_columns(
+        self, api: TestClient, db: Session, org: Organization
+    ) -> None:
+        """`csv.writer` scapă singur valorile; o concatenare de mână n-ar fi făcut-o."""
+        awkward = Client(organization_id=org.id, name='Alfa; Beta "SRL"', tax_id="RO7788")
+        db.add(awkward)
+        db.flush()
+        add_document(db, org, client=awkward)
+
+        exported = self._csv(api)
+
+        # Numele apare întreg, între ghilimele, nu rupt în două coloane.
+        assert '"Alfa; Beta ""SRL"""' in exported
+
+    def test_an_unfinished_report_exports_an_empty_rate_not_a_zero(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Zero s-ar citi ca „totul a eșuat"; gol înseamnă „nu s-a terminat nimic"."""
+        add_document(db, org, client=client_row, status=DocumentStatus.PROCESSING)
+
+        rate_line = next(line for line in self._csv(api).splitlines() if "Rată de succes" in line)
+        assert rate_line.endswith(report_export.DELIMITER)
+
+    def test_the_filename_carries_the_interval(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Două exporturi succesive nu au voie să se suprascrie în „Descărcări"."""
+        add_document(db, org, client=client_row)
+
+        response = api.get(f"{URL}.csv", params={"fromMonth": "2026-08", "toMonth": "2026-08"})
+
+        assert "2026-08_2026-08" in response.headers["content-disposition"]
+
+    def test_a_reversed_interval_is_refused_here_too(self, api: TestClient) -> None:
+        """Altfel exportul ar da tăcut un fișier gol, care se citește ca „nu am nimic"."""
+        response = api.get(f"{URL}.csv", params={"fromMonth": "2026-09", "toMonth": "2026-08"})
+
+        assert response.status_code == 422
+
+    def test_the_export_is_not_cached_by_a_proxy(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        add_document(db, org, client=client_row)
+
+        response = api.get(f"{URL}.csv")
+
+        assert response.headers["cache-control"] == "no-store"
+
+    def test_an_anonymous_request_is_refused(self, api: TestClient) -> None:
+        api.post("/api/v1/auth/logout")
+        assert api.get(f"{URL}.csv").status_code == 401

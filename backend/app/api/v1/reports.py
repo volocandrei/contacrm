@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 from pydantic import Field
 
 from app.api.deps import DbSession, require_permission
@@ -23,6 +23,7 @@ from app.core.errors import ValidationError
 from app.domain.permissions import Permission
 from app.models.user import User
 from app.schemas.common import ApiModel
+from app.services import report_export
 from app.services.report_service import Bucket, ReportService, ReportSummary
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -89,12 +90,12 @@ def _to_summary(summary: ReportSummary) -> ReportSummaryOut:
     )
 
 
-@router.get("/summary", response_model=ReportSummaryOut)
-def summary(
-    session: DbSession,
-    user: ReportReader,
-    filters: Annotated[ReportFilters, Query()],
-) -> ReportSummaryOut:
+def _computed(session: DbSession, user: ReportReader, filters: ReportFilters) -> ReportSummary:
+    """Raportul, calculat o singură dată pentru amândouă rutele.
+
+    Ecranul și exportul trebuie să răspundă cu aceleași numere; două căi de
+    calcul ar fi ajuns, într-o zi, la două răspunsuri pentru aceeași întrebare.
+    """
     if filters.from_month and filters.to_month and filters.from_month > filters.to_month:
         # Un interval întors ar da tăcut zero rezultate, care se citește ca „nu
         # aveți documente" în loc de „ai greșit intervalul".
@@ -103,10 +104,45 @@ def summary(
             details={"fromMonth": ["Trebuie să fie anterioară lunii de sfârșit."]},
         )
 
-    return _to_summary(
-        ReportService(session, user.organization_id).summary(
-            from_month=filters.from_month,
-            to_month=filters.to_month,
-            client_id=filters.client_id,
-        )
+    return ReportService(session, user.organization_id).summary(
+        from_month=filters.from_month,
+        to_month=filters.to_month,
+        client_id=filters.client_id,
+    )
+
+
+@router.get("/summary", response_model=ReportSummaryOut)
+def summary(
+    session: DbSession,
+    user: ReportReader,
+    filters: Annotated[ReportFilters, Query()],
+) -> ReportSummaryOut:
+    return _to_summary(_computed(session, user, filters))
+
+
+@router.get("/summary.csv")
+def summary_csv(
+    session: DbSession,
+    user: ReportReader,
+    filters: Annotated[ReportFilters, Query()],
+) -> Response:
+    """Același raport, ca fișier.
+
+    Numerele se vedeau pe ecran și nu puteau ieși din aplicație. Un cabinet care
+    trebuie să pună situația lunii într-un raport intern, sau s-o trimită cuiva,
+    o retasta.
+
+    Forma fișierului — separator, BOM, sfârșit de linie — stă în
+    `services/report_export.py`, cu motivele fiecărei alegeri.
+    """
+    computed = _computed(session, user, filters)
+    name = report_export.filename(filters.from_month, filters.to_month)
+    return Response(
+        content=report_export.to_csv(computed),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            # Un raport nu are ce căuta în cache-ul unui proxy.
+            "Cache-Control": "no-store",
+        },
     )
