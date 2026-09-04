@@ -120,6 +120,25 @@ lucru care spune dacă cele două copii sunt din același moment.
 
 ## Situații
 
+### A venit un coleg nou / a plecat unul
+
+*Administrare → Utilizatori → **Coleg nou***. Parola o alegi tu și i-o spui
+direct: aplicația nu trimite mesaje, deci nu pleacă nicio invitație. Minimum 12
+caractere, la fel ca la `create-admin`.
+
+Când pleacă cineva: **Dezactivează** pe rândul lui. Nu există ștergere, și e
+intenționat — numele lui apare în jurnalul de audit ca autor al unor acțiuni
+contabile, iar ștergerea ar rupe urma. Un cont dezactivat nu se mai poate
+autentifica.
+
+Dacă un coleg și-a uitat parola: **Resetează parola**, tot de pe rândul lui.
+Jurnalul reține cine a resetat cui — este singurul moment în care cineva capătă
+acces la contul altcuiva — dar nu reține nicio parolă.
+
+**Pe tine nu te poți dezactiva și nu îți poți schimba rolul.** Un cabinet cu un
+singur administrator care greșește acolo rămâne afară din propria aplicație, iar
+remediul ar fi un terminal și un SQL. Roagă alt administrator.
+
 ### A venit un client nou
 
 Din interfață: **Clienți → Client nou**. Salvarea duce direct pe fișa lui, unde

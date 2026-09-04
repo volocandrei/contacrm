@@ -4,6 +4,7 @@
  * backend să însemne doar schimbarea `VITE_API_MODE`.
  */
 import { ApiError } from "@/api/types";
+import type { RoleCode } from "@/types/domain";
 import * as store from "@/api/mock/store";
 
 type Ctx = {
@@ -319,6 +320,32 @@ const routes: Route[] = [
       store.listAudit({ ...query, page: num(query.page), pageSize: num(query.pageSize) }),
   },
   { method: "GET", pattern: "/users", handler: () => store.listUsers() },
+  {
+    method: "POST",
+    pattern: "/users",
+    handler: ({ body }) =>
+      store.createUser({
+        email: str(body, "email"),
+        fullName: str(body, "fullName"),
+        role: body.role as RoleCode,
+        password: str(body, "password"),
+      }),
+  },
+  {
+    method: "PATCH",
+    pattern: "/users/:id",
+    handler: ({ params, body }) =>
+      store.updateUser(params.id!, {
+        fullName: body.fullName as string | undefined,
+        role: body.role as RoleCode | undefined,
+        isActive: body.isActive as boolean | undefined,
+      }),
+  },
+  {
+    method: "POST",
+    pattern: "/users/:id/password",
+    handler: ({ params, body }) => store.resetUserPassword(params.id!, str(body, "password")),
+  },
 ];
 
 function matchRoute(method: string, path: string): { route: Route; params: Record<string, string> } | null {

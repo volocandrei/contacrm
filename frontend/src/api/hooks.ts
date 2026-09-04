@@ -21,7 +21,7 @@ import {
   type ClientInput,
   type ContactInput,
 } from "@/api/endpoints";
-import type { DocumentDetail, DocumentFieldName, TaskStatus } from "@/types/domain";
+import type { DocumentDetail, DocumentFieldName, RoleCode, TaskStatus } from "@/types/domain";
 
 export const queryKeys = {
   dashboard: ["dashboard"] as const,
@@ -153,6 +153,36 @@ export function useCreateNote(clientId: string) {
       queryClient.invalidateQueries({ queryKey: queryKeys.clientNotes(clientId) });
     },
   });
+}
+
+/** Orice atingere a conturilor schimbă lista afișată. */
+function useUserMutation<TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.users });
+      // Contul curent poate fi cel schimbat: rolul din antet trebuie să urmeze.
+      void queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+export function useCreateUser() {
+  return useUserMutation(administration.createUser);
+}
+
+export function useUpdateUser() {
+  return useUserMutation(
+    ({ id, input }: { id: string; input: { fullName?: string; role?: RoleCode; isActive?: boolean } }) =>
+      administration.updateUser(id, input),
+  );
+}
+
+export function useResetPassword() {
+  return useUserMutation(({ id, password }: { id: string; password: string }) =>
+    administration.resetPassword(id, password),
+  );
 }
 
 /** Cronologia recepțiilor: ce a sosit, de la cine și când. */

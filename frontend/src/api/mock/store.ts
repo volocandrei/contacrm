@@ -1301,6 +1301,118 @@ export function listUsers(): UserSummary[] {
   return state.users;
 }
 
+/** Aceeași lungime minimă ca la `create-admin`. Oglindește `MIN_PASSWORD_LENGTH`. */
+const MOCK_MIN_PASSWORD_LENGTH = 12;
+
+/**
+ * Adaugă un coleg.
+ *
+ * Parola o pune administratorul și o comunică el: nu există invitație prin email
+ * (nu există provider), iar o parolă generată și afișată nu mai este un secret.
+ */
+export function createUser(input: {
+  email: string;
+  fullName: string;
+  role: RoleCode;
+  password: string;
+}): UserSummary {
+  requirePermission("admin:users");
+
+  const email = normalizeEmail(input.email);
+  if (!email) {
+    throw new ApiError("VALIDATION_ERROR", "Adresă de email invalidă.", 422, {
+      email: ["Adresă invalidă."],
+    });
+  }
+  if (!input.fullName.trim()) {
+    throw new ApiError("VALIDATION_ERROR", "Numele este obligatoriu.", 422, {
+      fullName: ["Câmp obligatoriu."],
+    });
+  }
+  if (input.password.length < MOCK_MIN_PASSWORD_LENGTH) {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      `Parola are minimum ${MOCK_MIN_PASSWORD_LENGTH} caractere.`,
+      422,
+      { password: ["Prea scurtă."] },
+    );
+  }
+  if (state.users.some((row) => normalizeEmail(row.email) === email)) {
+    throw new ApiError("CONFLICT", `Adresa ${email} este deja folosită în cabinet.`, 409);
+  }
+
+  const user: UserSummary = {
+    id: `user-${state.users.length + 1}-${Date.now()}`,
+    fullName: input.fullName.trim(),
+    email,
+    role: input.role,
+    isActive: true,
+    lastLoginAt: null,
+  };
+  state.users.push(user);
+  // Parola nu se păstrează nicăieri: backendul simulat nu verifică parole.
+  recordAudit("USER_CREATED", "User", user.id, `${user.fullName} (${email}) · ${input.role}`);
+  return user;
+}
+
+/** Schimbă rolul, numele, sau dezactivează contul. Nu există ștergere. */
+export function updateUser(
+  id: string,
+  input: { fullName?: string; role?: RoleCode; isActive?: boolean },
+): UserSummary {
+  requirePermission("admin:users");
+  const user = state.users.find((row) => row.id === id) ?? notFound("User", id);
+
+  // Nimeni nu se poate încuia singur pe dinafară: amândouă se simt la fel
+  // („nu mai am acces") și amândouă cer, ca remediu, un terminal.
+  if (user.email === currentUser.email) {
+    if (input.isActive === false) {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Nu te poți dezactiva pe tine. Roagă alt administrator.",
+        422,
+      );
+    }
+    if (input.role !== undefined && input.role !== user.role) {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Nu îți poți schimba propriul rol. Roagă alt administrator.",
+        422,
+      );
+    }
+  }
+
+  if (input.fullName !== undefined) user.fullName = input.fullName.trim();
+  if (input.role !== undefined) user.role = input.role;
+  if (input.isActive !== undefined) user.isActive = input.isActive;
+
+  recordAudit("USER_UPDATED", "User", user.id, `${user.fullName} (${user.email})`);
+  return user;
+}
+
+/** Resetarea parolei unui coleg. Auditul spune că s-a întâmplat, nu ce s-a scris. */
+export function resetUserPassword(id: string, password: string): UserSummary {
+  requirePermission("admin:users");
+  const user = state.users.find((row) => row.id === id) ?? notFound("User", id);
+
+  if (password.length < MOCK_MIN_PASSWORD_LENGTH) {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      `Parola are minimum ${MOCK_MIN_PASSWORD_LENGTH} caractere.`,
+      422,
+      { password: ["Prea scurtă."] },
+    );
+  }
+
+  recordAudit(
+    "USER_PASSWORD_RESET",
+    "User",
+    user.id,
+    `Parolă resetată pentru ${user.fullName} (${user.email})`,
+  );
+  return user;
+}
+
 /**
  * Setările pe care rulează **demonstrația** (§16, §73).
  *

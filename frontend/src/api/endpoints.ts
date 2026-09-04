@@ -27,6 +27,7 @@ import type {
   MailBrowseItem,
   MailFolder,
   ReportSummary,
+  RoleCode,
   SettingEntry,
   Task,
   TaskStatus,
@@ -164,6 +165,19 @@ export const intakes = {
 export const administration = {
   auditLogs: (params: QueryParams) => api.get<Paginated<AuditLogEntry>>("/audit-logs", params),
   users: () => api.get<UserSummary[]>("/users"),
+  createUser: (input: {
+    email: string;
+    fullName: string;
+    role: RoleCode;
+    password: string;
+  }) => api.post<UserSummary>("/users", { ...input }),
+  updateUser: (
+    id: string,
+    input: { fullName?: string; role?: RoleCode; isActive?: boolean },
+  ) => api.patch<UserSummary>(`/users/${id}`, { ...input }),
+  // `POST`, nu `PATCH`: nu este o modificare a contului, este o resetare.
+  resetPassword: (id: string, password: string) =>
+    api.post<UserSummary>(`/users/${id}/password`, { password }),
   settings: () => api.get<SettingEntry[]>("/settings"),
 };
 

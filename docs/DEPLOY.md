@@ -348,6 +348,11 @@ datele sunt inventate.
 care să te autentifici. După primul client, restul se adaugă din interfață:
 *Clienți → Client nou*.
 
+La fel `create-admin`: creează **primul** cont, cel fără de care nu ai cum să te
+autentifici. Colegii următori se adaugă din *Administrare → Utilizatori → Coleg
+nou*, iar cine pleacă se dezactivează de acolo — nu se șterge, pentru că apare în
+jurnalul de audit ca autor al unor acțiuni contabile.
+
 **Emailul de contact contează**: după el ajunge un atașament primit la clientul
 potrivit. Un client fără contact primește documente doar prin dosarul lui din
 OneDrive sau prin e-Factura, dacă a depus împuternicirea în SPV.

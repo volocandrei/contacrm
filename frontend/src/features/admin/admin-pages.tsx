@@ -2,6 +2,7 @@ import { CircleAlert, Lock } from "lucide-react";
 import { useAuditLogs, useSettings, useUsers } from "@/api/hooks";
 import { Pagination, SearchInput } from "@/components/form-controls";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
+import { AddUserButton, UserRow } from "@/features/admin/user-admin";
 import { useAuth, useHasPermission } from "@/features/auth/use-auth";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { formatDateTime } from "@/lib/format";
@@ -64,7 +65,11 @@ export function UsersPage() {
 
   return (
     <div>
-      <PageHeader title="Utilizatori" description="Conturile din organizație și rolurile lor" />
+      <PageHeader
+        title="Utilizatori"
+        description="Conturile din organizație și rolurile lor"
+        actions={<AddUserButton roleLabels={ROLE_LABEL} />}
+      />
       <Panel bodyClassName="p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -75,33 +80,12 @@ export function UsersPage() {
                 <th scope="col" className="px-4 py-3 font-medium">Rol</th>
                 <th scope="col" className="px-4 py-3 font-medium">Stare</th>
                 <th scope="col" className="px-4 py-3 font-medium">Ultima autentificare</th>
+                <th scope="col" className="px-4 py-3 font-medium sr-only">Acțiuni</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {data?.map((user) => (
-                <tr key={user.id}>
-                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
-                    {user.fullName}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{user.email}</td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                    {ROLE_LABEL[user.role]}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={
-                        user.isActive
-                          ? "text-green-600 dark:text-green-400"
-                          : "text-gray-400 dark:text-gray-500"
-                      }
-                    >
-                      {user.isActive ? "Activ" : "Dezactivat"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
-                    {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "—"}
-                  </td>
-                </tr>
+                <UserRow key={user.id} user={user} roleLabels={ROLE_LABEL} />
               ))}
             </tbody>
           </table>
