@@ -172,6 +172,14 @@ const routes: Route[] = [
   },
   { method: "GET", pattern: "/document-types", handler: () => store.listDocumentTypes() },
 
+  /* Recepții (M12) */
+  { method: "GET", pattern: "/intakes", handler: ({ query }) => store.listIntakes(query) },
+  {
+    method: "GET",
+    pattern: "/clients/:id/intakes",
+    handler: ({ params, query }) => store.listIntakes({ ...query, clientId: params.id! }),
+  },
+
   /* Integrare OneDrive (M9). Rutele fixe stau înaintea celor cu parametru. */
   { method: "GET", pattern: "/integrations/onedrive", handler: () => store.getDriveStatus() },
   {

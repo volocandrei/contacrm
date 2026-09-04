@@ -19,6 +19,7 @@ import type {
   DocumentFieldName,
   DocumentListItem,
   DocumentType,
+  Intake,
   DriveBrowseItem,
   DriveFolder,
   DriveStatus,
@@ -151,6 +152,13 @@ export const periods = {
 export const tasks = {
   list: (params: QueryParams) => api.get<Task[]>("/tasks", params),
   updateStatus: (id: string, status: TaskStatus) => api.patch<Task>(`/tasks/${id}`, { status }),
+};
+
+/** Cronologia recepțiilor (M12): ce a sosit, de la cine și când. */
+export const intakes = {
+  list: (params: QueryParams) => api.get<Paginated<Intake>>("/intakes", params),
+  forClient: (id: string, params?: QueryParams) =>
+    api.get<Paginated<Intake>>(`/clients/${id}/intakes`, params),
 };
 
 export const administration = {

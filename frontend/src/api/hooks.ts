@@ -13,6 +13,7 @@ import {
   documents,
   anaf,
   drive,
+  intakes,
   periods,
   reports,
   tasks,
@@ -30,6 +31,7 @@ export const queryKeys = {
   clientContacts: (id: string) => ["clients", id, "contacts"] as const,
   clientNotes: (id: string) => ["clients", id, "notes"] as const,
   clientExpectations: (id: string) => ["clients", id, "expectations"] as const,
+  intakes: (params: QueryParams) => ["intakes", params] as const,
   clientPeriods: (id: string) => ["clients", id, "periods"] as const,
   documents: (params: QueryParams) => ["documents", params] as const,
   document: (id: string) => ["documents", id] as const,
@@ -151,6 +153,11 @@ export function useCreateNote(clientId: string) {
       queryClient.invalidateQueries({ queryKey: queryKeys.clientNotes(clientId) });
     },
   });
+}
+
+/** Cronologia recepțiilor: ce a sosit, de la cine și când. */
+export function useIntakes(params: QueryParams) {
+  return useQuery({ queryKey: queryKeys.intakes(params), queryFn: () => intakes.list(params) });
 }
 
 export function useDocuments(params: QueryParams) {

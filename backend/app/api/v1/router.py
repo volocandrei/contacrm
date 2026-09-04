@@ -17,6 +17,7 @@ from app.api.v1 import (
     dashboard,
     documents,
     health,
+    intakes,
     integrations,
     internal,
     periods,
@@ -34,6 +35,7 @@ api_router.include_router(dashboard.router)
 api_router.include_router(documents.router)
 api_router.include_router(integrations.router)
 api_router.include_router(anaf.router)
+api_router.include_router(intakes.router)
 api_router.include_router(periods.router)
 api_router.include_router(reports.router)
 api_router.include_router(settings.router)

@@ -1,51 +1,153 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Bell, MessageSquare, TriangleAlert } from "lucide-react";
-import { PageHeader, Panel } from "@/components/page";
+import { useIntakes } from "@/api/hooks";
+import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
+import { SelectFilter } from "@/components/form-controls";
+import { formatDateTime } from "@/lib/format";
+import type { Intake } from "@/types/domain";
 
+/**
+ * Cronologia recepțiilor.
+ *
+ * Ecranul acesta a cerut o vreme `GET /messages`, o rută care nu a existat
+ * niciodată: în modul simulat mergea, în cel real rămânea gol fără să spună
+ * nimic. Auditul de producție l-a înlocuit cu o explicație cinstită — că
+ * sistemul nu **trimite** încă mesaje.
+ *
+ * Explicația rămâne adevărată, dar jumătate din cronologie exista deja în date:
+ * fiecare atașament de email, fiecare fișier din OneDrive și fiecare factură din
+ * SPV lasă o urmă cu expeditorul și momentul. Ecranul arată acum partea care
+ * există, și spune limpede care este partea care nu.
+ */
 export function MessagesPage() {
+  const [source, setSource] = useState("");
+  const { data, isLoading, error } = useIntakes({
+    pageSize: 50,
+    ...(source ? { source } : {}),
+  });
+
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="Mesaje"
-        description="Comunicarea cu clienții, agregată din email și WhatsApp"
+        description="Ce a sosit de la clienți, de la cine și când"
       />
+
       <Panel>
-        <div className="flex items-start gap-3">
+        <p className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
           <MessageSquare className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            <p className="mb-2">
-              Cronologia mesajelor cere ca sistemul să și <strong>trimită</strong>, nu doar să
-              primească — adică un provider de email sau WhatsApp, Faza 2. Până atunci nu
-              inventăm un ecran care nu are ce arăta.
-            </p>
-            <p className="mb-2">Ce există deja și chiar funcționează:</p>
-            <ul className="ml-5 list-disc space-y-1">
-              <li>
-                atașamentele trimise de clienți pe email devin documente automat, la clientul
-                expeditorului — se configurează în{" "}
-                <Link
-                  to="/administrare/surse"
-                  className="font-medium text-blue-600 hover:underline dark:text-blue-400"
-                >
-                  Administrare → Surse documente
-                </Link>
-                ;
-              </li>
-              <li>
-                ce a sosit, de la cine și când se vede în{" "}
-                <Link
-                  to="/documente/inbox"
-                  className="font-medium text-blue-600 hover:underline dark:text-blue-400"
-                >
-                  Inbox documente
-                </Link>
-                , cu sursa fiecărui document.
-              </li>
-            </ul>
-          </div>
-        </div>
+          <span>
+            Aici este <strong>ce am primit</strong>. Trimiterea — email, WhatsApp,
+            remindere — cere un provider și rămâne în Faza 2; până atunci ecranul nu
+            pretinde că există.
+          </span>
+        </p>
+      </Panel>
+
+      <Panel
+        title="Recepții"
+        action={
+          <SelectFilter
+            label="Sursă"
+            value={source}
+            onChange={setSource}
+            options={SOURCE_OPTIONS}
+          />
+        }
+        bodyClassName="p-0"
+      >
+        {isLoading && <LoadingState />}
+        {error && <ErrorState error={error} />}
+        {data && data.items.length === 0 && (
+          <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
+            Nimic încă. Documentele sosesc singure după ce se leagă o sursă în{" "}
+            <Link
+              to="/administrare/surse"
+              className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+            >
+              Administrare → Surse documente
+            </Link>
+            .
+          </p>
+        )}
+        {data && data.items.length > 0 && (
+          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+            {data.items.map((intake) => (
+              <IntakeRow key={intake.id} intake={intake} />
+            ))}
+          </ul>
+        )}
       </Panel>
     </div>
+  );
+}
+
+const SOURCE_OPTIONS = [
+  { value: "EMAIL", label: "Email" },
+  { value: "ONEDRIVE", label: "OneDrive" },
+  { value: "EFACTURA", label: "e-Factura" },
+  { value: "WHATSAPP", label: "WhatsApp" },
+];
+
+const SOURCE_LABEL: Record<string, string> = {
+  EMAIL: "Email",
+  ONEDRIVE: "OneDrive",
+  EFACTURA: "e-Factura",
+  WHATSAPP: "WhatsApp",
+  UPLOAD: "Încărcare",
+  API: "API",
+};
+
+function IntakeRow({ intake }: { intake: Intake }) {
+  const rejected = intake.status === "REJECTED";
+
+  return (
+    <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-sm">
+      <span className="w-36 shrink-0 text-xs text-gray-400 dark:text-gray-500">
+        {formatDateTime(intake.receivedAt)}
+      </span>
+      <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+        {SOURCE_LABEL[intake.source] ?? intake.source}
+      </span>
+      <span className="min-w-0 flex-1">
+        {/* Documentul, când a devenit unul. O recepție respinsă nu are unde duce. */}
+        {intake.documentId ? (
+          <Link
+            to={`/documente/verificare/${intake.documentId}`}
+            className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {intake.originalFilename}
+          </Link>
+        ) : (
+          <span className="font-medium text-gray-900 dark:text-gray-100">
+            {intake.originalFilename}
+          </span>
+        )}
+        <span className="ml-2 text-gray-500 dark:text-gray-400">
+          de la {intake.sender ?? "expeditor necunoscut"}
+        </span>
+        {rejected && intake.rejectionReason && (
+          <span className="mt-0.5 flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
+            <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {intake.rejectionReason}
+          </span>
+        )}
+      </span>
+      <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+        {intake.clientId ? (
+          <Link
+            to={`/crm/clienti/${intake.clientId}`}
+            className="hover:underline"
+          >
+            {intake.clientName}
+          </Link>
+        ) : (
+          // Se spune, nu se ascunde: un document neatribuit așteaptă un om.
+          <span className="text-amber-600 dark:text-amber-400">neatribuit</span>
+        )}
+      </span>
+    </li>
   );
 }
 

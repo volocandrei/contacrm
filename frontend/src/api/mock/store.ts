@@ -36,6 +36,7 @@ import type {
   ClientExpectation,
   ClientNote,
   DocumentTypeCode,
+  Intake,
   Contact,
   CurrentUser,
   DashboardClosing,
@@ -1899,6 +1900,67 @@ export function setExpectations(
 
 export function listDocumentTypes() {
   return DOCUMENT_TYPES;
+}
+
+/* ─── Recepții (M12) ───────────────────────────────────────────────────────── */
+
+/**
+ * Cronologia recepțiilor.
+ *
+ * Pe server, fiecare intrare are rândul ei în `document_intakes`. Aici o derivăm
+ * din documente: setul sintetic nu are tabelă separată, iar ce promite
+ * contractul este forma răspunsului, nu felul în care e stocat.
+ *
+ * `rawPayload` nu apare nici acolo, nici aici (§73).
+ */
+export function listIntakes(filters: DocumentFilters & { source?: string } = {}): Paginated<Intake> {
+  requirePermission("documents:read");
+  settleProcessing();
+
+  let items = state.documents.filter((doc) => doc.source !== "UPLOAD");
+  if (filters.clientId) items = items.filter((doc) => doc.clientId === filters.clientId);
+  if (filters.source) items = items.filter((doc) => doc.source === filters.source);
+
+  const rows: Intake[] = items
+    .map((doc) => ({
+      id: `intake-${doc.id}`,
+      source: doc.source,
+      status: (doc.isDuplicate ? "DUPLICATE" : "ACCEPTED") as Intake["status"],
+      sender: senderFor(doc),
+      subject: doc.documentTypeLabel ?? "Document primit",
+      originalFilename: doc.originalFilename,
+      receivedAt: doc.receivedAt,
+      documentId: doc.id,
+      clientId: doc.clientId,
+      clientName: doc.clientName,
+      rejectionReason: null,
+    }))
+    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+
+  return paginate(rows, Number(filters.page ?? 1), Number(filters.pageSize ?? 25));
+}
+
+/** De unde a venit, în cuvintele sursei. */
+function senderFor(doc: StoredDocument): string {
+  switch (doc.source) {
+    case "EMAIL":
+      return doc.clientName ? `contact@${slugify(doc.clientName)}.ro` : "expeditor necunoscut";
+    case "ONEDRIVE":
+      return `/Clienți/${doc.clientName ?? "Nemapat"}`;
+    case "EFACTURA":
+      return `ANAF SPV · ${doc.clientName ?? "—"}`;
+    default:
+      return doc.source;
+  }
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 /* ─── Dashboard ────────────────────────────────────────────────────────────── */

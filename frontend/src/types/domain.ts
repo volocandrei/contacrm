@@ -440,6 +440,35 @@ export type DashboardClosing = {
   laggards: Laggard[];
 };
 
+/* ─── Recepții (M12) ───────────────────────────────────────────────────────── */
+
+/**
+ * O recepție: un fișier care a intrat, cu de unde a venit.
+ *
+ * Ține locul cronologiei de mesaje pe care ecranul „Mesaje" o promitea și nu o
+ * avea. Sistemul încă nu **trimite** nimic, dar ce a primit știe cu exactitate:
+ * fiecare atașament de email, fiecare fișier din OneDrive și fiecare factură din
+ * SPV lasă o urmă cu expeditorul și momentul.
+ */
+export type Intake = {
+  id: string;
+  source: DocumentSource;
+  status: IntakeStatus;
+  /** Adresa de email, dosarul din OneDrive, CUI-ul din SPV. */
+  sender: string | null;
+  subject: string | null;
+  originalFilename: string;
+  receivedAt: string;
+  /** `null` pentru o recepție respinsă: nu a devenit document. */
+  documentId: string | null;
+  clientId: string | null;
+  clientName: string | null;
+  rejectionReason: string | null;
+};
+
+export const INTAKE_STATUS = ["RECEIVED", "ACCEPTED", "REJECTED", "DUPLICATE"] as const;
+export type IntakeStatus = (typeof INTAKE_STATUS)[number];
+
 /* ─── Audit (§31) ──────────────────────────────────────────────────────────── */
 
 export type AuditLogEntry = {
