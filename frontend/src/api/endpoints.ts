@@ -28,6 +28,7 @@ import type {
   MailFolder,
   ReportSummary,
   RoleCode,
+  RoleInfo,
   SettingEntry,
   Task,
   TaskStatus,
@@ -165,6 +166,9 @@ export const intakes = {
 export const administration = {
   auditLogs: (params: QueryParams) => api.get<Paginated<AuditLogEntry>>("/audit-logs", params),
   users: () => api.get<UserSummary[]>("/users"),
+  // Matricea rol × permisiune. Nu depinde de organizație și nu se schimbă
+  // decât la un deploy — de aceea ecranul o poate ține în cache mult.
+  roles: () => api.get<RoleInfo[]>("/roles"),
   createUser: (input: {
     email: string;
     fullName: string;

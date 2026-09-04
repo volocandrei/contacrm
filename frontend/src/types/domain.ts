@@ -92,6 +92,13 @@ export const ROLE_CODE = [
 ] as const;
 export type RoleCode = (typeof ROLE_CODE)[number];
 
+/** Ce înseamnă un rol. Vine de la server: harta de acolo este cea care decide. */
+export type RoleInfo = {
+  code: RoleCode;
+  label: string;
+  permissions: Permission[];
+};
+
 /* ─── Tipuri de document (§6) — extensibile din administrare ────────────────── */
 
 export type DocumentTypeCode = string;

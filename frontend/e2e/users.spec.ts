@@ -55,3 +55,22 @@ test("un operator nu ajunge la ecranul de utilizatori", async ({ page }) => {
   // Meniul nu oferă uși încuiate; autorizarea rămâne pe server.
   await expect(page.getByRole("link", { name: "Utilizatori" })).toHaveCount(0);
 });
+
+test.describe("matricea de roluri", () => {
+  test("spune ce poate fiecare rol, nu doar al meu", async ({ page }) => {
+    // Ecranul completa înainte o singură coloană și își cerea scuze într-o notă
+    // de subsol. Testul apără exact ce s-a schimbat: toate coloanele au conținut.
+    await loginAs(page, ACCOUNTS.admin);
+    await page.goto("/administrare/roluri");
+
+    const table = page.getByRole("table");
+    await expect(table.getByRole("columnheader", { name: /Operator/ })).toBeVisible();
+    await expect(table.getByRole("columnheader", { name: /Vizitator/ })).toBeVisible();
+
+    // Rândul „Ștergere documente" este cel mai strict: doar super-administratorul.
+    const row = page.getByRole("row", { name: /Ștergere documente/ });
+    await expect(row.getByText("permis", { exact: true })).toHaveCount(1);
+
+    await expect(page.getByText("rolul tău")).toBeVisible();
+  });
+});

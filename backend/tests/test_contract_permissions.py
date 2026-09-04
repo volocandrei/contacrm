@@ -13,11 +13,12 @@ from pathlib import Path
 
 import pytest
 
-from app.domain.permissions import ROLE_PERMISSIONS, Permission, RoleCode
+from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS, Permission, RoleCode
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOMAIN_TS = REPO_ROOT / "frontend" / "src" / "types" / "domain.ts"
 STORE_TS = REPO_ROOT / "frontend" / "src" / "api" / "mock" / "store.ts"
+LABELS_TS = REPO_ROOT / "frontend" / "src" / "lib" / "labels.ts"
 
 
 @pytest.fixture(scope="module")
@@ -106,3 +107,23 @@ def test_permission_order_is_stable() -> None:
         Permission.DOCUMENTS_READ,
         Permission.TASKS_READ,
     ]
+
+
+@pytest.fixture(scope="module")
+def labels_source() -> str:
+    return LABELS_TS.read_text(encoding="utf-8")
+
+
+def test_role_names_are_the_same_on_both_sides(labels_source: str) -> None:
+    """Rolul se numește la fel în interfață și în răspunsul serverului.
+
+    `/roles` trimite eticheta din backend; ecranele care nu au încă lista de la
+    server (formularul de adăugare a unui coleg, de exemplu) o iau din harta din
+    frontend. Două nume diferite pentru același rol înseamnă un administrator
+    care crede că dă altceva decât dă.
+    """
+    pattern = r"export const ROLE_LABEL: Record<RoleCode, string> = \{(.*?)\};"
+    block = _block(labels_source, pattern, "ROLE_LABEL")
+    frontend = dict(re.findall(r'(\w+): "([^"]+)"', block))
+    backend = {role.value: ROLE_LABEL[role] for role in RoleCode}
+    assert frontend == backend

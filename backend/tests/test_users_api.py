@@ -24,7 +24,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.domain.permissions import RoleCode
+from app.domain.permissions import ROLE_PERMISSIONS, RoleCode
 from app.models.audit import AuditLog
 from app.models.organization import Organization
 from app.models.user import Role, User
@@ -267,3 +267,54 @@ class TestWhoMayTouchThis:
 
     def test_an_anonymous_request_is_refused(self, api: TestClient) -> None:
         assert create(api).status_code == 401  # type: ignore[union-attr]
+
+
+class TestTheRoleMatrix:
+    """`/roles` există ca ecranul de administrare să poată răspunde la
+    „ce poate face un operator?" **înainte** de a da rolul, nu după."""
+
+    def test_every_role_is_described(self, api: TestClient, admin: User) -> None:
+        login(api, admin.email)
+
+        response = api.get("/api/v1/roles")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert [entry["code"] for entry in body] == [role.value for role in RoleCode]
+        assert all(entry["label"] for entry in body)
+
+    def test_the_answer_is_the_backend_map_itself(self, api: TestClient, admin: User) -> None:
+        """Nu o listă scrisă de mână care s-ar putea despărți de reguli."""
+        login(api, admin.email)
+
+        body = api.get("/api/v1/roles").json()
+
+        for entry in body:
+            expected = {p.value for p in ROLE_PERMISSIONS[RoleCode(entry["code"])]}
+            assert set(entry["permissions"]) == expected, entry["code"]
+
+    @pytest.mark.parametrize(
+        ("role", "allowed"),
+        [
+            (RoleCode.ADMIN, True),
+            (RoleCode.ACCOUNTANT, False),
+            (RoleCode.OPERATOR, False),
+            (RoleCode.VIEWER, False),
+        ],
+    )
+    def test_only_who_hands_out_roles_may_read_the_matrix(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        roles: dict[RoleCode, Role],
+        role: RoleCode,
+        allowed: bool,
+    ) -> None:
+        user = make_user(db, org, roles, email=f"m-{role.value.lower()}@contacrm.test", role=role)
+        login(api, user.email)
+
+        assert (api.get("/api/v1/roles").status_code == 200) is allowed
+
+    def test_an_anonymous_request_is_refused(self, api: TestClient) -> None:
+        assert api.get("/api/v1/roles").status_code == 401

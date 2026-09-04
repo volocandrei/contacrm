@@ -319,6 +319,7 @@ const routes: Route[] = [
     handler: ({ query }) =>
       store.listAudit({ ...query, page: num(query.page), pageSize: num(query.pageSize) }),
   },
+  { method: "GET", pattern: "/roles", handler: () => store.listRoles() },
   { method: "GET", pattern: "/users", handler: () => store.listUsers() },
   {
     method: "POST",

@@ -43,6 +43,7 @@ export const queryKeys = {
   reportSummary: (params: QueryParams) => ["reports", "summary", params] as const,
   auditLogs: (params: QueryParams) => ["audit-logs", params] as const,
   users: ["users"] as const,
+  roles: ["roles"] as const,
   settings: ["settings"] as const,
   driveStatus: ["drive", "status"] as const,
   anafStatus: ["anaf", "status"] as const,
@@ -244,6 +245,15 @@ export function useAuditLogs(params: QueryParams) {
 
 export function useUsers() {
   return useQuery({ queryKey: queryKeys.users, queryFn: administration.users });
+}
+
+/** Matricea de permisiuni. Se schimbă doar la deploy, deci nu are rost reîmprospătată. */
+export function useRoles() {
+  return useQuery({
+    queryKey: queryKeys.roles,
+    queryFn: administration.roles,
+    staleTime: Infinity,
+  });
 }
 
 export function useSettings() {

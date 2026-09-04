@@ -1,53 +1,51 @@
-import { CircleAlert, Lock } from "lucide-react";
-import { useAuditLogs, useSettings, useUsers } from "@/api/hooks";
+import {
+  Check,
+  CircleAlert,
+  Lock,
+  Minus,
+  ScrollText,
+  ShieldCheck,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import { useAuditLogs, useRoles, useSettings, useUsers } from "@/api/hooks";
 import { Pagination, SearchInput } from "@/components/form-controls";
-import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  Panel,
+  QueryBoundary,
+} from "@/components/page";
 import { AddUserButton, UserRow } from "@/features/admin/user-admin";
 import { useAuth, useHasPermission } from "@/features/auth/use-auth";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { formatDateTime } from "@/lib/format";
+import { PERMISSION_AREA_LABEL, PERMISSION_LABEL, ROLE_LABEL } from "@/lib/labels";
+import { iconChip, mutedText, pillClass, surface, type Tone } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 import {
-  ROLE_CODE,
   SETTING_GROUPS,
   type Permission,
   type RoleCode,
   type SettingGroup,
 } from "@/types/domain";
 
-const ROLE_LABEL: Record<RoleCode, string> = {
-  SUPER_ADMIN: "Super administrator",
-  ADMIN: "Administrator",
-  ACCOUNTANT: "Contabil",
-  OPERATOR: "Operator",
-  REVIEWER: "Verificator",
-  VIEWER: "Vizitator",
-};
-
-const PERMISSION_LABEL: Record<Permission, string> = {
-  "clients:read": "Vizualizare clienți",
-  "clients:write": "Modificare clienți",
-  "documents:read": "Vizualizare documente",
-  "documents:write": "Modificare documente",
-  "documents:approve": "Aprobare documente",
-  "documents:delete": "Ștergere documente",
-  "periods:manage": "Administrare perioade",
-  "tasks:read": "Vizualizare sarcini",
-  "tasks:write": "Modificare sarcini",
-  "communication:send": "Trimitere mesaje",
-  "admin:users": "Administrare utilizatori",
-  "admin:settings": "Administrare setări",
-  "audit:read": "Acces jurnal audit",
-};
-
 export function NoPermissionState({ permission }: { permission: string }) {
   return (
     <div className="flex min-h-[40vh] items-center justify-center">
-      <div className="max-w-sm rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto mb-3 grid h-11 w-11 place-content-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-          <Lock className="h-5 w-5" aria-hidden="true" />
+      <div className={cn("max-w-sm p-8 text-center", surface, "rise-in")}>
+        <div
+          className={cn(
+            "mx-auto mb-3 grid h-12 w-12 place-content-center rounded-2xl",
+            iconChip.slate,
+          )}
+        >
+          <Lock className="h-6 w-6" aria-hidden="true" />
         </div>
         <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Acces restricționat</p>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        <p className={cn("mt-1 text-xs", mutedText)}>
           Rolul tău nu include permisiunea <code>{permission}</code>.
         </p>
       </div>
@@ -63,13 +61,28 @@ export function UsersPage() {
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState error={error} />;
 
+  const active = data?.filter((user) => user.isActive).length ?? 0;
+
   return (
     <div>
       <PageHeader
         title="Utilizatori"
         description="Conturile din organizație și rolurile lor"
-        actions={<AddUserButton roleLabels={ROLE_LABEL} />}
+        actions={<AddUserButton />}
       />
+
+      {/* Câți sunt și câți mai pot intra: la o listă de zece rânduri se numără
+          din ochi, la una de patruzeci nu. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+        <span className={pillClass("blue")}>
+          <Users className="h-3.5 w-3.5" aria-hidden="true" />
+          {data?.length ?? 0} conturi
+        </span>
+        <span className={pillClass(active === (data?.length ?? 0) ? "green" : "slate")}>
+          {active} active
+        </span>
+      </div>
+
       <Panel bodyClassName="p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -84,9 +97,7 @@ export function UsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {data?.map((user) => (
-                <UserRow key={user.id} user={user} roleLabels={ROLE_LABEL} />
-              ))}
+              {data?.map((user) => <UserRow key={user.id} user={user} />)}
             </tbody>
           </table>
         </div>
@@ -95,64 +106,187 @@ export function UsersPage() {
   );
 }
 
-/** Matricea rol × permisiune, ca regulile să fie vizibile, nu ascunse în cod. */
+/* ─── Roluri ───────────────────────────────────────────────────────────────── */
+
+/** Zona din aplicație, dedusă din prefixul permisiunii: `documents:approve` → `documents`. */
+function areaOf(permission: Permission): string {
+  return permission.split(":")[0] ?? "";
+}
+
+/**
+ * Matricea rol × permisiune.
+ *
+ * Ecranul completa până acum **o singură coloană** — a rolului cu care ești
+ * autentificat — și își recunoștea limita într-o notă de subsol. Nota era
+ * cinstită și inutilă: cine deschide „Roluri" vrea să afle ce poate face un
+ * operator *înainte* de a-i da rolul. `GET /roles` publică acum harta întreagă,
+ * aceeași după care se ia decizia la fiecare cerere.
+ */
 export function RolesPage() {
+  const canRead = useHasPermission("admin:users");
   const { user } = useAuth();
+  const { data, isLoading, error } = useRoles();
+
+  if (!canRead) return <NoPermissionState permission="admin:users" />;
+
+  const roles = data ?? [];
   const permissions = Object.keys(PERMISSION_LABEL) as Permission[];
+  const areas = [...new Set(permissions.map(areaOf))];
 
   return (
     <div>
       <PageHeader
         title="Roluri și permisiuni"
-        description="Matricea de acces. Regulile se aplică în backend, la fiecare cerere."
+        description="Matricea de acces, așa cum o aplică serverul la fiecare cerere."
       />
-      <Panel bodyClassName="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
-              <tr>
-                <th scope="col" className="px-4 py-3 font-medium">Permisiune</th>
-                {ROLE_CODE.map((role) => (
-                  <th key={role} scope="col" className="px-3 py-3 text-center font-medium">
-                    {ROLE_LABEL[role]}
+
+      <QueryBoundary isLoading={isLoading} error={error} isEmpty={roles.length === 0}>
+        <Panel bodyClassName="p-0" className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-800">
+                  <th
+                    scope="col"
+                    className="sticky left-0 z-10 bg-white px-4 py-3 text-xs font-medium tracking-wide text-slate-500 uppercase dark:bg-slate-900 dark:text-slate-400"
+                  >
+                    Permisiune
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {permissions.map((permission) => (
-                <tr key={permission}>
-                  <td className="px-4 py-2.5 text-slate-700 dark:text-slate-300">
-                    {PERMISSION_LABEL[permission]}
-                    <span className="ml-2 text-xs text-slate-400">{permission}</span>
-                  </td>
-                  {ROLE_CODE.map((role) => {
-                    const granted =
-                      role === user?.role ? user.permissions.includes(permission) : undefined;
+                  {roles.map((role) => {
+                    const mine = role.code === user?.role;
                     return (
-                      <td key={role} className="px-3 py-2.5 text-center">
-                        {granted === undefined ? (
-                          <span className="text-slate-300 dark:text-slate-600">·</span>
-                        ) : granted ? (
-                          <span className="text-green-600 dark:text-green-400">✓</span>
-                        ) : (
-                          <span className="text-slate-300 dark:text-slate-600">—</span>
+                      <th
+                        key={role.code}
+                        scope="col"
+                        className={cn(
+                          "px-3 py-3 text-center align-bottom",
+                          mine && "bg-blue-50/70 dark:bg-blue-500/10",
                         )}
-                      </td>
+                      >
+                        <span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          {role.label}
+                        </span>
+                        <span className={cn("mt-0.5 block text-[10px] tabular-nums", mutedText)}>
+                          {role.permissions.length}/{permissions.length}
+                        </span>
+                        {/* Cine se uită la matrice se caută întâi pe sine. */}
+                        {mine && (
+                          <span className="mt-1 inline-block text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                            rolul tău
+                          </span>
+                        )}
+                      </th>
                     );
                   })}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-          Coloana rolului curent ({user ? ROLE_LABEL[user.role] : "—"}) reflectă permisiunile
-          returnate de API. Restul coloanelor se vor popula când backend-ul expune matricea completă.
+              </thead>
+              <tbody>
+                {areas.map((area) => (
+                  <PermissionArea
+                    key={area}
+                    area={area}
+                    permissions={permissions.filter((p) => areaOf(p) === area)}
+                    roles={roles}
+                    currentRole={user?.role}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+
+        <p className={cn("mt-3 text-xs", mutedText)}>
+          Rolurile sunt fixe: se schimbă printr-un deploy, nu din interfață. Ascunderea unui buton
+          în ecran nu este o măsură de securitate — refuzul îl dă serverul.
         </p>
-      </Panel>
+      </QueryBoundary>
     </div>
   );
+}
+
+function PermissionArea({
+  area,
+  permissions,
+  roles,
+  currentRole,
+}: {
+  area: string;
+  permissions: Permission[];
+  roles: Array<{ code: RoleCode; permissions: Permission[] }>;
+  currentRole?: RoleCode;
+}) {
+  return (
+    <>
+      <tr className="bg-slate-50/80 dark:bg-slate-800/40">
+        <th
+          scope="colgroup"
+          colSpan={roles.length + 1}
+          className="px-4 py-1.5 text-left text-[11px] font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
+        >
+          {PERMISSION_AREA_LABEL[area] ?? area}
+        </th>
+      </tr>
+      {permissions.map((permission) => (
+        <tr
+          key={permission}
+          className="border-t border-slate-100 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40"
+        >
+          <th
+            scope="row"
+            className="sticky left-0 z-10 bg-white px-4 py-2.5 text-left font-normal text-slate-700 dark:bg-slate-900 dark:text-slate-300"
+          >
+            {PERMISSION_LABEL[permission]}
+            <code className="ml-2 text-xs text-slate-400 dark:text-slate-500">{permission}</code>
+          </th>
+          {roles.map((role) => {
+            const granted = role.permissions.includes(permission);
+            return (
+              <td
+                key={role.code}
+                className={cn(
+                  "px-3 py-2.5 text-center",
+                  role.code === currentRole && "bg-blue-50/70 dark:bg-blue-500/10",
+                )}
+              >
+                {/* Bifa are fundal, absența nu: ochiul caută ce se poate, nu ce nu. */}
+                {granted ? (
+                  <span
+                    className="mx-auto grid h-5 w-5 place-content-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
+                    title={`${ROLE_LABEL[role.code]} — permis`}
+                  >
+                    <Check className="h-3 w-3" aria-hidden="true" />
+                    <span className="sr-only">permis</span>
+                  </span>
+                ) : (
+                  <span className="text-slate-300 dark:text-slate-700" title="fără drept">
+                    <Minus className="mx-auto h-3 w-3" aria-hidden="true" />
+                    <span className="sr-only">fără drept</span>
+                  </span>
+                )}
+              </td>
+            );
+          })}
+        </tr>
+      ))}
+    </>
+  );
+}
+
+/* ─── Jurnal audit ─────────────────────────────────────────────────────────── */
+
+/**
+ * Culoarea acțiunii, după verb.
+ *
+ * O sută de rânduri gri, toate la fel: ce s-a șters se citea la fel de repede ca
+ * ce s-a citit. Verbul din codul acțiunii — `document.approve`, `user.deactivate`
+ * — spune destul cât să separe ce merită o privire de restul.
+ */
+function actionTone(action: string): Tone {
+  const verb = action.split(".").at(-1) ?? action;
+  if (/delete|deactivate|reject|disconnect|remove/.test(verb)) return "red";
+  if (/approve|create|connect|login/.test(verb)) return "green";
+  if (/update|patch|assign|reprocess|password|sync/.test(verb)) return "amber";
+  return "slate";
 }
 
 export function AuditLogPage() {
@@ -171,6 +305,14 @@ export function AuditLogPage() {
       <PageHeader
         title="Jurnal audit"
         description="Fiecare acțiune importantă este înregistrată și nu poate fi ștearsă din interfață"
+        actions={
+          data && (
+            <span className={pillClass("slate")}>
+              <ScrollText className="h-3.5 w-3.5" aria-hidden="true" />
+              {data.total} înregistrări
+            </span>
+          )
+        }
       />
 
       <SearchInput
@@ -204,25 +346,31 @@ export function AuditLogPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {data?.items.map((entry) => (
-                    <tr key={entry.id}>
-                      <td className="px-4 py-2.5 whitespace-nowrap text-slate-500 dark:text-slate-400">
+                    <tr
+                      key={entry.id}
+                      className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                    >
+                      <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-slate-500 dark:text-slate-400">
                         {formatDateTime(entry.at)}
                       </td>
                       <td className="px-4 py-2.5 text-slate-700 dark:text-slate-300">
                         {entry.userName}
                       </td>
                       <td className="px-4 py-2.5">
-                        <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                          {entry.action}
-                        </code>
+                        <span className={pillClass(actionTone(entry.action))}>{entry.action}</span>
                       </td>
                       <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
-                        {entry.entityType} · {entry.entityId}
+                        {entry.entityType}
+                        <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">
+                          {entry.entityId}
+                        </span>
                       </td>
                       <td className="max-w-64 truncate px-4 py-2.5 text-slate-600 dark:text-slate-400">
                         {entry.detail ?? "—"}
                       </td>
-                      <td className="px-4 py-2.5 text-slate-400 dark:text-slate-500">{entry.ip}</td>
+                      <td className="px-4 py-2.5 tabular-nums text-slate-400 dark:text-slate-500">
+                        {entry.ip}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -243,6 +391,8 @@ export function AuditLogPage() {
     </div>
   );
 }
+
+/* ─── Setări ───────────────────────────────────────────────────────────────── */
 
 /**
  * Setările (§16, §73).
@@ -277,14 +427,14 @@ const SETTING_LABEL: Record<string, string> = {
   ONEDRIVE: "Integrare OneDrive",
 };
 
-const GROUP_LABEL: Record<SettingGroup, string> = {
-  PROCESSING: "Procesare și încredere",
-  STORAGE: "Stocare",
-  EXTRACTION: "OCR / AI",
-  PERIODS: "Perioade contabile",
-  NOTIFICATIONS: "Notificări",
-  RETENTION: "Retenție",
-  SECURITY: "Securitate",
+const GROUP_META: Record<SettingGroup, { label: string; Icon: LucideIcon; tone: Tone }> = {
+  PROCESSING: { label: "Procesare și încredere", Icon: ShieldCheck, tone: "blue" },
+  STORAGE: { label: "Stocare", Icon: ScrollText, tone: "purple" },
+  EXTRACTION: { label: "OCR / AI", Icon: ShieldCheck, tone: "green" },
+  PERIODS: { label: "Perioade contabile", Icon: ScrollText, tone: "amber" },
+  NOTIFICATIONS: { label: "Notificări", Icon: ScrollText, tone: "blue" },
+  RETENTION: { label: "Retenție", Icon: ScrollText, tone: "slate" },
+  SECURITY: { label: "Securitate", Icon: Lock, tone: "red" },
 };
 
 /** `true`/`false` nu se citesc bine pe un ecran în română. */
@@ -292,6 +442,13 @@ function displayValue(value: string): string {
   if (value === "true") return "activat";
   if (value === "false") return "dezactivat";
   return value;
+}
+
+/** Un comutator pornit sau oprit se vede; un text „activat" se citește. */
+function valueTone(value: string): Tone | null {
+  if (value === "true") return "green";
+  if (value === "false") return "slate";
+  return null;
 }
 
 export function SettingsPage() {
@@ -312,7 +469,7 @@ export function SettingsPage() {
         description="Configurarea după care rulează serverul chiar acum."
       />
 
-      <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+      <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
         <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <p>
           Valorile vin din variabile de mediu și se schimbă modificând deployment-ul, nu de aici.
@@ -326,23 +483,56 @@ export function SettingsPage() {
         <ErrorState error={error} />
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {grouped.map((section) => (
-            <Panel key={section.group} title={GROUP_LABEL[section.group]}>
-              <dl className="space-y-2 text-sm">
-                {section.items.map((item) => (
-                  <div key={item.key} className="flex items-start justify-between gap-3">
-                    <dt className="text-slate-600 dark:text-slate-400">
-                      {SETTING_LABEL[item.key] ?? item.key}
-                      <span className="ml-2 text-xs text-slate-400">{item.key}</span>
-                    </dt>
-                    <dd className="shrink-0 font-medium text-slate-900 dark:text-slate-100">
-                      {displayValue(item.value)}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </Panel>
-          ))}
+          {grouped.map((section, index) => {
+            const meta = GROUP_META[section.group];
+            return (
+              <section
+                key={section.group}
+                className={cn(surface, "rise-in", `rise-delay-${Math.min(index + 1, 4)}`)}
+              >
+                <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-3.5 dark:border-slate-800">
+                  <span
+                    className={cn(
+                      "grid h-9 w-9 shrink-0 place-content-center rounded-xl",
+                      iconChip[meta.tone],
+                    )}
+                  >
+                    <meta.Icon className="h-4.5 w-4.5" aria-hidden="true" />
+                  </span>
+                  <h3 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+                    {meta.label}
+                  </h3>
+                </div>
+                <dl className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+                  {section.items.map((item) => {
+                    const tone = valueTone(item.value);
+                    return (
+                      <div
+                        key={item.key}
+                        className="flex items-start justify-between gap-3 px-5 py-2.5"
+                      >
+                        <dt className="text-slate-600 dark:text-slate-400">
+                          {SETTING_LABEL[item.key] ?? item.key}
+                          <code className="ml-2 text-xs text-slate-400 dark:text-slate-500">
+                            {item.key}
+                          </code>
+                        </dt>
+                        <dd className="shrink-0">
+                          {tone ? (
+                            <span className={pillClass(tone)}>{displayValue(item.value)}</span>
+                          ) : (
+                            <span className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
+                              {item.value}
+                            </span>
+                          )}
+                        </dd>
+                      </div>
+                    );
+                  })}
+                </dl>
+              </section>
+            );
+          })}
         </div>
       )}
     </div>

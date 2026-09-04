@@ -21,7 +21,7 @@ from fastapi import APIRouter, Request, status
 from pydantic import Field
 
 from app.api.deps import DbSession, client_ip, require_permission
-from app.domain.permissions import Permission, RoleCode
+from app.domain.permissions import ROLE_LABEL, Permission, RoleCode, sorted_permissions
 from app.models.user import User
 from app.repositories.user import UserRepository
 from app.schemas.auth import UserSummaryOut
@@ -69,6 +69,35 @@ def _actor(user: User, request: Request) -> ActorContext:
     return ActorContext(
         user=user, ip=client_ip(request), user_agent=request.headers.get("User-Agent")
     )
+
+
+class RoleOut(ApiModel):
+    code: RoleCode
+    label: str
+    permissions: list[Permission]
+
+
+@router.get("/roles", response_model=list[RoleOut])
+def list_roles(user: UserAdmin) -> list[RoleOut]:
+    """Matricea rolurilor cu permisiunile lor, întreagă.
+
+    Până acum ecranul de roluri putea completa **o singură coloană** — a rolului
+    cu care ești autentificat — pentru că doar atât expunea API-ul: `/me`
+    întoarce permisiunile *tale*. Ecranul își recunoștea limita într-o notă de
+    subsol, ceea ce este cinstit dar inutil: cine deschide „Roluri" vrea să afle
+    ce poate face un operator **înainte** de a-i da rolul, nu după.
+
+    Harta există deja în `domain/permissions.py` și nu este un secret: nu spune
+    cine ce rol are, ci ce înseamnă fiecare rol. Cere totuși `admin:users`,
+    fiindcă doar cine împarte roluri are motiv să o citească.
+
+    Nu atinge baza de date — de aceea nici nu cere sesiune.
+    """
+    del user  # doar autorizarea contează aici
+    return [
+        RoleOut(code=role, label=ROLE_LABEL[role], permissions=sorted_permissions(role))
+        for role in RoleCode
+    ]
 
 
 @router.get("/users", response_model=list[UserSummaryOut])

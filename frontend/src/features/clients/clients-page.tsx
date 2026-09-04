@@ -9,7 +9,8 @@ import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/compo
 import { ClientStatusBadge } from "@/components/status-badge";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { formatDateTime } from "@/lib/format";
-import { iconChip, pillClass, type Tone } from "@/lib/ui";
+import { avatarTone, initials } from "@/lib/avatar";
+import { iconChip, pillClass } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { CLIENT_STATUS } from "@/types/domain";
 
@@ -181,28 +182,4 @@ export function ClientsPage() {
       </Panel>
     </div>
   );
-}
-
-/** Inițialele firmei, cel mult două litere. */
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter((word) => /\p{L}/u.test(word))
-    .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
-/**
- * Tonul pastilei, derivat din nume.
- *
- * Stabil — același client are mereu aceeași culoare, deci devine recognoscibil —
- * și fără sens semantic: culoarea nu spune nimic despre client, doar îl separă
- * de vecinii lui din listă.
- */
-const AVATAR_TONES: Tone[] = ["blue", "green", "amber", "purple", "red", "slate"];
-
-function avatarTone(name: string): Tone {
-  const sum = [...name].reduce((total, character) => total + character.charCodeAt(0), 0);
-  return AVATAR_TONES[sum % AVATAR_TONES.length]!;
 }

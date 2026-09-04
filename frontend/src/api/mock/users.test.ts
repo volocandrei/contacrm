@@ -13,11 +13,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ApiError } from "@/api/types";
 import {
   createUser,
+  listRoles,
   listUsers,
   mockLogin,
   resetUserPassword,
   updateUser,
 } from "@/api/mock/store";
+import { ROLE_CODE } from "@/types/domain";
 
 const ADMIN = "admin@contacrm.test";
 /** ACCOUNTANT are `documents:approve`, dar nu `admin:users`. */
@@ -168,5 +170,30 @@ describe("resetarea parolei", () => {
     mockLogin(ACCOUNTANT);
 
     expect(() => resetUserPassword(colleague.id, GOOD_PASSWORD)).toThrowError(/permisiunea/);
+  });
+});
+
+describe("matricea de roluri", () => {
+  it("descrie fiecare rol, în ordinea din vocabular", () => {
+    const roles = listRoles();
+
+    expect(roles.map((role) => role.code)).toEqual([...ROLE_CODE]);
+    expect(roles.every((role) => role.label.length > 0)).toBe(true);
+  });
+
+  it("SUPER_ADMIN le are pe toate, VIEWER doar citește", () => {
+    const roles = listRoles();
+    const superAdmin = roles.find((role) => role.code === "SUPER_ADMIN")!;
+    const viewer = roles.find((role) => role.code === "VIEWER")!;
+
+    expect(superAdmin.permissions).toContain("documents:delete");
+    expect(viewer.permissions).toEqual(["clients:read", "documents:read", "tasks:read"]);
+    expect(viewer.permissions).not.toContain("documents:write");
+  });
+
+  it("cine nu împarte roluri nu citește matricea", () => {
+    mockLogin(ACCOUNTANT);
+
+    expect(() => listRoles()).toThrow(ApiError);
   });
 });

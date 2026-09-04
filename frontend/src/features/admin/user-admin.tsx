@@ -26,7 +26,11 @@ import { Plus } from "lucide-react";
 import { useCreateUser, useResetPassword, useUpdateUser } from "@/api/hooks";
 import { ApiError } from "@/api/types";
 import { useAuth } from "@/features/auth/use-auth";
+import { avatarTone, initials } from "@/lib/avatar";
 import { formatDateTime } from "@/lib/format";
+import { ROLE_LABEL } from "@/lib/labels";
+import { iconChip, mutedText, pillClass } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 import type { RoleCode, UserSummary } from "@/types/domain";
 
 /** Minimul cerut și de server, și de `create-admin`. */
@@ -57,12 +61,12 @@ function Field({
   );
 }
 
-function RoleOptions({ labels }: { labels: Record<RoleCode, string> }) {
+function RoleOptions() {
   return (
     <>
-      {(Object.keys(labels) as RoleCode[]).map((code) => (
+      {(Object.keys(ROLE_LABEL) as RoleCode[]).map((code) => (
         <option key={code} value={code}>
-          {labels[code]}
+          {ROLE_LABEL[code]}
         </option>
       ))}
     </>
@@ -71,13 +75,7 @@ function RoleOptions({ labels }: { labels: Record<RoleCode, string> }) {
 
 /* ─── Un rând ──────────────────────────────────────────────────────────────── */
 
-export function UserRow({
-  user,
-  roleLabels,
-}: {
-  user: UserSummary;
-  roleLabels: Record<RoleCode, string>;
-}) {
+export function UserRow({ user }: { user: UserSummary }) {
   const { user: me } = useAuth();
   const update = useUpdateUser();
   const [problem, setProblem] = useState<string | null>(null);
@@ -101,9 +99,24 @@ export function UserRow({
   return (
     <>
       <tr>
-        <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
-          {user.fullName}
-          {isMe && <span className="ml-2 text-xs text-slate-400">(tu)</span>}
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-3">
+            {/* Aceleași inițiale colorate ca la clienți: un rând de tabel devine
+                o persoană înainte de a fi citit. */}
+            <span
+              className={cn(
+                "grid h-9 w-9 shrink-0 place-content-center rounded-lg text-xs font-semibold",
+                iconChip[avatarTone(user.fullName)],
+              )}
+              aria-hidden="true"
+            >
+              {initials(user.fullName)}
+            </span>
+            <span className="font-medium text-slate-900 dark:text-slate-100">
+              {user.fullName}
+              {isMe && <span className={cn("ml-2 text-xs", mutedText)}>(tu)</span>}
+            </span>
+          </div>
         </td>
         <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{user.email}</td>
         <td className="px-4 py-3">
@@ -117,17 +130,11 @@ export function UserRow({
             onChange={(event) => change({ role: event.target.value as RoleCode })}
             className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           >
-            <RoleOptions labels={roleLabels} />
+            <RoleOptions />
           </select>
         </td>
         <td className="px-4 py-3">
-          <span
-            className={
-              user.isActive
-                ? "text-green-600 dark:text-green-400"
-                : "text-slate-400 dark:text-slate-500"
-            }
-          >
+          <span className={pillClass(user.isActive ? "green" : "slate")}>
             {user.isActive ? "Activ" : "Dezactivat"}
           </span>
         </td>
@@ -247,7 +254,7 @@ function PasswordResetForm({ user, onDone }: { user: UserSummary; onDone: () => 
 
 /* ─── Colegul nou ──────────────────────────────────────────────────────────── */
 
-export function AddUserButton({ roleLabels }: { roleLabels: Record<RoleCode, string> }) {
+export function AddUserButton() {
   const create = useCreateUser();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
@@ -314,7 +321,7 @@ export function AddUserButton({ roleLabels }: { roleLabels: Record<RoleCode, str
             onChange={(event) => setForm({ ...form, role: event.target.value as RoleCode })}
             className={FIELD_CLASS}
           >
-            <RoleOptions labels={roleLabels} />
+            <RoleOptions />
           </select>
         </Field>
         <Field id="user-password" label={`Parolă (minimum ${MIN_PASSWORD_LENGTH} caractere)`}>

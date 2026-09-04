@@ -25,6 +25,8 @@ import {
   periodProgress,
 } from "@/api/mock/seed";
 import { buildArchivePath, buildDocumentFilename, type FilenameInput } from "@/lib/filename";
+import { ROLE_LABEL } from "@/lib/labels";
+import { ROLE_CODE } from "@/types/domain";
 import type {
   AccountingPeriod,
   AnafMandate,
@@ -58,6 +60,7 @@ import type {
   ReportBucket,
   ReportSummary,
   RoleCode,
+  RoleInfo,
   SettingEntry,
   Task,
   UserSummary,
@@ -1296,6 +1299,16 @@ export function listAudit(filters: { q?: string; action?: string; page?: number;
   if (filters.q) items = items.filter((a) => matches([a.userName, a.detail, a.entityId], filters.q!));
   if (filters.action) items = items.filter((a) => a.action === filters.action);
   return paginate(items, filters.page, filters.pageSize);
+}
+
+/** Oglinda lui `GET /roles`: aceeași hartă pe care o folosește și autorizarea. */
+export function listRoles(): RoleInfo[] {
+  requirePermission("admin:users");
+  return ROLE_CODE.map((code) => ({
+    code,
+    label: ROLE_LABEL[code],
+    permissions: ROLE_PERMISSIONS[code],
+  }));
 }
 
 export function listUsers(): UserSummary[] {

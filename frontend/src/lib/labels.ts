@@ -13,7 +13,13 @@
  * Vocabularul în sine — ce stări există — vine din backend (§53) și este
  * verificat automat de `tests/test_contract_enums.py`. Aici este doar traducerea.
  */
-import type { ClientStatus, DocumentStatus, PeriodStatus } from "@/types/domain";
+import type {
+  ClientStatus,
+  DocumentStatus,
+  Permission,
+  PeriodStatus,
+  RoleCode,
+} from "@/types/domain";
 
 export const DOCUMENT_STATUS_LABEL: Record<DocumentStatus, string> = {
   RECEIVED: "Recepționat",
@@ -42,4 +48,57 @@ export const CLIENT_STATUS_LABEL: Record<ClientStatus, string> = {
   INACTIVE: "Inactiv",
   PROSPECT: "Prospect",
   SUSPENDED: "Suspendat",
+};
+
+/**
+ * Numele rolurilor.
+ *
+ * `GET /roles` trimite eticheta serverului, iar ecranul de roluri o folosește pe
+ * aceea. Harta de aici rămâne pentru locurile care nu au lista de la server —
+ * formularul prin care alegi rolul unui coleg nou, de pildă — și pentru
+ * backendul simulat. `tests/test_contract_permissions.py` cade dacă cele două
+ * se despart: un rol nu are voie să se numească altfel pe ecran decât în
+ * răspunsul serverului.
+ */
+export const ROLE_LABEL: Record<RoleCode, string> = {
+  SUPER_ADMIN: "Super administrator",
+  ADMIN: "Administrator",
+  ACCOUNTANT: "Contabil",
+  OPERATOR: "Operator",
+  REVIEWER: "Verificator",
+  VIEWER: "Vizitator",
+};
+
+/** Ce înseamnă, în cuvinte, fiecare permisiune. */
+export const PERMISSION_LABEL: Record<Permission, string> = {
+  "clients:read": "Vizualizare clienți",
+  "clients:write": "Modificare clienți",
+  "documents:read": "Vizualizare documente",
+  "documents:write": "Modificare documente",
+  "documents:approve": "Aprobare documente",
+  "documents:delete": "Ștergere documente",
+  "periods:manage": "Administrare perioade",
+  "tasks:read": "Vizualizare sarcini",
+  "tasks:write": "Modificare sarcini",
+  "communication:send": "Trimitere mesaje",
+  "admin:users": "Administrare utilizatori",
+  "admin:settings": "Administrare setări",
+  "audit:read": "Acces jurnal audit",
+};
+
+/**
+ * Zona din aplicație pe care o deschide o permisiune.
+ *
+ * Treisprezece rânduri fără despărțituri se citesc ca o listă oarecare. Grupate,
+ * întrebarea „ce poate face un operator cu documentele?" are un răspuns care se
+ * vede dintr-o privire.
+ */
+export const PERMISSION_AREA_LABEL: Record<string, string> = {
+  clients: "Clienți",
+  documents: "Documente",
+  periods: "Perioade contabile",
+  tasks: "Sarcini",
+  communication: "Comunicare",
+  admin: "Administrare",
+  audit: "Audit",
 };
