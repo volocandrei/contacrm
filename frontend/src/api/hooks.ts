@@ -1,4 +1,5 @@
 /** Hook-uri TanStack Query. Cheile de cache stau într-un singur loc, ca invalidarea să fie sigură. */
+import { useCallback } from "react";
 import {
   useMutation,
   useQuery,
@@ -229,6 +230,21 @@ export function useDocumentTypes() {
 
 export function useNextReviewDocument(after?: string) {
   return useQuery({ queryKey: queryKeys.nextReview(after), queryFn: () => documents.nextReview(after) });
+}
+
+/**
+ * Următorul document din coadă, cerut la comandă.
+ *
+ * `useNextReviewDocument` este o interogare: se potrivește unui ecran care
+ * *afișează* coada. După o aprobare avem nevoie de altceva — o singură întrebare,
+ * pusă în momentul potrivit, al cărei răspuns nu are de ce să rămână în cache:
+ * data viitoare coada arată deja altfel.
+ */
+export function useNextReviewAfter() {
+  return useCallback(
+    (after: string) => documents.nextReview(after),
+    [],
+  );
 }
 
 export function usePeriods(params: QueryParams) {

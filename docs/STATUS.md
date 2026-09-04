@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  15.534 linii sursă +  2.388 linii teste  →   193 teste
+frontend  15.601 linii sursă +  2.425 linii teste  →   194 teste
 backend   20.132 linii sursă + 17.665 linii teste  → 1.212 teste
-end-to-end 1.287 linii                             →    50 teste (browser real)
+end-to-end 1.330 linii                             →    51 teste (browser real)
 migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.455 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.457 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -160,7 +160,15 @@ distanța rămasă, fără să pretindă că o depășește.
 
 Piesa centrală este **ecranul de verificare**: facsimilul documentului lângă
 câmpurile extrase, fiecare câmp cu proveniența lui (`AI 81%`, „corectat manual",
-„lipsă") și bordură colorată pe praguri de încredere. Scurtături `Alt+S` / `Alt+A`.
+„lipsă") și bordură colorată pe praguri de încredere.
+
+Coada merge singură mai departe: după aprobare sau respingere se deschide
+următorul document, iar mesajul spune ce s-a întâmplat cu cel dinainte. Ruta
+`next-review` primea `after` de la început — „scoate din coadă documentul
+tocmai închis" — dar interfața nu o chema așa, deci operatorul rămânea pe
+documentul aprobat și mai avea de făcut două lucruri pentru fiecare document
+următor. Scurtături: `Alt+S` salvează, `Alt+A` aprobă, `Alt+N` sare peste
+fără să atingă documentul.
 
 **Backendul simulat** (`src/api/mock/`, ~1.700 linii) implementează 32 de rute cu
 aceleași căi, paginare, filtrare, permisiuni și coduri de eroare ca API-ul real.

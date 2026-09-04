@@ -45,6 +45,22 @@ function documentInStatus(status: DocumentStatus, index = 0): string {
   return found.id;
 }
 
+/**
+ * Un document care chiar poate fi aprobat.
+ *
+ * Testele din fișier împart starea backendului simulat: unul golește un câmp
+ * obligatoriu, altul arhivează primul rând. Un test care ia „primul
+ * REVIEW_REQUIRED" nimerește, în funcție de ordinea rulării, exact documentul
+ * mutilat de vecinul lui — și cade pentru un motiv care nu are legătură cu ce
+ * verifică.
+ */
+function approvableDocument(): string {
+  for (const row of store.listDocuments({ status: "REVIEW_REQUIRED", pageSize: 50 }).items) {
+    if (store.toDetail(store.getDocument(row.id)).approvalBlockers.length === 0) return row.id;
+  }
+  throw new Error("Setul sintetic nu are niciun document aprobabil.");
+}
+
 async function openReview(documentId: string) {
   renderReview(documentId);
   // Ecranul este gata când formularul de câmpuri a apărut.
@@ -173,7 +189,9 @@ describe("aprobarea", () => {
     await openReview(documentId);
 
     await user.click(screen.getByRole("button", { name: /Aprobă/ }));
-    await screen.findByText("Document aprobat și arhivat.");
+    // Mesajul numește documentul, pentru că ecranul a mers între timp mai
+    // departe: „Document aprobat" pe un alt document ar deruta.
+    await screen.findByText(/a fost aprobat și arhivat/);
 
     // Aprobarea și arhivarea sunt un singur act, în ambele backend-uri: un document
     // aprobat care nu a ajuns în arhivă nu este nicăieri (§10, §11).
@@ -182,6 +200,25 @@ describe("aprobarea", () => {
     expect(approved.reviewRequired).toBe(false);
     expect(approved.storedFilename).toMatch(/.pdf$|.jpg$/);
     expect(approved.history.at(-1)).toMatchObject({ action: "DOCUMENT_APPROVED" });
+  });
+
+  it("deschide singur următorul document din coadă", async () => {
+    /**
+     * Ruta `next-review` primea de la început un `after` — „scoate din coadă
+     * documentul tocmai închis" —, dar interfața nu o chema așa: operatorul
+     * rămânea pe documentul aprobat și avea de făcut încă două lucruri pentru
+     * fiecare document dintr-o listă de câteva sute pe lună.
+     */
+    const user = userEvent.setup();
+    await openReview(approvableDocument());
+
+    const heading = () => screen.getByRole("heading", { level: 2 }).textContent;
+    const first = heading();
+
+    await user.click(screen.getByRole("button", { name: /Aprobă/ }));
+    await screen.findByText(/a fost aprobat și arhivat/);
+
+    await waitFor(() => expect(heading()).not.toBe(first));
   });
 });
 
@@ -200,7 +237,7 @@ describe("respingerea", () => {
     expect(confirm).toBeEnabled();
 
     await user.click(confirm);
-    await screen.findByText("Document respins.");
+    await screen.findByText(/a fost respins/);
     expect(store.getDocument(documentId).status).toBe("REJECTED");
   });
 });

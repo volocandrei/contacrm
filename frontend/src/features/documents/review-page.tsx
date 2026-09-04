@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Calculator,
   CircleAlert,
@@ -29,6 +29,8 @@ import {
   useClients,
   useDocument,
   useDocumentTypes,
+  useNextReviewAfter,
+  useSidebarCounts,
   useMarkDuplicate,
   useNextReviewDocument,
   useRejectDocument,
@@ -42,7 +44,7 @@ import { DocumentPreview } from "@/features/documents/document-preview";
 import { useDownloadDocument } from "@/features/documents/use-download";
 import { describeError } from "@/lib/errors";
 import { formatDateTime, formatFileSize } from "@/lib/format";
-import { buttonPrimary, focusRing, iconChip, type Tone } from "@/lib/ui";
+import { buttonPrimary, focusRing, iconChip, mutedText, pillClass, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import type {
   DocumentAction,
@@ -92,7 +94,13 @@ type Draft = Partial<Record<DocumentFieldName, string>>;
 export function ReviewPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { data: document, isLoading, error } = useDocument(id);
+
+  // Ce s-a întâmplat cu documentul precedent călătorește prin starea rutei:
+  // ecranul următor trebuie să spună de ce a apărut, altfel saltul pare o
+  // scăpare a aplicației.
+  const handoff = (location.state as { done?: string } | null)?.done;
 
   if (isLoading) return <LoadingState label="Se încarcă documentul…" />;
   if (error) return <ErrorState error={error} />;
@@ -102,20 +110,27 @@ export function ReviewPage() {
     <ReviewScreen
       key={document.id}
       document={document}
-      onNavigate={(nextId) => navigate(`/documente/verificare/${nextId}`)}
+      handoff={handoff}
+      onNavigate={(nextId, done) =>
+        navigate(`/documente/verificare/${nextId}`, done ? { state: { done } } : undefined)
+      }
     />
   );
 }
 
 function ReviewScreen({
   document,
+  handoff,
   onNavigate,
 }: {
   document: DocumentDetail;
-  onNavigate: (id: string) => void;
+  handoff?: string;
+  onNavigate: (id: string, done?: string) => void;
 }) {
   const [draft, setDraft] = useState<Draft>({});
-  const [feedback, setFeedback] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: "ok" | "error"; message: string } | null>(
+    handoff ? { tone: "ok", message: handoff } : null,
+  );
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
@@ -127,6 +142,8 @@ function ReviewScreen({
 
   const { data: documentTypes } = useDocumentTypes();
   const { data: clientsPage } = useClients({ pageSize: 200, status: "ACTIVE" });
+  const { data: counts } = useSidebarCounts();
+  const nextAfter = useNextReviewAfter();
 
   const updateFields = useUpdateDocumentFields(document.id);
   const approve = useApproveDocument();
@@ -135,6 +152,9 @@ function ReviewScreen({
   const reprocess = useReprocessDocument();
   const assignClient = useAssignClient();
   const { download, isPending: downloading } = useDownloadDocument();
+
+  /** Cum se numește documentul în mesaje: numele arhivat, dacă există. */
+  const title = document.storedFilename ?? document.originalFilename;
 
   const isProcessing = document.status === "RECEIVED" || document.status === "PROCESSING";
 
@@ -175,10 +195,28 @@ function ReviewScreen({
         setDraft({});
       }
       await approve.mutateAsync(document.id);
-      setFeedback({ tone: "ok", message: "Document aprobat și arhivat." });
+      await advance(`„${title}" a fost aprobat și arhivat.`);
     } catch (caught) {
       setFeedback({ tone: "error", message: describeError(caught) });
     }
+  }
+
+  /**
+   * Mai departe, la următorul din coadă.
+   *
+   * Ruta `next-review` primea de la început un `after` — „scoate din coadă
+   * documentul tocmai închis, ca operatorul să nu revină pe el" — dar nimeni nu
+   * o chema așa. Un operator care aproba rămânea pe documentul aprobat și avea
+   * de făcut încă două lucruri (înapoi la coadă, deschide) pentru fiecare
+   * document dintr-o listă de câteva sute pe lună.
+   *
+   * Dacă nu mai e nimic, rămânem pe loc și o spunem: un salt către nicăieri ar
+   * fi mai rău decât lipsa saltului.
+   */
+  async function advance(done: string) {
+    const next = await nextAfter(document.id);
+    if (next) onNavigate(next.id, done);
+    else setFeedback({ tone: "ok", message: `${done} Coada este goală.` });
   }
 
   async function handleReject() {
@@ -186,7 +224,7 @@ function ReviewScreen({
       await reject.mutateAsync({ id: document.id, reason: rejectReason });
       setRejecting(false);
       setRejectReason("");
-      setFeedback({ tone: "ok", message: "Document respins." });
+      await advance(`„${title}" a fost respins.`);
     } catch (caught) {
       setFeedback({ tone: "error", message: describeError(caught) });
     }
@@ -212,11 +250,22 @@ function ReviewScreen({
       } else if (key === "a" && can("approve")) {
         event.preventDefault();
         void handleApprove();
+      } else if (key === "n") {
+        // Sar peste: documentul rămâne în coadă, dar nu acum. Fără el, singurul
+        // mod de a amâna unul era să te întorci la listă cu mouse-ul.
+        event.preventDefault();
+        void skip();
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   });
+
+  async function skip() {
+    const next = await nextAfter(document.id);
+    if (next) onNavigate(next.id);
+    else setFeedback({ tone: "ok", message: "Nu mai este niciun alt document în coadă." });
+  }
 
   const busy =
     updateFields.isPending ||
@@ -241,6 +290,17 @@ function ReviewScreen({
             </h2>
             <DocumentStatusBadge status={document.status} />
             <ConfidenceBadge confidence={document.confidence} />
+            {/* Cât mai e de lucru. Un operator care nu știe dacă a rămas unul
+                sau patruzeci nu poate decide dacă termină acum sau mâine. */}
+            {(counts?.review ?? 0) > 0 && (
+              <Link
+                to="/documente/verificare"
+                className={cn(pillClass("blue"), "hover:underline")}
+                title="Toate documentele care așteaptă verificare"
+              >
+                {counts!.review} în coadă
+              </Link>
+            )}
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {formatFileSize(document.fileSize)} · {document.mimeType} · recepționat{" "}
@@ -459,6 +519,11 @@ function ReviewScreen({
                 </button>
               )}
             </div>
+
+            <p className={cn("mt-2 text-xs", mutedText)}>
+              <kbd className="rounded bg-slate-100 px-1 dark:bg-slate-800">Alt+N</kbd> sare la
+              următorul document fără să atingă acesta — rămâne în coadă.
+            </p>
 
             {can("approve") && approvalBlocked && (
               <ul className="mt-2 ml-1 list-disc space-y-0.5 pl-4 text-xs text-slate-500 dark:text-slate-400">
@@ -842,6 +907,7 @@ function FieldOrigin({ field, isDirty }: { field: ExtractedField<string>; isDirt
 export function ReviewQueuePage() {
   const navigate = useNavigate();
   const { data: next, isLoading, error } = useNextReviewDocument();
+  const { data: counts } = useSidebarCounts();
 
   if (isLoading) return <LoadingState label="Se caută următorul document…" />;
   if (error) return <ErrorState error={error} />;
@@ -855,11 +921,18 @@ export function ReviewQueuePage() {
               <Inbox className="h-5 w-5" aria-hidden="true" />
             </div>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
-              Următorul document care așteaptă verificare:
+              {(counts?.review ?? 0) > 1
+                ? `${counts!.review} documente așteaptă verificare. Primul:`
+                : "Următorul document care așteaptă verificare:"}
               <br />
               <span className="font-medium text-slate-900 dark:text-slate-100">
                 {next.storedFilename ?? next.originalFilename}
               </span>
+            </p>
+            {/* Coada merge singură mai departe: după aprobare se deschide
+                următorul. Se spune înainte, ca saltul să nu surprindă. */}
+            <p className={cn("mb-4 text-xs", mutedText)}>
+              După fiecare aprobare se deschide singur următorul.
             </p>
             <button
               type="button"
