@@ -8,16 +8,20 @@ import {
   Download,
   History,
   Inbox,
+  Archive,
+  FileText,
   LoaderCircle,
   Lock,
   Paperclip,
   RefreshCw,
   Save,
   ScanLine,
+  ShieldCheck,
   Sparkles,
   TriangleAlert,
   UserCheck,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import {
   useApproveDocument,
@@ -38,6 +42,7 @@ import { DocumentPreview } from "@/features/documents/document-preview";
 import { useDownloadDocument } from "@/features/documents/use-download";
 import { describeError } from "@/lib/errors";
 import { formatDateTime, formatFileSize } from "@/lib/format";
+import { focusRing, iconChip, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import type {
   DocumentAction,
@@ -594,6 +599,20 @@ function ReviewScreen({
  * fost acceptată, iar spre deosebire de PDF nu se poate reface. De aceea sunt
  * toate trei scoase de aici, nu doar cea pe care o citește aplicația.
  */
+/**
+ * Cum arată fiecare fel de fișier.
+ *
+ * Arhiva ANAF primește tonul verde al lucrului „bătut în cuie": ea este dovada
+ * acceptării și singura care nu se poate reface. Trei butoane identice ar fi
+ * lăsat impresia că sunt interschimbabile.
+ */
+const FILE_KIND_META: Record<string, { Icon: LucideIcon; tone: Tone }> = {
+  original: { Icon: FileText, tone: "blue" },
+  archive: { Icon: Archive, tone: "slate" },
+  anaf_zip: { Icon: ShieldCheck, tone: "green" },
+  anaf_pdf: { Icon: FileText, tone: "red" },
+};
+
 function FilesBlock({ document }: { document: DocumentDetail }) {
   const { downloadFile, isPending } = useDownloadDocument();
   const [problem, setProblem] = useState<string | null>(null);
@@ -609,31 +628,49 @@ function FilesBlock({ document }: { document: DocumentDetail }) {
           {problem}
         </p>
       )}
-      <ul className="space-y-1">
-        {document.files.map((file) => (
-          <li key={file.id} className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => {
-                setProblem(null);
-                void downloadFile(document, file).catch((caught: unknown) =>
-                  setProblem(
-                    caught instanceof ApiError
-                      ? caught.message
-                      : "Fișierul nu a putut fi descărcat.",
-                  ),
-                );
-              }}
-              className="font-medium text-blue-600 hover:underline disabled:opacity-50 dark:text-blue-400"
-            >
-              {file.label}
-            </button>
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              {formatFileSize(file.fileSize)}
-            </span>
-          </li>
-        ))}
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {document.files.map((file) => {
+          const meta = FILE_KIND_META[file.kind] ?? FILE_KIND_META.original!;
+          return (
+            <li key={file.id}>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => {
+                  setProblem(null);
+                  void downloadFile(document, file).catch((caught: unknown) =>
+                    setProblem(
+                      caught instanceof ApiError
+                        ? caught.message
+                        : "Fișierul nu a putut fi descărcat.",
+                    ),
+                  );
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2.5 rounded-lg border border-slate-200 p-2.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:hover:border-slate-700 dark:hover:bg-slate-800/60",
+                  focusRing,
+                )}
+              >
+                <span
+                  className={cn(
+                    "grid h-9 w-9 shrink-0 place-content-center rounded-lg",
+                    iconChip[meta.tone],
+                  )}
+                >
+                  <meta.Icon className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {file.label}
+                  </span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400">
+                    {formatFileSize(file.fileSize)}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -703,6 +740,28 @@ function FieldRow({
             fieldBorder(lowConfidence, mediumConfidence, isDirty),
           )}
         />
+      )}
+
+      {/* Chenarul spune „atenție"; bara spune **cât**. Un contabil care vede
+          două câmpuri chihlimbarii nu are cum să ghicească pe care să se uite
+          întâi — 71% și 89% arătau identic. */}
+      {field.confidence !== null && !isDirty && (
+        <div
+          className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
+          aria-hidden="true"
+        >
+          <div
+            className={cn(
+              "h-1 rounded-full transition-[width] duration-500 ease-out",
+              lowConfidence
+                ? "bg-red-400"
+                : mediumConfidence
+                  ? "bg-amber-400"
+                  : "bg-emerald-400",
+            )}
+            style={{ width: `${Math.round(field.confidence * 100)}%` }}
+          />
+        </div>
       )}
     </div>
   );

@@ -1,24 +1,17 @@
 import { Link } from "react-router-dom";
-import { CircleCheck, TriangleAlert } from "lucide-react";
+import { ArrowRight, CircleCheck, TriangleAlert } from "lucide-react";
 import { useMissingDocuments, usePeriods } from "@/api/hooks";
 import { MonthFilter, SelectFilter } from "@/components/form-controls";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
+import { ProgressRing } from "@/components/charts";
 import { PeriodStatusBadge } from "@/components/status-badge";
+import { PERIOD_STATUS_LABEL } from "@/lib/labels";
+import { divider, mutedText, pillClass } from "@/lib/ui";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { currentMonth } from "@/lib/current-month";
 import { formatReferenceMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { PERIOD_STATUS } from "@/types/domain";
-
-const STATUS_LABEL: Record<string, string> = {
-  NOT_STARTED: "Neînceput",
-  COLLECTING: "În colectare",
-  PARTIAL: "Parțial",
-  COMPLETE: "Documente complete",
-  PROCESSING: "În procesare",
-  REVIEW: "Verificare",
-  FINALIZED: "Finalizat",
-};
+import { PERIOD_STATUS, type AccountingPeriod } from "@/types/domain";
 
 export function PeriodsPage() {
   const { values, setValue } = useFilterParams({ referenceMonth: currentMonth(), status: "" });
@@ -46,7 +39,10 @@ export function PeriodsPage() {
           allLabel="Toate statusurile"
           value={values.status}
           onChange={(value) => setValue("status", value)}
-          options={PERIOD_STATUS.map((status) => ({ value: status, label: STATUS_LABEL[status]! }))}
+          options={PERIOD_STATUS.map((status) => ({
+            value: status,
+            label: PERIOD_STATUS_LABEL[status],
+          }))}
           className="w-52"
         />
       </div>
@@ -57,76 +53,9 @@ export function PeriodsPage() {
         <ErrorState error={error} />
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {data?.map((period) => {
-            const ratio =
-              period.expectedCount === 0
-                ? 0
-                : Math.min(period.satisfiedCount / period.expectedCount, 1);
-            return (
-              <Panel
-                key={period.id}
-                title={period.clientName}
-                action={<PeriodStatusBadge status={period.status} />}
-              >
-                <div className="mb-3 flex items-center justify-between gap-2 text-sm">
-                  <span className="text-slate-600 dark:text-slate-400">
-                    {formatReferenceMonth(period.referenceMonth)}
-                  </span>
-                  <span className="font-medium text-slate-900 dark:text-slate-100">
-                    {period.satisfiedCount}/{period.expectedCount} documente așteptate
-                  </span>
-                </div>
-
-                <div
-                  className="mb-4 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
-                  role="progressbar"
-                  aria-valuenow={Math.round(ratio * 100)}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label={`Progres ${period.clientName}`}
-                >
-                  <div
-                    className={cn(
-                      "h-2 rounded-full",
-                      ratio >= 1 ? "bg-green-500" : ratio >= 0.6 ? "bg-blue-500" : "bg-amber-500",
-                    )}
-                    style={{ width: `${Math.round(ratio * 100)}%` }}
-                  />
-                </div>
-
-                <ul className="space-y-1.5 text-sm">
-                  {period.checklist.map((item) => (
-                    <li key={item.documentType} className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
-                        {item.isSatisfied ? (
-                          <CircleCheck
-                            className="h-3.5 w-3.5 text-green-500"
-                            aria-label="complet"
-                          />
-                        ) : (
-                          <TriangleAlert
-                            className="h-3.5 w-3.5 text-amber-500"
-                            aria-label="incomplet"
-                          />
-                        )}
-                        {item.documentTypeLabel}
-                      </span>
-                      <span className="font-medium text-slate-900 dark:text-slate-100">
-                        {item.receivedCount}/{item.expectedMinCount}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-
-                <Link
-                  to={`/documente/arhiva?clientId=${period.clientId}&referenceMonth=${period.referenceMonth}`}
-                  className="mt-3 inline-block text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
-                >
-                  Vezi documentele perioadei
-                </Link>
-              </Panel>
-            );
-          })}
+          {data?.map((period, index) => (
+            <PeriodCard key={period.id} period={period} index={index} />
+          ))}
         </div>
       )}
     </div>
@@ -171,7 +100,7 @@ export function MissingDocumentsPage() {
                   <th scope="col" className="px-4 py-3 font-medium">Client</th>
                   <th scope="col" className="px-4 py-3 font-medium">Status</th>
                   <th scope="col" className="px-4 py-3 font-medium">Documente lipsă</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Primite</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Progres</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -191,17 +120,26 @@ export function MissingDocumentsPage() {
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1.5">
                         {missing.map((item) => (
-                          <span
-                            key={item.documentType}
-                            className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200 ring-inset dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800"
-                          >
+                          <span key={item.documentType} className={pillClass("amber")}>
                             {item.documentTypeLabel} {item.receivedCount}/{item.expectedMinCount}
                           </span>
                         ))}
                       </div>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-600 dark:text-slate-400">
-                      {period.satisfiedCount}/{period.expectedCount}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        {/* Inelul spune cât s-a strâns fără să citești cifrele;
+                            cifrele rămân pentru cine vrea exactitatea. */}
+                        <ProgressRing
+                          value={period.satisfiedCount}
+                          total={period.expectedCount}
+                          label={`Progres ${period.clientName}`}
+                          className="h-9 w-9 shrink-0"
+                        />
+                        <span className={cn("tabular-nums", mutedText)}>
+                          {period.satisfiedCount}/{period.expectedCount}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -213,3 +151,100 @@ export function MissingDocumentsPage() {
     </div>
   );
 }
+
+
+/**
+ * O lună a unui client.
+ *
+ * Bara de progres orizontală spunea același lucru, dar ocupa un rând întreg și
+ * se citea abia după ce ochiul găsea cifrele de deasupra. Inelul pune procentul
+ * **în** el și stă lângă nume: se vede dintr-o privire care client este strâns
+ * și care nu, fără să citești nimic.
+ */
+function PeriodCard({ period, index }: { period: AccountingPeriod; index: number }) {
+  const complete = period.expectedCount > 0 && period.satisfiedCount >= period.expectedCount;
+
+  return (
+    <Panel
+      title={period.clientName}
+      action={<PeriodStatusBadge status={period.status} />}
+      className={cn("rise-in", RISE_DELAY[index % RISE_DELAY.length])}
+    >
+      <div className="flex items-start gap-5">
+        <ProgressRing
+          value={period.satisfiedCount}
+          total={period.expectedCount}
+          label={`Progres ${period.clientName}`}
+          className="h-20 w-20 shrink-0"
+        />
+
+        <div className="min-w-0 flex-1">
+          <div className="mb-3 flex items-baseline justify-between gap-2 text-sm">
+            <span className={mutedText}>{formatReferenceMonth(period.referenceMonth)}</span>
+            <span className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
+              {period.satisfiedCount}/{period.expectedCount}
+            </span>
+          </div>
+
+          {period.checklist.length === 0 ? (
+            /* Fără așteptări, luna apare mereu completă — pentru că nu i se cere
+               nimic. Se spune, cu drumul către locul unde se repară. */
+            <p className={cn("text-sm", mutedText)}>
+              Nu s-a stabilit ce se așteaptă lunar.{" "}
+              <Link
+                to={`/crm/clienti/${period.clientId}`}
+                className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+              >
+                Configurează
+              </Link>
+            </p>
+          ) : (
+            <ul className="space-y-1.5 text-sm">
+              {period.checklist.map((item) => (
+                <li key={item.documentType} className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {item.isSatisfied ? (
+                      <CircleCheck
+                        className="h-4 w-4 shrink-0 text-emerald-500"
+                        aria-label="complet"
+                      />
+                    ) : (
+                      <TriangleAlert
+                        className="h-4 w-4 shrink-0 text-amber-500"
+                        aria-label="incomplet"
+                      />
+                    )}
+                    <span className={cn("truncate", mutedText)}>{item.documentTypeLabel}</span>
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 tabular-nums",
+                      item.isSatisfied ? pillClass("green") : pillClass("amber"),
+                    )}
+                  >
+                    {item.receivedCount}/{item.expectedMinCount}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <Link
+        to={`/documente/arhiva?clientId=${period.clientId}&referenceMonth=${period.referenceMonth}`}
+        className={cn(
+          "mt-4 inline-flex items-center gap-1 border-t pt-3 text-sm font-medium text-blue-600 hover:underline dark:text-blue-400",
+          divider,
+          "w-full",
+        )}
+      >
+        {complete ? "Vezi documentele lunii" : "Vezi ce a sosit"}
+        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+      </Link>
+    </Panel>
+  );
+}
+
+/** Decalajele de intrare, reluate ciclic peste cardurile listei. */
+const RISE_DELAY = ["", "rise-delay-1", "rise-delay-2", "rise-delay-3", "rise-delay-4"];

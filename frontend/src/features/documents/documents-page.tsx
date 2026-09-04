@@ -1,6 +1,22 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CircleCheck, Copy, FileStack, RefreshCw, ShieldCheck, X } from "lucide-react";
+import {
+  ArrowRight,
+  CircleCheck,
+  Cloud,
+  Copy,
+  FileStack,
+  FileText,
+  Landmark,
+  Mail,
+  MessageSquare,
+  Plug,
+  RefreshCw,
+  ShieldCheck,
+  Upload,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { useBulkDocuments, useClients, useDocumentTypes, useDocuments } from "@/api/hooks";
 import type { BulkPayload, BulkResult } from "@/api/endpoints";
 import { MonthFilter, Pagination, SearchInput, SelectFilter } from "@/components/form-controls";
@@ -10,8 +26,14 @@ import { useFilterParams } from "@/hooks/use-filter-params";
 import { useHasPermission } from "@/features/auth/use-auth";
 import { UploadPanel } from "@/features/documents/upload-panel";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { focusRing, iconChip, pillClass, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import { DOCUMENT_SOURCE, DOCUMENT_STATUS, type DocumentSource } from "@/types/domain";
+import {
+  DOCUMENT_SOURCE,
+  DOCUMENT_STATUS,
+  type DocumentSource,
+  type DocumentStatus,
+} from "@/types/domain";
 
 export type DocumentsPreset = "inbox" | "processing" | "review" | "archive" | "all";
 
@@ -315,6 +337,9 @@ export function DocumentsPage({
                       className={cn(
                         "transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60",
                         selected.includes(doc.id) && "bg-blue-50/60 dark:bg-blue-900/10",
+                        // Un rând care cere un om se vede fără să fie citit.
+                        NEEDS_A_PERSON.has(doc.status) &&
+                          "border-l-2 border-l-amber-400 dark:border-l-amber-500",
                       )}
                     >
                       <td className="px-4 py-3">
@@ -327,12 +352,24 @@ export function DocumentsPage({
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <div className="max-w-56 truncate font-medium text-slate-900 dark:text-slate-100">
-                          {doc.storedFilename ?? doc.originalFilename}
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">
-                          {doc.documentTypeLabel ?? "Tip neidentificat"} ·{" "}
-                          {formatDateTime(doc.receivedAt)}
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={cn(
+                              "grid h-9 w-9 shrink-0 place-content-center rounded-lg",
+                              iconChip[doc.documentTypeLabel ? "blue" : "slate"],
+                            )}
+                          >
+                            <FileText className="h-4 w-4" aria-hidden="true" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="max-w-56 truncate font-medium text-slate-900 dark:text-slate-100">
+                              {doc.storedFilename ?? doc.originalFilename}
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              {doc.documentTypeLabel ?? "Tip neidentificat"} ·{" "}
+                              {formatDateTime(doc.receivedAt)}
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
@@ -344,7 +381,7 @@ export function DocumentsPage({
                             {doc.clientName}
                           </Link>
                         ) : (
-                          <span className="text-red-600 dark:text-red-400">Neidentificat</span>
+                          <span className={pillClass("red")}>Neidentificat</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
@@ -357,8 +394,8 @@ export function DocumentsPage({
                       <td className="px-4 py-3 whitespace-nowrap text-slate-900 dark:text-slate-100">
                         {doc.totalAmount ? formatMoney(doc.totalAmount, doc.currency ?? "RON") : "—"}
                       </td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                        {SOURCE_LABEL[doc.source]}
+                      <td className="px-4 py-3">
+                        <SourceTag source={doc.source} />
                       </td>
                       <td className="px-4 py-3">
                         <DocumentStatusBadge status={doc.status} />
@@ -369,11 +406,18 @@ export function DocumentsPage({
                       <td className="px-4 py-3">
                         <Link
                           to={`/documente/verificare/${doc.id}`}
-                          className="text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",
+                            doc.status === "REVIEW_REQUIRED" || doc.status === "UNMATCHED"
+                              ? "bg-blue-600 text-white hover:bg-blue-700"
+                              : "text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10",
+                            focusRing,
+                          )}
                         >
                           {doc.status === "REVIEW_REQUIRED" || doc.status === "UNMATCHED"
                             ? "Verifică"
                             : "Deschide"}
+                          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                         </Link>
                       </td>
                     </tr>
@@ -394,6 +438,31 @@ export function DocumentsPage({
         )}
       </Panel>
     </div>
+  );
+}
+
+/** Stările în care documentul nu mai avansează singur. */
+const NEEDS_A_PERSON = new Set<DocumentStatus>(["REVIEW_REQUIRED", "UNMATCHED", "ERROR"]);
+
+/** De unde a venit documentul: iconiță plus cuvânt, nu doar cuvânt. */
+const SOURCE_META: Record<DocumentSource, { Icon: LucideIcon; tone: Tone }> = {
+  EMAIL: { Icon: Mail, tone: "blue" },
+  ONEDRIVE: { Icon: Cloud, tone: "purple" },
+  EFACTURA: { Icon: Landmark, tone: "green" },
+  WHATSAPP: { Icon: MessageSquare, tone: "green" },
+  UPLOAD: { Icon: Upload, tone: "slate" },
+  API: { Icon: Plug, tone: "slate" },
+};
+
+function SourceTag({ source }: { source: DocumentSource }) {
+  const { Icon, tone } = SOURCE_META[source];
+  return (
+    <span className="flex items-center gap-2 whitespace-nowrap">
+      <span className={cn("grid h-6 w-6 shrink-0 place-content-center rounded-md", iconChip[tone])}>
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+      <span className="text-sm text-slate-600 dark:text-slate-400">{SOURCE_LABEL[source]}</span>
+    </span>
   );
 }
 
