@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Bell, LogOut, Moon, Search, Sun, User } from "lucide-react";
+import { CommandPalette } from "@/components/command-palette";
 import { useSidebarCounts } from "@/api/hooks";
 import { apiMode } from "@/api/client";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { useAuth } from "@/features/auth/use-auth";
 import { useTheme } from "@/hooks/use-theme";
+import { ROLE_LABEL } from "@/lib/labels";
 import { ALL_NAV_ITEMS, NAV_GROUPS } from "@/lib/navigation";
-import { divider, iconButton, inputField, pageBackground } from "@/lib/ui";
+import { divider, focusRing, iconButton, pageBackground } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 
 /**
@@ -30,7 +32,7 @@ export function AppShell() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { data: counts } = useSidebarCounts();
-  const [search, setSearch] = useState("");
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   // Grupul din care face parte ecranul curent. Antetul spunea doar numele
   // ecranului — „Setări", „Roluri" —, iar în aplicații cu multe ecrane numele
@@ -56,11 +58,22 @@ export function AppShell() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  function handleSearch(event: React.FormEvent) {
-    event.preventDefault();
-    if (!search.trim()) return;
-    navigate(`/documente/inbox?q=${encodeURIComponent(search.trim())}`);
-  }
+  /**
+   * Ctrl+K deschide paleta de oriunde.
+   *
+   * `preventDefault` este obligatoriu: în unele browsere combinația mută cursorul
+   * în bara de adrese, iar paleta s-ar deschide fără să poată primi ce se scrie.
+   */
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return (
     <div className={cn("flex min-h-screen w-full", pageBackground)}>
@@ -92,23 +105,24 @@ export function AppShell() {
           </div>
 
           <div className="flex items-center gap-3">
-            <form onSubmit={handleSearch} className="relative hidden md:block">
-              <label htmlFor="global-search" className="sr-only">
-                Caută clienți, documente, CUI
-              </label>
-              <Search
-                className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400"
-                aria-hidden="true"
-              />
-              <input
-                id="global-search"
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Caută client, CUI, număr document…"
-                className={cn(inputField, "h-10 w-72 bg-slate-50 pr-3 pl-9 dark:bg-slate-950")}
-              />
-            </form>
+            {/* Un buton, nu un câmp: câmpul promitea o căutare pe loc, dar orice
+                s-ar fi scris în el ducea în inboxul de documente — un client căutat
+                după CUI nu avea cum să apară. Scurtătura stă scrisă pe buton,
+                fiindcă o scurtătură pe care n-o știe nimeni nu există. */}
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              className={cn(
+                "hidden h-10 w-72 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500 transition-colors hover:bg-slate-100 md:flex dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400 dark:hover:bg-slate-800",
+                focusRing,
+              )}
+            >
+              <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="flex-1 text-left">Caută client, CUI, document…</span>
+              <kbd className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] dark:border-slate-700">
+                Ctrl K
+              </kbd>
+            </button>
 
             <button
               type="button"
@@ -149,18 +163,11 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }
-
-const ROLE_LABEL: Record<string, string> = {
-  SUPER_ADMIN: "Super administrator",
-  ADMIN: "Administrator",
-  ACCOUNTANT: "Contabil",
-  OPERATOR: "Operator",
-  REVIEWER: "Verificator",
-  VIEWER: "Vizitator",
-};
 
 function UserMenu() {
   const { user, logout } = useAuth();

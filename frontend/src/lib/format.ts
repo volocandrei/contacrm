@@ -48,6 +48,22 @@ export function formatTime(iso: string): string {
   return timeFormatter.format(new Date(iso));
 }
 
+/**
+ * Ziua, spusă cum o spune un om.
+ *
+ * „14.09.2026" cere o comparație cu ziua de azi de fiecare dată; „Astăzi" nu.
+ * Comparația se face pe textul dat de același formator, deci în același fus
+ * orar ca restul aplicației — o cronologie ruptă la miezul nopții UTC ar arăta
+ * documentele de dimineață ca fiind de ieri.
+ */
+export function dayLabel(iso: string): string {
+  const day = formatDate(iso);
+  const now = Date.now();
+  if (day === formatDate(new Date(now).toISOString())) return "Astăzi";
+  if (day === formatDate(new Date(now - 86_400_000).toISOString())) return "Ieri";
+  return day;
+}
+
 /** `reference_month` vine ca "YYYY-MM". */
 export function formatReferenceMonth(referenceMonth: string): string {
   const [year, month] = referenceMonth.split("-");
