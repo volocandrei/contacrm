@@ -30,7 +30,6 @@ import {
   Plus,
   RefreshCw,
   Trash2,
-  TriangleAlert,
   Unplug,
 } from "lucide-react";
 import {
@@ -44,8 +43,10 @@ import {
   useUpdateAnafMandate,
 } from "@/api/hooks";
 import { ApiError } from "@/api/types";
+import { ConnectionCard, Notice } from "@/components/connection-card";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { formatDateTime } from "@/lib/format";
+import { buttonDanger, buttonPrimary, buttonSecondary, inputField } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import type { AnafMandate, AnafStatus } from "@/types/domain";
 
@@ -123,146 +124,129 @@ function ConnectionPanel({ status }: { status: AnafStatus }) {
 
   if (!status.configured || !status.encryptionReady) {
     return (
-      <Panel title="Conexiunea cu ANAF">
-        <div className="flex items-start gap-3 rounded-lg bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
-          <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-          <div>
-            <p className="font-medium">Integrarea nu este configurată pe server.</p>
-            <p className="mt-1 text-xs">
-              {!status.configured && <>Lipsesc `ANAF_CLIENT_ID` și `ANAF_CLIENT_SECRET`. </>}
-              {!status.encryptionReady && <>Lipsește `DRIVE_TOKEN_KEY`. </>}
-              Vezi <span className="font-mono">docs/DEPLOY.md</span>.
-            </p>
-          </div>
-        </div>
-      </Panel>
+      <ConnectionCard
+        Icon={Landmark}
+        state="unconfigured"
+        title="Conexiunea cu ANAF"
+        meta="Butonul de autorizare lipsește pentru că ar eșua oricum."
+      >
+        <Notice tone="amber">
+          <strong className="block">Integrarea nu este configurată pe server.</strong>
+          {!status.configured && <>Lipsesc `ANAF_CLIENT_ID` și `ANAF_CLIENT_SECRET`. </>}
+          {!status.encryptionReady && <>Lipsește `DRIVE_TOKEN_KEY`. </>}
+          Se pun la deployment — vezi <span className="font-mono">docs/DEPLOY.md</span>.
+        </Notice>
+      </ConnectionCard>
     );
   }
 
   const remaining = status.expiresAt ? daysUntil(status.expiresAt) : null;
 
   return (
-    <Panel title="Conexiunea cu ANAF">
-      {message && (
-        <p
-          role="alert"
-          className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300"
-        >
-          {message}
-        </p>
-      )}
-
-      {status.connected ? (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-4">
-            <Landmark className="h-8 w-8 shrink-0 text-blue-600" aria-hidden="true" />
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-slate-900 dark:text-slate-100">
-                {status.certificateHolder ?? "Certificat digital"}
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                mediul <span className="font-mono">{status.environment}</span> · autorizat{" "}
-                {status.connectedAt ? formatDateTime(status.connectedAt) : ""}
-                {status.lastSyncAt
-                  ? ` · ultima sincronizare ${formatDateTime(status.lastSyncAt)}`
-                  : " · încă nesincronizat"}
-              </p>
-              {status.lastError && (
-                <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">
-                  {status.lastError}
-                </p>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => sync.mutate(undefined)}
-                disabled={sync.isPending || status.mandates.length === 0}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                <RefreshCw
-                  className={cn("h-4 w-4", sync.isPending && "animate-spin")}
-                  aria-hidden="true"
-                />
-                Sincronizează acum
-              </button>
-              <button
-                type="button"
-                onClick={() => disconnect.mutate(undefined)}
-                disabled={disconnect.isPending}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-red-900/20"
-              >
-                <Unplug className="h-4 w-4" aria-hidden="true" />
-                Deconectează
-              </button>
-            </div>
-          </div>
-
-          {remaining !== null && remaining <= EXPIRY_WARNING_DAYS && (
-            <p
-              role="alert"
-              className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200"
-            >
-              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-              <span>
-                Autorizarea expiră în {remaining <= 0 ? "mai puțin de o zi" : `${remaining} zile`}.
-                Reînnoirea se face de la calculatorul cu tokenul USB în port — până atunci,
-                facturile continuă să vină.
-              </span>
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-start gap-4">
-            <Landmark className="h-8 w-8 shrink-0 text-slate-300" aria-hidden="true" />
-            <div className="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">
-              <p className="font-medium text-slate-900 dark:text-slate-100">SPV neconectat</p>
-              <p className="text-xs">
-                Autorizarea se face <strong>de la calculatorul cu tokenul USB în port</strong>:
-                ANAF cere certificatul digital calificat înrolat în SPV. După ea, preluarea merge
-                singură un an.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <label
-                htmlFor="anaf-holder"
-                className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300"
-              >
-                Al cui este certificatul
-              </label>
-              <input
-                id="anaf-holder"
-                value={holder}
-                onChange={(event) => setHolder(event.target.value)}
-                placeholder="Ex. Ioana Marinescu"
-                className="h-9 w-64 rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-              />
-            </div>
+    <ConnectionCard
+      Icon={Landmark}
+      state={status.connected ? "connected" : "disconnected"}
+      title={
+        status.connected
+          ? (status.certificateHolder ?? "Certificat digital")
+          : "SPV neconectat"
+      }
+      meta={
+        status.connected ? (
+          <>
+            mediul <span className="font-mono">{status.environment}</span> · autorizat{" "}
+            {status.connectedAt ? formatDateTime(status.connectedAt) : ""}
+            {status.lastSyncAt
+              ? ` · ultima sincronizare ${formatDateTime(status.lastSyncAt)}`
+              : " · încă nesincronizat"}
+          </>
+        ) : (
+          <>
+            Autorizarea se face <strong>de la calculatorul cu tokenul USB în port</strong>: ANAF
+            cere certificatul digital calificat înrolat în SPV. După ea, preluarea merge singură
+            un an.
+          </>
+        )
+      }
+      actions={
+        status.connected && (
+          <>
             <button
               type="button"
-              onClick={() => void startConnect()}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+              onClick={() => sync.mutate(undefined)}
+              disabled={sync.isPending || status.mandates.length === 0}
+              className={cn(buttonSecondary, "h-9")}
             >
-              <Landmark className="h-4 w-4" aria-hidden="true" />
-              Autorizează la ANAF
+              <RefreshCw
+                className={cn("h-4 w-4", sync.isPending && "animate-spin")}
+                aria-hidden="true"
+              />
+              Sincronizează acum
             </button>
+            <button
+              type="button"
+              onClick={() => disconnect.mutate(undefined)}
+              disabled={disconnect.isPending}
+              className={cn(buttonDanger, "h-9")}
+            >
+              <Unplug className="h-4 w-4" aria-hidden="true" />
+              Deconectează
+            </button>
+          </>
+        )
+      }
+    >
+      {message && <Notice tone="red">{message}</Notice>}
+      {status.connected && status.lastError && <Notice tone="red">{status.lastError}</Notice>}
+
+      {/* Expirarea se anunță din timp: descoperită prin tăcere, înseamnă o lună
+          de facturi care pur și simplu nu au venit. */}
+      {status.connected && remaining !== null && remaining <= EXPIRY_WARNING_DAYS && (
+        <Notice tone="amber">
+          Autorizarea expiră în {remaining <= 0 ? "mai puțin de o zi" : `${remaining} zile`}.
+          Reînnoirea se face de la calculatorul cu tokenul USB în port — până atunci, facturile
+          continuă să vină.
+        </Notice>
+      )}
+
+      {!status.connected && (
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label
+              htmlFor="anaf-holder"
+              className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300"
+            >
+              Al cui este certificatul
+            </label>
+            <input
+              id="anaf-holder"
+              value={holder}
+              onChange={(event) => setHolder(event.target.value)}
+              placeholder="Ex. Ioana Marinescu"
+              className={cn(inputField, "w-64")}
+            />
           </div>
+          <button
+            type="button"
+            onClick={() => void startConnect()}
+            className={cn(buttonPrimary, "h-9")}
+          >
+            <Landmark className="h-4 w-4" aria-hidden="true" />
+            Autorizează la ANAF
+          </button>
         </div>
       )}
 
       {sync.data && (
-        <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+        <Notice tone="slate">
           {sync.data.ingested === 0
             ? "Nicio factură nouă în SPV."
             : `${sync.data.ingested} facturi aduse, cu tot cu arhiva ANAF și PDF-ul oficial.`}
           {sync.data.failed > 0 && ` ${sync.data.failed} nu au putut fi preluate.`}
           {sync.data.hasMore && " Mai sunt facturi — preluarea continuă în fundal."}
-        </p>
+        </Notice>
       )}
-    </Panel>
+    </ConnectionCard>
   );
 }
 
@@ -439,7 +423,7 @@ function AddMandatePanel({ status }: { status: AnafStatus }) {
           type="button"
           onClick={submit}
           disabled={!clientId || add.isPending}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+          className={cn(buttonPrimary, "h-9")}
         >
           {add.isPending ? (
             <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />

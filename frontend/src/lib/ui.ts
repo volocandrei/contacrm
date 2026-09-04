@@ -82,3 +82,23 @@ export const pill: Record<Tone, string> = {
 export function pillClass(tone: Tone): string {
   return `inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${pill[tone]}`;
 }
+
+/**
+ * Butoanele.
+ *
+ * Erau scrise de mână în treisprezece locuri, iar diferențele dintre ele nu erau
+ * intenționate: unul avea `disabled:opacity-50`, altul nu; unul avea inel de
+ * focalizare, altul îl pierduse pe drum. Înălțimea rămâne la locul apelului — un
+ * buton de antet și unul de formular nu au aceeași dimensiune —, dar ce înseamnă
+ * „principal", „secundar" și „periculos" se decide într-un singur loc.
+ */
+const buttonBase = `inline-flex items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`;
+
+/** Acțiunea pe care o aștepți de la ecran. De regulă, una singură pe ecran. */
+export const buttonPrimary = `${buttonBase} bg-blue-600 text-white shadow-sm hover:bg-blue-700`;
+
+/** Restul acțiunilor: se văd, dar nu strigă. */
+export const buttonSecondary = `${buttonBase} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800`;
+
+/** Ce nu se desface ușor: deconectare, ștergere, respingere. */
+export const buttonDanger = `${buttonBase} border border-slate-200 text-red-600 hover:bg-red-50 dark:border-slate-700 dark:text-red-400 dark:hover:bg-red-900/20`;

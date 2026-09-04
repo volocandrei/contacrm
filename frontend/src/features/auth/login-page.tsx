@@ -4,6 +4,8 @@ import { CircleAlert, LoaderCircle, LogIn } from "lucide-react";
 import { apiMode } from "@/api/client";
 import { ApiError } from "@/api/types";
 import { useAuth } from "@/features/auth/use-auth";
+import { buttonPrimary, inputField, mutedText, surface } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 
 /** Conturi din setul sintetic, ca să poți intra rapid în demonstrație. */
 const DEMO_ACCOUNTS = [
@@ -50,24 +52,38 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 dark:bg-slate-950">
-      <div className="w-full max-w-sm">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 p-6 dark:bg-slate-950">
+      {/* Două pete de culoare foarte estompate. Ecranul de autentificare era o
+          casetă albă pe un gri plat — corect și fără niciun caracter. Nu distrag:
+          stau în spate, la 10% opacitate, și nu se mișcă. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-40 -left-40 h-96 w-96 rounded-full bg-blue-500/10 blur-3xl"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-40 -bottom-40 h-96 w-96 rounded-full bg-violet-500/10 blur-3xl"
+      />
+
+      <div className="relative w-full max-w-sm">
         <div className="mb-6 flex items-center gap-3">
-          <div className="grid size-11 place-content-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 shadow-sm">
-            <svg width="22" viewBox="0 0 50 39" fill="none" className="fill-white" aria-hidden="true">
+          <div className="grid size-12 place-content-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/25">
+            <svg width="24" viewBox="0 0 50 39" fill="none" className="fill-white" aria-hidden="true">
               <path d="M16.4992 2H37.5808L22.0816 24.9729H1L16.4992 2Z" />
               <path d="M17.4224 27.102L11.4192 36H33.5008L49 13.0271H32.7024L23.2064 27.102H17.4224Z" />
             </svg>
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">ContaCRM</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Autentificare</p>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+              ContaCRM
+            </h1>
+            <p className={cn("text-xs", mutedText)}>Documentele clienților, la locul lor</p>
           </div>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+          className={cn(surface, "space-y-4 p-6 shadow-lg shadow-slate-900/5")}
         >
           <div>
             <label
@@ -83,7 +99,7 @@ export function LoginPage() {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              className={cn(inputField, "h-10 w-full")}
             />
           </div>
 
@@ -101,7 +117,7 @@ export function LoginPage() {
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              className={cn(inputField, "h-10 w-full")}
             />
           </div>
 
@@ -118,7 +134,7 @@ export function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className={cn(buttonPrimary, "h-10 w-full")}
           >
             {isLoading ? (
               <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />

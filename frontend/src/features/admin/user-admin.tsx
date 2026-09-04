@@ -29,7 +29,7 @@ import { useAuth } from "@/features/auth/use-auth";
 import { avatarTone, initials } from "@/lib/avatar";
 import { formatDateTime } from "@/lib/format";
 import { ROLE_LABEL } from "@/lib/labels";
-import { iconChip, mutedText, pillClass } from "@/lib/ui";
+import { buttonPrimary, iconChip, mutedText, pillClass } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import type { RoleCode, UserSummary } from "@/types/domain";
 
@@ -232,7 +232,7 @@ function PasswordResetForm({ user, onDone }: { user: UserSummary; onDone: () => 
       <button
         type="submit"
         disabled={password.length < MIN_PASSWORD_LENGTH || reset.isPending}
-        className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+        className={cn(buttonPrimary, "h-9")}
       >
         Schimbă parola
       </button>
@@ -283,7 +283,7 @@ export function AddUserButton() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+        className={cn(buttonPrimary, "h-9")}
       >
         <Plus className="h-4 w-4" aria-hidden="true" />
         Coleg nou
@@ -358,7 +358,7 @@ export function AddUserButton() {
         <button
           type="submit"
           disabled={create.isPending}
-          className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+          className={cn(buttonPrimary, "h-9")}
         >
           Adaugă colegul
         </button>

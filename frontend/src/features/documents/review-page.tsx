@@ -42,7 +42,7 @@ import { DocumentPreview } from "@/features/documents/document-preview";
 import { useDownloadDocument } from "@/features/documents/use-download";
 import { describeError } from "@/lib/errors";
 import { formatDateTime, formatFileSize } from "@/lib/format";
-import { focusRing, iconChip, type Tone } from "@/lib/ui";
+import { buttonPrimary, focusRing, iconChip, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import type {
   DocumentAction,
@@ -864,7 +864,7 @@ export function ReviewQueuePage() {
             <button
               type="button"
               onClick={() => navigate(`/documente/verificare/${next.id}`)}
-              className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+              className={cn(buttonPrimary, "h-10")}
             >
               Deschide pentru verificare
             </button>

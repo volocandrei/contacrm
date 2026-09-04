@@ -29,7 +29,6 @@ import {
   LoaderCircle,
   RefreshCw,
   Trash2,
-  TriangleAlert,
 } from "lucide-react";
 import {
   useClients,
@@ -46,8 +45,10 @@ import {
   useUpdateDriveFolder,
 } from "@/api/hooks";
 import { ApiError } from "@/api/types";
+import { ConnectionCard, Notice } from "@/components/connection-card";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { formatDateTime } from "@/lib/format";
+import { buttonDanger, buttonPrimary, buttonSecondary } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import type { DriveFolder, DriveStatus } from "@/types/domain";
 
@@ -115,49 +116,46 @@ function ConnectionPanel({ status }: { status: DriveStatus }) {
 
   if (!status.configured || !status.encryptionReady) {
     return (
-      <Panel title="Cont Microsoft">
-        <div className="flex items-start gap-3 rounded-lg bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
-          <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-          <div>
-            <p className="font-medium">Integrarea nu este configurată pe server.</p>
-            <p className="mt-1 text-xs">
-              {!status.configured && <>Lipsesc `MS_CLIENT_ID` și `MS_CLIENT_SECRET`. </>}
-              {!status.encryptionReady && <>Lipsește `DRIVE_TOKEN_KEY`. </>}
-              Vezi <span className="font-mono">docs/DEPLOY.md</span>.
-            </p>
-          </div>
-        </div>
-      </Panel>
+      <ConnectionCard
+        Icon={CloudOff}
+        state="unconfigured"
+        title="Cont Microsoft"
+        meta="Butonul de conectare lipsește pentru că ar eșua oricum."
+      >
+        <Notice tone="amber">
+          <strong className="block">Integrarea nu este configurată pe server.</strong>
+          {!status.configured && <>Lipsesc `MS_CLIENT_ID` și `MS_CLIENT_SECRET`. </>}
+          {!status.encryptionReady && <>Lipsește `DRIVE_TOKEN_KEY`. </>}
+          Se pun la deployment — vezi <span className="font-mono">docs/DEPLOY.md</span>.
+        </Notice>
+      </ConnectionCard>
     );
   }
 
   return (
-    <Panel title="Cont Microsoft">
-      {message && (
-        <p role="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
-          {message}
-        </p>
-      )}
-
-      {status.connected ? (
-        <div className="flex flex-wrap items-center gap-4">
-          <Cloud className="h-8 w-8 shrink-0 text-blue-600" aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <p className="font-medium text-slate-900 dark:text-slate-100">{status.accountEmail}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {status.accountName ? `${status.accountName} · ` : ""}
-              conectat {status.connectedAt ? formatDateTime(status.connectedAt) : ""}
-              {status.lastSyncAt
-                ? ` · ultima sincronizare ${formatDateTime(status.lastSyncAt)}`
-                : " · încă nesincronizat"}
-            </p>
-            {status.lastError && (
-              <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">
-                {status.lastError}
-              </p>
-            )}
-          </div>
-          <div className="flex gap-2">
+    <ConnectionCard
+      Icon={status.connected ? Cloud : CloudOff}
+      state={status.connected ? "connected" : "disconnected"}
+      title={status.connected ? (status.accountEmail ?? "Cont Microsoft") : "Niciun cont conectat"}
+      meta={
+        status.connected ? (
+          <>
+            {status.accountName ? `${status.accountName} · ` : ""}
+            conectat {status.connectedAt ? formatDateTime(status.connectedAt) : ""}
+            {status.lastSyncAt
+              ? ` · ultima sincronizare ${formatDateTime(status.lastSyncAt)}`
+              : " · încă nesincronizat"}
+          </>
+        ) : (
+          <>
+            Se cere acces <strong>doar la citire</strong>: nimic nu se modifică în dosarele
+            clienților.
+          </>
+        )
+      }
+      actions={
+        status.connected ? (
+          <>
             <button
               type="button"
               onClick={() => sync.mutate(undefined)}
@@ -165,7 +163,7 @@ function ConnectionPanel({ status }: { status: DriveStatus }) {
                 sync.isPending ||
                 (status.folders.length === 0 && status.mailFolders.length === 0)
               }
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              className={cn(buttonSecondary, "h-9")}
             >
               <RefreshCw
                 className={cn("h-4 w-4", sync.isPending && "animate-spin")}
@@ -177,44 +175,36 @@ function ConnectionPanel({ status }: { status: DriveStatus }) {
               type="button"
               onClick={() => disconnect.mutate(undefined)}
               disabled={disconnect.isPending}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-red-900/20"
+              className={cn(buttonDanger, "h-9")}
             >
               <CloudOff className="h-4 w-4" aria-hidden="true" />
               Deconectează
             </button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-4">
-          <CloudOff className="h-8 w-8 shrink-0 text-slate-300" aria-hidden="true" />
-          <div className="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">
-            <p className="font-medium text-slate-900 dark:text-slate-100">Niciun cont conectat</p>
-            <p className="text-xs">
-              Conectează contul Microsoft al cabinetului. Se cere acces{" "}
-              <strong>doar la citire</strong>: nimic nu se modifică în dosarele clienților.
-            </p>
-          </div>
+          </>
+        ) : (
           <button
             type="button"
             onClick={() => void startConnect()}
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+            className={cn(buttonPrimary, "h-9")}
           >
             <Cloud className="h-4 w-4" aria-hidden="true" />
             Conectează OneDrive
           </button>
-        </div>
-      )}
-
+        )
+      }
+    >
+      {message && <Notice tone="red">{message}</Notice>}
+      {status.connected && status.lastError && <Notice tone="red">{status.lastError}</Notice>}
       {sync.data && (
-        <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+        <Notice tone="slate">
           {sync.data.ingested === 0
             ? "Nimic nou în dosarele urmărite."
             : `${sync.data.ingested} documente aduse.`}
           {sync.data.failed > 0 && ` ${sync.data.failed} nu au putut fi preluate.`}
           {sync.data.hasMore && " Mai sunt fișiere — sincronizarea continuă în fundal."}
-        </p>
+        </Notice>
       )}
-    </Panel>
+    </ConnectionCard>
   );
 }
 

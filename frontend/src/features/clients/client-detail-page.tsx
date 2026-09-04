@@ -24,6 +24,8 @@ import {
   PeriodStatusBadge,
 } from "@/components/status-badge";
 import { formatDate, formatDateTime, formatMoney, formatReferenceMonth } from "@/lib/format";
+import { avatarTone, initials } from "@/lib/avatar";
+import { buttonPrimary, buttonSecondary, focusRing, iconChip, mutedText } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 
 /** Cât poate avea o notă. Oglindește `MAX_NOTE_LENGTH` din backend. */
@@ -62,20 +64,35 @@ export function ClientDetailPage() {
       </Link>
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{client.name}</h2>
-            <ClientStatusBadge status={client.status} />
+        <div className="flex min-w-0 items-center gap-4">
+          {/* Aceeași pastilă ca în listă, mai mare. Drumul listă → fișă păstrează
+              un reper vizual: ai deschis clientul pe care l-ai ochit. */}
+          <span
+            className={cn(
+              "grid h-14 w-14 shrink-0 place-content-center rounded-2xl text-lg font-semibold",
+              iconChip[avatarTone(client.name)],
+            )}
+            aria-hidden="true"
+          >
+            {initials(client.name)}
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+                {client.name}
+              </h2>
+              <ClientStatusBadge status={client.status} />
+            </div>
+            <p className={cn("mt-0.5 text-sm", mutedText)}>
+              {client.taxId} · {client.registrationNumber} · {client.address}
+            </p>
           </div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            {client.taxId} · {client.registrationNumber} · {client.address}
-          </p>
         </div>
         {has("clients:write") && !editing && (
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            className={cn(buttonSecondary, "h-10")}
           >
             <Pencil className="h-4 w-4" aria-hidden="true" />
             Modifică
@@ -96,7 +113,7 @@ export function ClientDetailPage() {
       <div
         role="tablist"
         aria-label="Secțiuni client"
-        className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
+        className="mb-4 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60"
       >
         {TABS.map((item) => (
           <button
@@ -105,10 +122,13 @@ export function ClientDetailPage() {
             aria-selected={tab === item.id}
             onClick={() => setTab(item.id)}
             className={cn(
-              "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+              "rounded-lg px-3 py-1.5 text-sm font-medium transition-all",
+              focusRing,
+              // Linia subțire de sub tab se pierdea pe ecrane mari; un tab plin
+              // se vede din colțul ochiului, iar celelalte rămân disponibile.
               tab === item.id
-                ? "border-blue-500 text-blue-700 dark:text-blue-400"
-                : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
+                ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-50"
+                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
             )}
           >
             {item.label}
@@ -495,7 +515,7 @@ function NoteComposer({ clientId }: { clientId: string }) {
         <button
           type="submit"
           disabled={!body.trim() || create.isPending}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+          className={cn(buttonPrimary, "h-9")}
         >
           {create.isPending ? (
             <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -629,7 +649,7 @@ function ExpectationsPanel({ clientId }: { clientId: string }) {
             type="button"
             onClick={submit}
             disabled={draft === null || save.isPending}
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+            className={cn(buttonPrimary, "h-9")}
           >
             {save.isPending && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />}
             Salvează așteptările

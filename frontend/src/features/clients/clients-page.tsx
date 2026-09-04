@@ -10,7 +10,7 @@ import { ClientStatusBadge } from "@/components/status-badge";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { formatDateTime } from "@/lib/format";
 import { avatarTone, initials } from "@/lib/avatar";
-import { iconChip, pillClass } from "@/lib/ui";
+import { buttonPrimary, iconChip, pillClass } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { CLIENT_STATUS } from "@/types/domain";
 
@@ -47,7 +47,7 @@ export function ClientsPage() {
             <button
               type="button"
               onClick={() => setAdding(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className={cn(buttonPrimary, "h-10")}
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
               Client nou
