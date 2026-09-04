@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  11.743 linii sursă +  1.785 linii teste  →   146 teste
-backend   18.836 linii sursă + 16.291 linii teste  → 1.118 teste
-end-to-end   932 linii                             →    32 teste (browser real)
-migrări    1.857 linii
+frontend  13.165 linii sursă +  2.252 linii teste  →   182 teste
+backend   19.889 linii sursă + 17.378 linii teste  → 1.191 teste
+end-to-end 1.089 linii                             →    40 teste (browser real)
+migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.296 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.413 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
