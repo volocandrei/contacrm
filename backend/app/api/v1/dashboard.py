@@ -13,7 +13,7 @@ le-a făcut cât a putut și care acum așteaptă un om. Include documentele în
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
@@ -57,6 +57,10 @@ MAX_PERIODS = 6
 #: Câți clienți în întârziere încap pe panou, și câte etichete pe rând.
 MAX_LAGGARDS = 5
 MAX_MISSING_LABELS = 3
+
+#: Câte zile arată graficul de sosiri. Două săptămâni: destul cât să se vadă
+#: ritmul săptămânal, puțin cât să încapă fără să devină ilizibil.
+TREND_DAYS = 14
 
 
 class SidebarCountsOut(ApiModel):
@@ -124,6 +128,21 @@ class LaggardOut(ApiModel):
     missing: list[str]
 
 
+class DayCountOut(ApiModel):
+    """Câte documente au sosit într-o zi."""
+
+    #: `YYYY-MM-DD`, în fusul cabinetului. Nu un moment: o zi.
+    day: date
+    count: int
+
+
+class StatusSliceOut(ApiModel):
+    """O felie din distribuția pe stări."""
+
+    status: DocumentStatus
+    count: int
+
+
 class ClosingOut(ApiModel):
     """Termenul lunii încheiate și cine mai are de trimis.
 
@@ -157,6 +176,12 @@ class DashboardOut(ApiModel):
     #: `None` când nu există nicio lună în lucru — nu un termen inventat pentru
     #: luna calendaristică de azi.
     closing: ClosingOut | None
+    #: Câte documente au sosit în fiecare din ultimele două săptămâni de zile.
+    #: Zilele fără niciun document apar cu zero, nu lipsesc: un grafic cu goluri
+    #: minte despre ritm.
+    trend: list[DayCountOut]
+    #: Distribuția pe stări, pentru graficul inelar. Doar stările care există.
+    by_status: list[StatusSliceOut]
 
 
 @router.get("/counts", response_model=SidebarCountsOut)
@@ -192,6 +217,12 @@ def dashboard(session: DbSession, user: DashboardReader) -> DashboardOut:
         periods=[to_period(view) for view in periods[:MAX_PERIODS]],
         timeline=_timeline(session, organization_id),
         closing=_closing(current, periods) if current else None,
+        trend=_trend(session, organization_id),
+        by_status=[
+            StatusSliceOut(status=status, count=count)
+            for status, count in sorted(by_status.items(), key=lambda pair: -pair[1])
+            if count > 0
+        ],
     )
 
 
@@ -316,6 +347,42 @@ def _kpis(
         documents_duplicate=by_status.get(DocumentStatus.DUPLICATE, 0),
         documents_unmatched=by_status.get(DocumentStatus.UNMATCHED, 0),
     )
+
+
+def _trend(session: Session, organization_id: uuid.UUID) -> list[DayCountOut]:
+    """Câte documente au sosit în fiecare zi din ultimele două săptămâni.
+
+    **Zilele goale apar cu zero, nu lipsesc.** Un grafic care sare peste
+    duminicile fără documente arată un ritm constant acolo unde nu este — și
+    exact ritmul este ce se caută într-un grafic de sosiri.
+
+    Gruparea se face pe ziua **locală**, nu pe cea UTC: pentru un cabinet din
+    București, un document sosit la 01:00 aparține zilei care tocmai a început,
+    nu celei care s-a încheiat acum o oră.
+    """
+    zone = ZoneInfo(settings.default_timezone)
+    today = datetime.now(zone).date()
+    first = today - timedelta(days=TREND_DAYS - 1)
+    since = datetime.combine(first, time.min, tzinfo=zone).astimezone(UTC)
+
+    local_day = func.date(func.timezone(settings.default_timezone, Document.received_at))
+    rows = session.execute(
+        select(local_day.label("day"), func.count().label("count"))
+        .where(
+            Document.organization_id == organization_id,
+            Document.deleted_at.is_(None),
+            Document.received_at >= since,
+        )
+        .group_by(local_day)
+    ).all()
+    counted = {row.day: row.count for row in rows}
+
+    return [
+        DayCountOut(
+            day=first + timedelta(days=offset), count=counted.get(first + timedelta(days=offset), 0)
+        )
+        for offset in range(TREND_DAYS)
+    ]
 
 
 def _start_of_today() -> datetime:

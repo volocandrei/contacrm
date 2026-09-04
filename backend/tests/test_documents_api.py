@@ -1808,6 +1808,48 @@ class TestDashboard:
         login(api_storage, admin.email)
         assert api_storage.get("/api/v1/dashboard").json()["referenceMonth"] is None
 
+    def test_the_trend_covers_every_day_even_the_empty_ones(
+        self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
+    ) -> None:
+        """Un grafic care sare peste zilele goale arată un ritm care nu există."""
+        login(api_storage, admin.email)
+        upload(api_storage)
+
+        trend = api_storage.get("/api/v1/dashboard").json()["trend"]
+
+        assert len(trend) == 14
+        days = [entry["day"] for entry in trend]
+        # Zile consecutive, în ordine, fără goluri.
+        assert days == sorted(days)
+        assert len(set(days)) == 14
+        # Documentul de azi se vede în ultima zi.
+        assert trend[-1]["count"] == 1
+
+    def test_the_trend_is_all_zeros_on_a_fresh_install(
+        self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
+    ) -> None:
+        """Zero, nu listă goală: graficul trebuie să aibă ce desena."""
+        login(api_storage, admin.email)
+
+        trend = api_storage.get("/api/v1/dashboard").json()["trend"]
+
+        assert len(trend) == 14
+        assert {entry["count"] for entry in trend} == {0}
+
+    def test_the_status_distribution_only_lists_what_exists(
+        self, api_storage: TestClient, admin: User, db: Session, types: dict[str, DocumentType]
+    ) -> None:
+        """O felie de zero într-un grafic inelar este o minciună desenată."""
+        login(api_storage, admin.email)
+        upload(api_storage)
+
+        slices = api_storage.get("/api/v1/dashboard").json()["byStatus"]
+
+        assert all(entry["count"] > 0 for entry in slices)
+        assert [entry["count"] for entry in slices] == sorted(
+            (entry["count"] for entry in slices), reverse=True
+        )
+
     def test_without_a_month_there_is_no_deadline(
         self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
     ) -> None:

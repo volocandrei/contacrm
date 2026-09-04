@@ -47,3 +47,22 @@ test("clientul care nu a trimis tot are un drum direct din panou", async ({ page
     await expect(links.first()).toHaveAttribute("href", /\/crm\/clienti\//);
   }
 });
+
+
+test("graficele spun în cuvinte ce arată desenul", async ({ page }) => {
+  await loginAs(page, ACCOUNTS.admin);
+  await uploadAndOpen(page, "pentru-grafic.pdf", incomingInvoice({ number: unique(), total: "99,00" }));
+  await page.goto("/");
+
+  // Un grafic este o imagine. Fără nume accesibil, un cititor de ecran anunță
+  // „grafic" și atât — adică nimic.
+  const trend = page.getByRole("img", { name: /Documente sosite pe zi/ });
+  await expect(trend).toBeVisible();
+  await expect(trend).toHaveAttribute("aria-label", /zile/);
+
+  const donut = page.getByRole("img", { name: /Distribuția documentelor pe stări/ });
+  await expect(donut).toBeVisible();
+  // Numele conține și cifrele: altfel desenul rămâne inaccesibil, oricât de
+  // frumos ar fi.
+  await expect(donut).toHaveAttribute("aria-label", /\d/);
+});

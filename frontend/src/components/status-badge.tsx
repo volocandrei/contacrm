@@ -1,3 +1,8 @@
+import {
+  CLIENT_STATUS_LABEL,
+  DOCUMENT_STATUS_LABEL,
+  PERIOD_STATUS_LABEL,
+} from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { ClientStatus, DocumentStatus, PeriodStatus } from "@/types/domain";
 
@@ -17,51 +22,62 @@ const TONE_CLASS: Record<Tone, string> = {
     "bg-slate-50 text-slate-500 ring-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:ring-slate-800",
 };
 
-const DOCUMENT_STATUS_META: Record<DocumentStatus, { label: string; tone: Tone }> = {
-  RECEIVED: { label: "Recepționat", tone: "neutral" },
-  PROCESSING: { label: "În procesare", tone: "info" },
-  REVIEW_REQUIRED: { label: "Necesită verificare", tone: "warning" },
-  APPROVED: { label: "Aprobat", tone: "success" },
-  ARCHIVED: { label: "Arhivat", tone: "success" },
-  ERROR: { label: "Eroare", tone: "danger" },
-  DUPLICATE: { label: "Duplicat", tone: "warning" },
-  REJECTED: { label: "Respins", tone: "danger" },
-  UNMATCHED: { label: "Client neidentificat", tone: "danger" },
+// Doar tonul stă aici: eticheta vine din `lib/labels.ts`, ca legenda unui grafic
+// și insigna de lângă ea să nu poată spune două lucruri diferite.
+const DOCUMENT_STATUS_TONE: Record<DocumentStatus, Tone> = {
+  RECEIVED: "neutral",
+  PROCESSING: "info",
+  REVIEW_REQUIRED: "warning",
+  APPROVED: "success",
+  ARCHIVED: "success",
+  ERROR: "danger",
+  DUPLICATE: "warning",
+  REJECTED: "danger",
+  UNMATCHED: "danger",
 };
 
-const PERIOD_STATUS_META: Record<PeriodStatus, { label: string; tone: Tone }> = {
-  NOT_STARTED: { label: "Neînceput", tone: "muted" },
-  COLLECTING: { label: "În colectare", tone: "info" },
-  PARTIAL: { label: "Parțial", tone: "warning" },
-  COMPLETE: { label: "Documente complete", tone: "success" },
-  PROCESSING: { label: "În procesare", tone: "info" },
-  REVIEW: { label: "Verificare", tone: "warning" },
-  FINALIZED: { label: "Finalizat", tone: "success" },
+const PERIOD_STATUS_TONE: Record<PeriodStatus, Tone> = {
+  NOT_STARTED: "muted",
+  COLLECTING: "info",
+  PARTIAL: "warning",
+  COMPLETE: "success",
+  PROCESSING: "info",
+  REVIEW: "warning",
+  FINALIZED: "success",
 };
 
-const CLIENT_STATUS_META: Record<ClientStatus, { label: string; tone: Tone }> = {
-  ACTIVE: { label: "Activ", tone: "success" },
-  INACTIVE: { label: "Inactiv", tone: "muted" },
-  PROSPECT: { label: "Prospect", tone: "info" },
-  SUSPENDED: { label: "Suspendat", tone: "danger" },
+const CLIENT_STATUS_TONE: Record<ClientStatus, Tone> = {
+  ACTIVE: "success",
+  INACTIVE: "muted",
+  PROSPECT: "info",
+  SUSPENDED: "danger",
 };
 
 const base =
   "inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset";
 
 export function DocumentStatusBadge({ status }: { status: DocumentStatus }) {
-  const meta = DOCUMENT_STATUS_META[status];
-  return <span className={cn(base, TONE_CLASS[meta.tone])}>{meta.label}</span>;
+  return (
+    <span className={cn(base, TONE_CLASS[DOCUMENT_STATUS_TONE[status]])}>
+      {DOCUMENT_STATUS_LABEL[status]}
+    </span>
+  );
 }
 
 export function PeriodStatusBadge({ status }: { status: PeriodStatus }) {
-  const meta = PERIOD_STATUS_META[status];
-  return <span className={cn(base, TONE_CLASS[meta.tone])}>{meta.label}</span>;
+  return (
+    <span className={cn(base, TONE_CLASS[PERIOD_STATUS_TONE[status]])}>
+      {PERIOD_STATUS_LABEL[status]}
+    </span>
+  );
 }
 
 export function ClientStatusBadge({ status }: { status: ClientStatus }) {
-  const meta = CLIENT_STATUS_META[status];
-  return <span className={cn(base, TONE_CLASS[meta.tone])}>{meta.label}</span>;
+  return (
+    <span className={cn(base, TONE_CLASS[CLIENT_STATUS_TONE[status]])}>
+      {CLIENT_STATUS_LABEL[status]}
+    </span>
+  );
 }
 
 /**

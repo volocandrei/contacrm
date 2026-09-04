@@ -3,6 +3,8 @@ import {
   ArrowUpRight,
   Building2,
   CalendarClock,
+  TrendingDown,
+  TrendingUp,
   CircleAlert,
   CircleCheck,
   Clock,
@@ -15,8 +17,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useDashboard } from "@/api/hooks";
-import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
+import { Donut, TrendArea } from "@/components/charts";
+import { ErrorState, LoadingState, Panel } from "@/components/page";
 import { ConfidenceBadge, DocumentStatusBadge, PeriodStatusBadge } from "@/components/status-badge";
+import { DOCUMENT_STATUS_LABEL } from "@/lib/labels";
 import { formatDate, formatReferenceMonth, formatTime } from "@/lib/format";
 import {
   focusRing,
@@ -27,10 +31,19 @@ import {
   type Tone,
 } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import type { AttentionReason, DashboardClosing, DocumentSource } from "@/types/domain";
+import type {
+  AttentionReason,
+  DashboardClosing,
+  DashboardData,
+  DocumentSource,
+  DocumentStatus,
+} from "@/types/domain";
 
 /** Sub atâtea zile rămase, termenul nu mai poate fi lăsat pe săptămâna viitoare. */
 const URGENT_DAYS = 7;
+
+/** Câte stări încap în legenda inelului. Restul rămân doar în desen. */
+const MAX_STATUS_ROWS = 5;
 
 const SOURCE_LABEL: Record<DocumentSource, string> = {
   EMAIL: "Email",
@@ -65,14 +78,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Panou principal"
-        description={
-          month
-            ? `Situația documentelor și a clienților pentru ${month}`
-            : "Situația documentelor și a clienților"
-        }
-      />
+      <HeroHeader month={month} kpis={kpis} trend={data.trend} />
 
       {/* KPI (§20) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -83,6 +89,7 @@ export function DashboardPage() {
           value={kpis.clientsActive}
           hint={`din ${kpis.clientsTotal} clienți în total`}
           to="/crm/clienti?status=ACTIVE"
+          delayClass="rise-delay-1"
         />
         <KpiCard
           Icon={Inbox}
@@ -91,6 +98,7 @@ export function DashboardPage() {
           value={kpis.documentsToday}
           hint={`${kpis.documentsProcessing} în procesare`}
           to="/documente/inbox"
+          delayClass="rise-delay-2"
         />
         <KpiCard
           Icon={ShieldCheck}
@@ -99,6 +107,7 @@ export function DashboardPage() {
           value={kpis.documentsNeedReview}
           hint="sub pragul de încredere configurat"
           to="/documente/verificare"
+          delayClass="rise-delay-3"
         />
         <KpiCard
           Icon={TriangleAlert}
@@ -107,36 +116,41 @@ export function DashboardPage() {
           value={kpis.documentsError}
           hint={`${kpis.documentsDuplicate} posibile duplicate`}
           to="/documente/inbox?status=ERROR"
+          delayClass="rise-delay-4"
         />
       </div>
 
       {data.closing && <ClosingBand closing={data.closing} />}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MiniStat
-          Icon={FileStack}
-          label="Clienți cu documente complete"
-          value={kpis.clientsComplete}
-          total={kpis.clientsActive}
-        />
-        <MiniStat
-          Icon={TriangleAlert}
-          label="Clienți cu documente lipsă"
-          value={kpis.clientsMissingDocs}
-          total={kpis.clientsActive}
-        />
-        <MiniStat
-          Icon={Copy}
-          label="Documente duplicate"
-          value={kpis.documentsDuplicate}
-          total={Math.max(kpis.documentsToday, 1)}
-        />
-        <MiniStat
-          Icon={UserX}
-          label="Client neidentificat"
-          value={kpis.documentsUnmatched}
-          total={Math.max(kpis.documentsToday, 1)}
-        />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <StatusPanel slices={data.byStatus} />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-2">
+          <MiniStat
+            Icon={FileStack}
+            label="Clienți cu documente complete"
+            value={kpis.clientsComplete}
+            total={kpis.clientsActive}
+          />
+          <MiniStat
+            Icon={TriangleAlert}
+            label="Clienți cu documente lipsă"
+            value={kpis.clientsMissingDocs}
+            total={kpis.clientsActive}
+          />
+          <MiniStat
+            Icon={Copy}
+            label="Documente duplicate"
+            value={kpis.documentsDuplicate}
+            total={Math.max(kpis.documentsToday, 1)}
+          />
+          <MiniStat
+            Icon={UserX}
+            label="Client neidentificat"
+            value={kpis.documentsUnmatched}
+            total={Math.max(kpis.documentsToday, 1)}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -440,6 +454,95 @@ function plural(days: number): string {
   return days === 1 ? "zi" : "zile";
 }
 
+/**
+ * Antetul panoului.
+ *
+ * Panoul deschidea cu un titlu și o propoziție — corect, dar mut. Primul ecran
+ * după autentificare este singurul care are voie să spună dintr-o privire cum
+ * stă cabinetul, iar „cum stă" înseamnă **ritm**: câte documente au intrat în
+ * ultimele două săptămâni și dacă azi seamănă cu ieri.
+ *
+ * Graficul nu este decor. Un cabinet vede acolo lucruri pe care niciun contor
+ * nu le arată: o zi în care nu a intrat nimic (a picat sincronizarea?), un vârf
+ * la sfârșit de lună, o pantă care coboară de trei zile.
+ */
+function HeroHeader({
+  month,
+  kpis,
+  trend,
+}: {
+  month: string | null;
+  kpis: DashboardData["kpis"];
+  trend: DashboardData["trend"];
+}) {
+  const received = trend.reduce((sum, day) => sum + day.count, 0);
+  const yesterday = trend[trend.length - 2]?.count ?? 0;
+  const today = trend[trend.length - 1]?.count ?? 0;
+  const delta = today - yesterday;
+
+  return (
+    <section className="rise-in relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      {/* Pata de culoare stă în spate, la opacitate mică: dă căldură fără să
+          scadă contrastul textului de deasupra. */}
+      <div
+        className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-gradient-to-br from-blue-500/20 via-violet-500/15 to-transparent blur-2xl"
+        aria-hidden="true"
+      />
+
+      <div className="relative flex flex-wrap items-end justify-between gap-6 p-6">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium tracking-wide text-blue-600 uppercase dark:text-blue-400">
+            {month ? `Luna în lucru · ${month}` : "Nicio lună în lucru"}
+          </p>
+          <h2 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+            Panou principal
+          </h2>
+          <p className={cn("mt-2 max-w-xl text-sm", mutedText)}>
+            {received === 0
+              ? "Niciun document în ultimele două săptămâni."
+              : `${received} documente în ultimele două săptămâni, ${today} azi.`}{" "}
+            {kpis.documentsNeedReview > 0
+              ? `${kpis.documentsNeedReview} așteaptă verificare.`
+              : "Nimic nu așteaptă verificare."}
+          </p>
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-end justify-end gap-6">
+          <div className="text-right">
+            <p className="text-4xl font-semibold tracking-tight tabular-nums text-slate-900 dark:text-slate-50">
+              {today}
+            </p>
+            <p className={cn("text-xs", mutedText)}>documente azi</p>
+            {delta !== 0 && (
+              <p
+                className={cn(
+                  "mt-1 inline-flex items-center gap-1 text-xs font-medium",
+                  delta > 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-slate-500 dark:text-slate-400",
+                )}
+              >
+                {delta > 0 ? (
+                  <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
+                ) : (
+                  <TrendingDown className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+                {delta > 0 ? `+${delta}` : delta} față de ieri
+              </p>
+            )}
+          </div>
+
+          <TrendArea
+            points={trend}
+            label="Documente sosite pe zi"
+            className="h-20 w-full max-w-md min-w-[8rem] text-blue-500 dark:text-blue-400"
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function KpiCard({
   Icon,
   tone,
@@ -447,6 +550,7 @@ function KpiCard({
   value,
   hint,
   to,
+  delayClass,
 }: {
   Icon: LucideIcon;
   tone: Tone;
@@ -454,12 +558,16 @@ function KpiCard({
   value: number;
   hint: string;
   to: string;
+  delayClass?: string;
 }) {
   return (
-    <Link to={to} className={cn("group block p-5", surfaceInteractive, focusRing)}>
+    <Link
+      to={to}
+      className={cn("group block p-5", surfaceInteractive, focusRing, "rise-in", delayClass)}
+    >
       <div className="mb-4 flex items-start justify-between">
-        <div className={cn("grid h-10 w-10 place-content-center rounded-xl", iconChip[tone])}>
-          <Icon className="h-5 w-5" aria-hidden="true" />
+        <div className={cn("grid h-12 w-12 place-content-center rounded-2xl", iconChip[tone])}>
+          <Icon className="h-6 w-6" aria-hidden="true" />
         </div>
         {/* Săgeata apare la trecerea cursorului: cardul este un link, dar o
             săgeată permanentă pe patru carduri devine zgomot. */}
@@ -474,6 +582,71 @@ function KpiCard({
       </p>
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</p>
     </Link>
+  );
+}
+
+/** Culorile feliilor. Aceleași cu ale insignelor de stare, ca să nu existe două limbaje. */
+const STATUS_ARC: Partial<Record<DocumentStatus, string>> = {
+  ARCHIVED: "stroke-emerald-500",
+  APPROVED: "stroke-emerald-400",
+  REVIEW_REQUIRED: "stroke-amber-500",
+  PROCESSING: "stroke-blue-500",
+  RECEIVED: "stroke-blue-400",
+  UNMATCHED: "stroke-violet-500",
+  DUPLICATE: "stroke-slate-400",
+  ERROR: "stroke-red-500",
+  REJECTED: "stroke-red-400",
+};
+
+/**
+ * Unde stau documentele, ca inel.
+ *
+ * Contorul „necesită verificare" spune un număr; inelul spune o **proporție** —
+ * dacă jumătate din tot ce a intrat aşteaptă un om, asta se vede dintr-o
+ * privire și nu se vede din patru contoare puse alături.
+ */
+function StatusPanel({ slices }: { slices: DashboardData["byStatus"] }) {
+  const total = slices.reduce((sum, slice) => sum + slice.count, 0);
+
+  return (
+    <Panel title="Unde stau documentele" className="rise-in rise-delay-2">
+      {total === 0 ? (
+        <p className={cn("py-8 text-center text-sm", mutedText)}>Niciun document încă.</p>
+      ) : (
+        <div className="flex items-center gap-5">
+          <Donut
+            className="h-32 w-32 shrink-0"
+            label="Distribuția documentelor pe stări"
+            centerValue={String(total)}
+            centerLabel="documente"
+            slices={slices.map((slice) => ({
+              label: DOCUMENT_STATUS_LABEL[slice.status],
+              value: slice.count,
+              className: STATUS_ARC[slice.status] ?? "stroke-slate-400",
+            }))}
+          />
+          <ul className="min-w-0 flex-1 space-y-1.5">
+            {slices.slice(0, MAX_STATUS_ROWS).map((slice) => (
+              <li key={slice.status} className="flex items-center gap-2 text-sm">
+                <span
+                  className={cn(
+                    "h-2.5 w-2.5 shrink-0 rounded-full",
+                    (STATUS_ARC[slice.status] ?? "stroke-slate-400").replace("stroke-", "bg-"),
+                  )}
+                  aria-hidden="true"
+                />
+                <span className={cn("min-w-0 flex-1 truncate", mutedText)}>
+                  {DOCUMENT_STATUS_LABEL[slice.status]}
+                </span>
+                <span className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
+                  {slice.count}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Panel>
   );
 }
 

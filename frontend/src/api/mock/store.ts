@@ -41,6 +41,8 @@ import type {
   CurrentUser,
   DashboardClosing,
   DashboardData,
+  DayCount,
+  StatusSlice,
   DocumentAction,
   DocumentDetail,
   DocumentFieldName,
@@ -2153,6 +2155,8 @@ export function getDashboard(): DashboardData {
     recentDocuments: docs.slice(0, 8).map(toListItem),
     periods: currentPeriods.slice(0, 6),
     closing: buildClosing(currentPeriods),
+    trend: buildTrend(docs),
+    byStatus: buildStatusSlices(docs),
     // Doar ce s-a întâmplat cu documentele: panoul principal este despre fluxul
     // de documente, nu despre autentificări.
     timeline: state.audit
@@ -2170,6 +2174,45 @@ export function getDashboard(): DashboardData {
         description: `${entry.userName}: ${entry.action}${entry.detail ? ` — ${entry.detail}` : ""}`,
       })),
   };
+}
+
+/** Câte zile arată graficul de sosiri. Oglindește `TREND_DAYS` din backend. */
+const MOCK_TREND_DAYS = 14;
+
+/**
+ * Sosirile pe zi, ultimele două săptămâni.
+ *
+ * Zilele goale apar cu zero, nu lipsesc — la fel ca pe server. Un grafic cu
+ * goluri arată un ritm care nu există.
+ */
+function buildTrend(documents: StoredDocument[]): DayCount[] {
+  const counted = new Map<string, number>();
+  for (const document of documents) {
+    const day = document.receivedAt.slice(0, 10);
+    counted.set(day, (counted.get(day) ?? 0) + 1);
+  }
+
+  const today = new Date();
+  const days: DayCount[] = [];
+  for (let offset = MOCK_TREND_DAYS - 1; offset >= 0; offset -= 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - offset);
+    const day = date.toISOString().slice(0, 10);
+    days.push({ day, count: counted.get(day) ?? 0 });
+  }
+  return days;
+}
+
+/** Distribuția pe stări. Doar ce există: o felie de zero este o minciună desenată. */
+function buildStatusSlices(documents: StoredDocument[]): StatusSlice[] {
+  const counted = new Map<DocumentStatus, number>();
+  for (const document of documents) {
+    counted.set(document.status, (counted.get(document.status) ?? 0) + 1);
+  }
+  return [...counted.entries()]
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => ({ status, count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 /** Ziua din luna următoare până la care se depun declarațiile (`FILING_DEADLINE_DAY`). */

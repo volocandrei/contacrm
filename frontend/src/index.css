@@ -118,3 +118,107 @@
     @apply bg-background text-foreground;
   }
 }
+
+/*
+ * Mișcarea.
+ *
+ * Animațiile stau aici, nu în componente, dintr-un singur motiv: `prefers-
+ * reduced-motion` trebuie să le oprească pe toate deodată. Cine a cerut mai
+ * puțină mișcare a cerut-o pentru un motiv, de obicei medical, iar o animație
+ * uitată într-un fișier este exact cea care îi face rău.
+ *
+ * Toate sunt scurte și rulează o singură dată, la intrare. Nimic nu pulsează la
+ * nesfârșit lângă un text pe care cineva încearcă să-l citească.
+ */
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes draw-line {
+  from {
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ping-once {
+  0% {
+    r: 0;
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    r: 2.5;
+    opacity: 1;
+  }
+}
+
+/* Intrarea cardurilor, decalată: ochiul urmărește ordinea, nu apariția simultană. */
+.rise-in {
+  animation: rise-in 420ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.rise-delay-1 { animation-delay: 60ms; }
+.rise-delay-2 { animation-delay: 120ms; }
+.rise-delay-3 { animation-delay: 180ms; }
+.rise-delay-4 { animation-delay: 240ms; }
+
+/* Linia graficului se desenează de la stânga la dreapta, ca o citire. */
+.chart-draw {
+  stroke-dasharray: 1000;
+  animation: draw-line 1100ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.chart-fade-in {
+  animation: fade-in 900ms 200ms ease-out backwards;
+}
+
+.chart-pulse {
+  animation: ping-once 600ms 900ms ease-out backwards;
+}
+
+.chart-arc {
+  animation: fade-in 700ms ease-out backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in,
+  .chart-draw,
+  .chart-fade-in,
+  .chart-pulse,
+  .chart-arc {
+    animation: none;
+  }
+  .chart-draw {
+    stroke-dasharray: none;
+  }
+  /* Tranzițiile lungi devin instantanee, nu doar mai scurte. */
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

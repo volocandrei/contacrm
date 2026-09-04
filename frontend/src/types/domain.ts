@@ -418,6 +418,26 @@ export type DashboardData = {
    * calendaristică de azi.
    */
   closing: DashboardClosing | null;
+  /**
+   * Câte documente au sosit în fiecare din ultimele două săptămâni de zile.
+   *
+   * Zilele fără niciun document apar cu zero, nu lipsesc: un grafic care sare
+   * peste duminici arată un ritm constant acolo unde nu este.
+   */
+  trend: DayCount[];
+  /** Distribuția pe stări, pentru graficul inelar. Doar stările care există. */
+  byStatus: StatusSlice[];
+};
+
+export type DayCount = {
+  /** `YYYY-MM-DD`, în fusul cabinetului. O zi, nu un moment. */
+  day: string;
+  count: number;
+};
+
+export type StatusSlice = {
+  status: DocumentStatus;
+  count: number;
 };
 
 /** Un client de la care încă se așteaptă documente pentru luna în lucru. */
