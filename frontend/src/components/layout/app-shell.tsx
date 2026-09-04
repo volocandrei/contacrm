@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Bell, LogOut, Moon, Search, Sun, User } from "lucide-react";
+import { Bell, Bot, LogOut, Moon, Search, Sun, User } from "lucide-react";
 import { CommandPalette } from "@/components/command-palette";
+import { AssistantPanel } from "@/features/assistant/assistant-panel";
 import { useSidebarCounts } from "@/api/hooks";
 import { apiMode } from "@/api/client";
 import { AppSidebar } from "@/components/layout/app-sidebar";
@@ -33,6 +34,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const { data: counts } = useSidebarCounts();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   // Grupul din care face parte ecranul curent. Antetul spunea doar numele
   // ecranului — „Setări", „Roluri" —, iar în aplicații cu multe ecrane numele
@@ -66,9 +68,15 @@ export function AppShell() {
    */
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      if (!event.ctrlKey && !event.metaKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "k") {
         event.preventDefault();
         setPaletteOpen((open) => !open);
+      } else if (key === "j") {
+        // `j` de la „jos", lângă `k`: cele două se apasă cu același deget.
+        event.preventDefault();
+        setAssistantOpen((open) => !open);
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -124,6 +132,18 @@ export function AppShell() {
               </kbd>
             </button>
 
+            {/* Asistentul stă lângă căutare: amândouă răspund la „unde e X?",
+                unul cu o listă, celălalt cu o propoziție. */}
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(true)}
+              aria-label="Deschide asistentul (Ctrl J)"
+              title="Asistent — Ctrl J"
+              className={iconButton}
+            >
+              <Bot className="h-4 w-4" aria-hidden="true" />
+            </button>
+
             <button
               type="button"
               aria-label={`Notificări${counts ? `: ${counts.review} de verificat` : ""}`}
@@ -165,6 +185,7 @@ export function AppShell() {
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <AssistantPanel open={assistantOpen} onClose={() => setAssistantOpen(false)} />
     </div>
   );
 }

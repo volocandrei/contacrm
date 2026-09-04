@@ -6,6 +6,7 @@ import type {
   AnafMandate,
   AnafStatus,
   AnafSyncResult,
+  AssistantReply,
   AuditLogEntry,
   ChecklistItem,
   Client,
@@ -64,6 +65,16 @@ export const auth = {
 
 export const reports = {
   summary: (params: QueryParams) => api.get<ReportSummary>("/reports/summary", params),
+};
+
+/**
+ * Asistentul (M13).
+ *
+ * O singură rută, de citire. Nu există aici nicio funcție care schimbă date —
+ * asistentul propune drumuri, omul le urmează.
+ */
+export const assistant = {
+  ask: (message: string) => api.post<AssistantReply>("/assistant/chat", { message }),
 };
 
 export const dashboard = {

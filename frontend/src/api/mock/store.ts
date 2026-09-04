@@ -32,6 +32,8 @@ import type {
   AnafMandate,
   AnafStatus,
   AnafSyncResult,
+  AssistantLink,
+  AssistantReply,
   AuditLogEntry,
   Client,
   ClientStatus,
@@ -2339,5 +2341,292 @@ export function getSidebarCounts() {
     review: state.documents.filter((d) => d.status === "REVIEW_REQUIRED").length,
     unmatched: state.documents.filter((d) => d.status === "UNMATCHED").length,
     tasks: state.tasks.filter((t) => t.status !== "DONE").length,
+  };
+}
+
+/* ─── Asistentul (M13) ─────────────────────────────────────────────────────── */
+
+/**
+ * Oglinda lui `services/assistant` din backend.
+ *
+ * Aceleași intenții, aceleași unelte, aceleași limite de rol. Ce se verifică în
+ * `api/mock/assistant.test.ts` trebuie să se comporte identic în
+ * `tests/test_assistant_api.py` — backendul simulat este contractul (§14).
+ *
+ * Ca și acolo: **numai citire**. Asistentul propune un drum, omul îl deschide.
+ */
+type AssistantTool = {
+  name: string;
+  permission: Permission;
+  description: string;
+  run: (argument: string) => { text: string; links?: AssistantLink[]; suggestions?: string[] };
+};
+
+/** Fără diacritice, litere mici — într-un chat se scrie repede. */
+function assistantNormalise(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+/** Luna care se depune acum: cea încheiată, nu cea în curs. */
+function assistantPreviousMonth(): string {
+  const [year, month] = CURRENT_MONTH.split("-").map(Number) as [number, number];
+  return month === 1
+    ? `${year - 1}-12`
+    : `${year}-${String(month - 1).padStart(2, "0")}`;
+}
+
+function assistantTools(): AssistantTool[] {
+  return [
+    {
+      name: "workload",
+      permission: "documents:read",
+      description: "Câte documente așteaptă verificare, atribuire sau au eșuat.",
+      run: () => {
+        const review = state.documents.filter((d) => d.status === "REVIEW_REQUIRED").length;
+        const unmatched = state.documents.filter((d) => d.status === "UNMATCHED").length;
+        const errors = state.documents.filter((d) => d.status === "ERROR").length;
+        if (review + unmatched + errors === 0) {
+          return { text: "Nu așteaptă niciun document. Coada este goală." };
+        }
+        const parts: string[] = [];
+        const links: AssistantLink[] = [];
+        if (review) {
+          parts.push(`${review} ${review === 1 ? "document așteaptă" : "documente așteaptă"} verificare`);
+          links.push({ label: "Deschide verificarea", path: "/documente/verificare" });
+        }
+        if (unmatched) {
+          parts.push(`${unmatched} ${unmatched === 1 ? "document e neatribuit" : "documente sunt neatribuite"}`);
+          links.push({ label: "Vezi neatribuitele", path: "/documente/neatribuite" });
+        }
+        if (errors) parts.push(`${errors} ${errors === 1 ? "document a eșuat" : "documente au eșuat"}`);
+        return { text: `${parts.join(". ")}.`, links };
+      },
+    },
+    {
+      name: "deadline",
+      permission: "documents:read",
+      description: "Termenul de depunere pentru luna încheiată.",
+      run: (argument) => {
+        const month = argument || assistantPreviousMonth();
+        const deadline = filingDeadline(month);
+        const days = Math.round(
+          (new Date(`${deadline}T00:00:00`).getTime() -
+            new Date(new Date().toISOString().slice(0, 10) + "T00:00:00").getTime()) /
+            86_400_000,
+        );
+        const when =
+          days < 0 ? `a trecut de ${Math.abs(days)} zile` : days === 0 ? "este astăzi" : `mai sunt ${days} zile`;
+        const [year, day, monthPart] = [deadline.slice(0, 4), deadline.slice(8), deadline.slice(5, 7)];
+        return {
+          text: `Termenul pentru luna ${month} este ${day}.${monthPart}.${year} — ${when}.`,
+          links: [{ label: "Perioade", path: "/contabilitate/perioade" }],
+        };
+      },
+    },
+    {
+      name: "missing_documents",
+      permission: "documents:read",
+      description: "Ce documente lipsesc, per client, pentru o lună.",
+      run: (argument) => {
+        const month = argument || assistantPreviousMonth();
+        const entries = listMissingDocuments(month);
+        if (entries.length === 0) {
+          return { text: `Pentru luna ${month}, toți clienții au documentele complete.` };
+        }
+        const lines = entries.slice(0, 5).map((entry) => {
+          const listed = entry.missing
+            .map((item) => `${item.documentTypeLabel} (${item.receivedCount}/${item.expectedMinCount})`)
+            .join(", ");
+          return `• ${entry.period.clientName} — lipsesc: ${listed}`;
+        });
+        const head = entries.length === 1 ? "1 client are" : `${entries.length} clienți au`;
+        let text = `Pentru luna ${month}, ${head} documente lipsă:\n${lines.join("\n")}`;
+        if (entries.length > 5) text += `\n…și încă ${entries.length - 5}.`;
+        return {
+          text,
+          links: [{ label: "Documente lipsă", path: `/contabilitate/lipsa?referenceMonth=${month}` }],
+        };
+      },
+    },
+    {
+      name: "find_client",
+      permission: "clients:read",
+      description: "Găsește un client după nume sau CUI.",
+      run: (argument) => {
+        if (!argument) return { text: "Spune-mi numele firmei sau CUI-ul." };
+        const page = listClients({ q: argument, pageSize: 5 });
+        if (page.items.length === 0) {
+          return { text: `Nu am găsit niciun client pentru „${argument}”.` };
+        }
+        if (page.items.length === 1) {
+          const client = page.items[0]!;
+          return {
+            text: `${client.name}, CUI ${client.taxId ?? "—"}.`,
+            links: [{ label: `Deschide ${client.name}`, path: `/crm/clienti/${client.id}` }],
+            suggestions: [`ce lipsește la ${client.name}`],
+          };
+        }
+        return {
+          text: `${page.total} clienți se potrivesc cu „${argument}”:\n${page.items.map((c) => `• ${c.name}`).join("\n")}`,
+          links: page.items.map((c) => ({ label: `Deschide ${c.name}`, path: `/crm/clienti/${c.id}` })),
+        };
+      },
+    },
+    {
+      name: "client_month",
+      permission: "clients:read",
+      description: "Cum stă un client cu luna în curs de depunere.",
+      run: (argument) => {
+        if (!argument) return { text: "Spune-mi despre care client." };
+        const page = listClients({ q: argument, pageSize: 2 });
+        if (page.items.length === 0) {
+          return { text: `Nu am găsit niciun client pentru „${argument}”.` };
+        }
+        if (page.items.length > 1) {
+          return { text: "Sunt mai mulți clienți cu numele ăsta. Spune-mi CUI-ul sau numele întreg." };
+        }
+        const client = page.items[0]!;
+        const link = { label: `Deschide ${client.name}`, path: `/crm/clienti/${client.id}` };
+        const month = assistantPreviousMonth();
+        const period = state.periods.find(
+          (p) => p.clientId === client.id && p.referenceMonth === month,
+        );
+        if (!period) {
+          return {
+            text: `Pentru ${client.name} nu a sosit niciun document în luna ${month}.`,
+            links: [link],
+          };
+        }
+        const gaps = period.checklist.filter((item) => !item.isSatisfied);
+        if (gaps.length === 0) {
+          return {
+            text: `${client.name} are luna ${month} completă: ${period.satisfiedCount}/${period.expectedCount}.`,
+            links: [link],
+          };
+        }
+        const listed = gaps
+          .map((gap) => `${gap.documentTypeLabel} (${gap.receivedCount}/${gap.expectedMinCount})`)
+          .join(", ");
+        return {
+          text: `${client.name}, luna ${month}: ${period.satisfiedCount}/${period.expectedCount}. Lipsesc: ${listed}.`,
+          links: [link],
+        };
+      },
+    },
+    {
+      name: "my_tasks",
+      permission: "tasks:read",
+      description: "Sarcinile deschise ale utilizatorului curent.",
+      run: () => {
+        const mine = state.tasks.filter(
+          (task) => task.assignedToId === currentUser.id && task.status !== "DONE",
+        );
+        if (mine.length === 0) return { text: "Nu ai nicio sarcină deschisă." };
+        const lines = mine
+          .slice(0, 5)
+          .map((task) => `• ${task.title}${task.dueDate ? ` — termen ${task.dueDate}` : ""}`);
+        return {
+          text: `Sarcinile tale deschise:\n${lines.join("\n")}`,
+          links: [{ label: "Toate sarcinile", path: "/crm/sarcini" }],
+        };
+      },
+    },
+  ];
+}
+
+/** Ordinea contează: de la cea mai îngustă intenție la cea mai largă. */
+const ASSISTANT_INTENTS: Array<{ tool: string; triggers: string[][]; argument?: "month" | "client" }> = [
+  { tool: "client_month", triggers: [["lipseste", "la"], ["cum sta"], ["situatia", "la"], ["stadiu"]], argument: "client" },
+  { tool: "missing_documents", triggers: [["lipse"], ["nu au trimis"], ["incomplet"], ["nu a venit"]], argument: "month" },
+  { tool: "deadline", triggers: [["termen"], ["scadent"], ["deadline"]], argument: "month" },
+  { tool: "my_tasks", triggers: [["sarcin"], ["task"]] },
+  { tool: "workload", triggers: [["cate"], ["cat", "lucru"], ["astept"], ["coada"], ["verificare"]] },
+  { tool: "find_client", triggers: [["client"], ["firma"], ["cui"], ["caut"], ["deschide"]], argument: "client" },
+];
+
+const ASSISTANT_MONTHS: Record<string, number> = {
+  ianuarie: 1, februarie: 2, martie: 3, aprilie: 4, mai: 5, iunie: 6,
+  iulie: 7, august: 8, septembrie: 9, octombrie: 10, noiembrie: 11, decembrie: 12,
+};
+
+function assistantMonth(text: string): string {
+  const explicit = /\b(20\d{2})[-/](0[1-9]|1[0-2])\b/.exec(text);
+  if (explicit) return `${explicit[1]}-${explicit[2]}`;
+  const normalised = assistantNormalise(text);
+  for (const [name, number] of Object.entries(ASSISTANT_MONTHS)) {
+    if (normalised.includes(name)) {
+      return `${assistantPreviousMonth().slice(0, 4)}-${String(number).padStart(2, "0")}`;
+    }
+  }
+  return "";
+}
+
+function assistantClient(text: string): string {
+  const normalised = assistantNormalise(text);
+  for (const phrase of ["ce lipseste la", "cum sta", "situatia la", "stadiu", "clientul", "client", "firma", "deschide", "caut", "cui"]) {
+    const index = normalised.indexOf(phrase);
+    if (index >= 0) return text.slice(index + phrase.length).replace(/^[\s?.,:;]+|[\s?.,:;]+$/g, "");
+  }
+  return text.replace(/^[\s?.,:;]+|[\s?.,:;]+$/g, "");
+}
+
+const ASSISTANT_STARTERS: Array<[string, string]> = [
+  ["cât e de lucru?", "workload"],
+  ["când e termenul?", "deadline"],
+  ["ce documente lipsesc?", "missing_documents"],
+  ["sarcinile mele", "my_tasks"],
+];
+
+export function assistantAnswer(message: string): AssistantReply {
+  const permissions = currentUser.permissions;
+  const tools = assistantTools();
+  const allowed = tools.filter((tool) => permissions.includes(tool.permission));
+  const suggestions = ASSISTANT_STARTERS.filter(([, name]) =>
+    allowed.some((tool) => tool.name === name),
+  ).map(([starter]) => starter);
+
+  const text = message.trim();
+  const normalised = assistantNormalise(text);
+
+  for (const intent of ASSISTANT_INTENTS) {
+    if (!intent.triggers.some((group) => group.every((word) => normalised.includes(word)))) continue;
+
+    const tool = tools.find((candidate) => candidate.name === intent.tool)!;
+    if (!permissions.includes(tool.permission)) {
+      return {
+        text: `Rolul tău nu include permisiunea \`${tool.permission}\`, deci nu pot răspunde la asta.`,
+        links: [],
+        suggestions,
+        used: [],
+        engine: "rules",
+      };
+    }
+
+    const argument =
+      intent.argument === "month"
+        ? assistantMonth(text)
+        : intent.argument === "client"
+          ? assistantClient(text)
+          : "";
+    const result = tool.run(argument);
+    return {
+      text: result.text,
+      links: result.links ?? [],
+      suggestions: result.suggestions ?? suggestions,
+      used: [tool.name],
+      engine: "rules",
+    };
+  }
+
+  const lead = text ? "N-am înțeles întrebarea." : "Întreabă-mă ceva despre documentele sau clienții tăi.";
+  return {
+    text: `${lead} Pot răspunde la:\n${allowed.map((tool) => `• ${tool.description}`).join("\n")}`,
+    links: [],
+    suggestions,
+    used: [],
+    engine: "rules",
   };
 }

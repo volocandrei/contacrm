@@ -330,6 +330,11 @@ const routes: Route[] = [
     handler: ({ query }) =>
       store.listAudit({ ...query, page: num(query.page), pageSize: num(query.pageSize) }),
   },
+  {
+    method: "POST",
+    pattern: "/assistant/chat",
+    handler: ({ body }) => store.assistantAnswer(str(body, "message")),
+  },
   { method: "GET", pattern: "/roles", handler: () => store.listRoles() },
   { method: "GET", pattern: "/users", handler: () => store.listUsers() },
   {

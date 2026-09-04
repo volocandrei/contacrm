@@ -175,6 +175,21 @@ export type Contact = {
   isActive: boolean;
 };
 
+/* ─── Asistentul (M13) ─────────────────────────────────────────────────────── */
+
+/** Un drum propus de asistent. Nu se urmează singur: omul apasă. */
+export type AssistantLink = { label: string; path: string };
+
+export type AssistantReply = {
+  text: string;
+  links: AssistantLink[];
+  suggestions: string[];
+  /** Uneltele care au produs cifrele — cine vrea să verifice, poate. */
+  used: string[];
+  /** Motorul care a răspuns: `rules` fără credențiale. */
+  engine: string;
+};
+
 /** Un contact văzut din agendă: poartă și numele firmei. */
 export type ContactListItem = Contact & { clientName: string };
 

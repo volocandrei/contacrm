@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  15.670 linii sursă +  2.425 linii teste  →   194 teste
-backend   20.132 linii sursă + 17.665 linii teste  → 1.212 teste
-end-to-end 1.403 linii                             →    54 teste (browser real)
+frontend  16.282 linii sursă +  2.517 linii teste  →   202 teste
+backend   20.900 linii sursă + 17.950 linii teste  → 1.243 teste
+end-to-end 1.484 linii                             →    58 teste (browser real)
 migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.460 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.503 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -143,6 +143,23 @@ niciodată. „Integrări" stă separat de „Administrare" — „cum adaug un 
 | Comunicare | mesaje, șabloane, remindere |
 | Rapoarte | agregări calculate în backend, cu filtre pe lună și client |
 | Administrare | utilizatori, **matricea rol × permisiune**, setări, **surse documente (OneDrive + email)**, **e-Factura**, jurnal audit |
+
+**Ctrl+J deschide asistentul** (M13): un chat care răspunde din datele
+cabinetului — „cât e de lucru?", „ce lipsește la Alfa Conta?", „când e
+termenul?" — și propune drumul către ecranul potrivit.
+
+Trei reguli îl țin onest. **Rulează ca utilizatorul**: fiecare întrebare se
+execută cu permisiunile lui, prin aceleași repository-uri ca rutele obișnuite,
+deci nu poate vedea peste ce vede el. **Doar citire**: nu aprobă, nu respinge,
+nu trimite — o aprobare este un act contabil cu nume și oră în jurnal, deci
+trebuie să aibă în spate un om care a apăsat, nu o propoziție interpretată. Și
+**nu inventează**: fiecare cifră vine dintr-o unealtă care a interogat baza; când
+nu știe, spune ce poate în schimb.
+
+Motorul implicit (`ASSISTANT_PROVIDER=rules`) nu cere nicio credențială și nu
+trimite nimic în afara rețelei cabinetului. Un model de limbaj se adaugă prin
+același seam ca la OCR și stocare (ADR-004, ADR-005), cu aceleași unelte și
+aceleași limite de rol.
 
 **Ctrl+K deschide paleta de comenzi**: caută în același timp în ecrane, clienți
 (inclusiv după CUI) și documente, și duce direct la rezultat. Înlocuiește câmpul
@@ -174,7 +191,7 @@ documentul aprobat și mai avea de făcut două lucruri pentru fiecare document
 următor. Scurtături: `Alt+S` salvează, `Alt+A` aprobă, `Alt+N` sare peste
 fără să atingă documentul.
 
-**Backendul simulat** (`src/api/mock/`, ~1.700 linii) implementează 32 de rute cu
+**Backendul simulat** (`src/api/mock/`, ~3.769 linii) implementează 66 de rute cu
 aceleași căi, paginare, filtrare, permisiuni și coduri de eroare ca API-ul real.
 Comutarea se face din `VITE_API_MODE` — restul aplicației nu știe cine răspunde.
 
@@ -400,7 +417,7 @@ Vechile și noile valori nu ies prin API: auditul răspunde la „cine, ce, cân
 „ce scria pe factură". Cine are nevoie de conținut deschide documentul, iar acea
 deschidere se auditează la rândul ei.
 
-Rute reale existente **azi**: **63 de căi** sub `/api/v1`, cu 76 de operații
+Rute reale existente **azi**: **64 de căi** sub `/api/v1`, cu 77 de operații
 HTTP — plus cele trei `/health/*` de la rădăcină și `/internal/run-queue`, care nu
 apare în OpenAPI pentru că nu face parte din contractul cu frontend-ul.
 
@@ -412,7 +429,7 @@ să afle ce poate face un operator *înainte* de a-i da rolul.
 
 ### Verificat pe date reale, nu doar în teste
 
-- Toate cele **12** migrări se aplică **și se dau înapoi** curat — verificat
+- Toate cele **13** migrări se aplică **și se dau înapoi** curat — verificat
   dus-întors la fiecare adăugare, nu presupus
 - Flux HTTP complet: parolă greșită → 401, login → `CurrentUser`, cookie-uri
   `HttpOnly`, `/me`, `/users` ca ADMIN, refresh, logout, `/me` după logout → 401

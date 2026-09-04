@@ -9,6 +9,7 @@ import {
 import type { QueryParams } from "@/api/types";
 import {
   administration,
+  assistant,
   clients,
   contacts,
   dashboard,
@@ -280,6 +281,16 @@ export function useRoles() {
     queryFn: administration.roles,
     staleTime: Infinity,
   });
+}
+
+/**
+ * O întrebare către asistent.
+ *
+ * `useMutation`, nu `useQuery`: o întrebare nu se reîmprospătează singură și nu
+ * se pune de două ori pentru că a revenit focalizarea în fereastră.
+ */
+export function useAssistant() {
+  return useMutation({ mutationFn: (message: string) => assistant.ask(message) });
 }
 
 export function useSettings() {

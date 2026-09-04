@@ -11,6 +11,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     anaf,
+    assistant,
     audit,
     auth,
     clients,
@@ -44,6 +45,7 @@ api_router.include_router(settings.router)
 api_router.include_router(tasks.router)
 api_router.include_router(users.router)
 api_router.include_router(audit.router)
+api_router.include_router(assistant.router)
 # Ruta de cron nu este o rută de utilizator: fără sesiune, fără organizație, fără
 # loc în navigație. Stă totuși sub același prefix, ca să treacă prin aceleași
 # middleware-uri (request id, loguri) ca orice altceva.

@@ -21,6 +21,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # disc local, exact acolo unde documentele s-ar pierde la prima repornire.
 STORAGE_PROVIDERS = frozenset({"local", "s3"})
 
+#: Motoarele de răspuns ale asistentului. `rules` merge fără credențiale.
+ASSISTANT_PROVIDERS = frozenset({"rules"})
+
 # Providerii de extracție care există, toți locali:
 #   `mock`      — date sintetice, pentru demonstrație
 #   `pdf_text`  — stratul de text al PDF-ului
@@ -220,12 +223,28 @@ class Settings(BaseSettings):
     # contează.
     filing_deadline_day: int = 25
 
+    # ── Asistentul din aplicație (M13) ───────────────────────────────────────
+    # `rules` răspunde din unelte deterministe, fără nicio credențială și fără
+    # să trimită nimic în afara rețelei cabinetului. Un motor de limbaj se
+    # adaugă prin același seam, cu aceleași unelte și aceleași permisiuni.
+    assistant_provider: str = "rules"
+
     # ── Notificări ───────────────────────────────────────────────────────────
     notifications_enabled: bool = False
 
     # ── Retenție (§64) ───────────────────────────────────────────────────────
     # Nicio ștergere automată nu rulează fără o regulă explicit activată (R8).
     retention_enabled: bool = False
+
+    @field_validator("assistant_provider")
+    @classmethod
+    def _known_assistant_provider(cls, value: str) -> str:
+        if value not in ASSISTANT_PROVIDERS:
+            raise ValueError(
+                f"ASSISTANT_PROVIDER necunoscut: {value!r}. Valori acceptate: "
+                + ", ".join(sorted(ASSISTANT_PROVIDERS))
+            )
+        return value
 
     @field_validator("storage_provider")
     @classmethod
