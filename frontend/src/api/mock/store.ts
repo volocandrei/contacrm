@@ -40,6 +40,7 @@ import type {
   DocumentTypeCode,
   Intake,
   Contact,
+  ContactListItem,
   CurrentUser,
   DashboardClosing,
   DashboardData,
@@ -375,6 +376,45 @@ export function getClient(id: string): Client {
 
 export function listContacts(clientId: string): Contact[] {
   return state.contacts.filter((c) => c.clientId === clientId);
+}
+
+/**
+ * Agenda întreagă, cu numele firmei pe fiecare rând.
+ *
+ * `q` caută în numele persoanei, email, telefon **și** în numele firmei: cine
+ * deschide agenda caută uneori omul, alteori firma, și nu are de unde ști în
+ * care câmp stă ce caută.
+ */
+export function listAllContacts(filters: {
+  q?: string;
+  clientId?: string;
+  includeInactive?: boolean;
+  page?: number;
+  pageSize?: number;
+}): Paginated<ContactListItem> {
+  const names = new Map(state.clients.map((client) => [client.id, client.name]));
+  let items: ContactListItem[] = state.contacts
+    .filter((contact) => names.has(contact.clientId))
+    .map((contact) => ({ ...contact, clientName: names.get(contact.clientId)! }));
+
+  if (!filters.includeInactive) items = items.filter((contact) => contact.isActive);
+  if (filters.clientId) items = items.filter((contact) => contact.clientId === filters.clientId);
+  if (filters.q) {
+    items = items.filter((contact) =>
+      matches(
+        [contact.fullName, contact.email, contact.phone, contact.whatsappNumber, contact.clientName],
+        filters.q!,
+      ),
+    );
+  }
+
+  items.sort(
+    (a, b) =>
+      a.clientName.localeCompare(b.clientName) ||
+      Number(b.isPrimary) - Number(a.isPrimary) ||
+      a.fullName.localeCompare(b.fullName),
+  );
+  return paginate(items, filters.page, filters.pageSize);
 }
 
 export function listNotes(clientId: string): ClientNote[] {

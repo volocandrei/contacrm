@@ -73,6 +73,17 @@ const routes: Route[] = [
   },
   {
     method: "GET",
+    pattern: "/contacts",
+    handler: ({ query }) =>
+      store.listAllContacts({
+        ...query,
+        includeInactive: query.includeInactive === "true",
+        page: num(query.page),
+        pageSize: num(query.pageSize),
+      }),
+  },
+  {
+    method: "GET",
     pattern: "/clients/:id/contacts",
     handler: ({ params }) => store.listContacts(params.id!),
   },

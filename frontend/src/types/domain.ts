@@ -175,6 +175,9 @@ export type Contact = {
   isActive: boolean;
 };
 
+/** Un contact văzut din agendă: poartă și numele firmei. */
+export type ContactListItem = Contact & { clientName: string };
+
 export type ClientNote = {
   id: string;
   clientId: string;

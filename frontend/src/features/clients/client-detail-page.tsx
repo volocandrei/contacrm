@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, LoaderCircle, Mail, Pencil, Phone, Plus, StickyNote } from "lucide-react";
+import { ArrowLeft, LoaderCircle, Pencil, Plus, StickyNote } from "lucide-react";
 import {
   useClient,
   useClientContacts,
   useClientExpectations,
   useClientNotes,
   useClientPeriods,
-  useClients,
   useCreateNote,
   useDocumentTypes,
   useDocuments,
@@ -666,55 +665,5 @@ function Row({ label, value }: { label: string; value: string }) {
       <dt className="shrink-0 text-slate-500 dark:text-slate-400">{label}</dt>
       <dd className="text-right font-medium text-slate-900 dark:text-slate-100">{value}</dd>
     </div>
-  );
-}
-
-export function ContactsPage() {
-  const { data } = useClients({ pageSize: 200 });
-  return (
-    <div>
-      <h2 className="mb-6 text-2xl font-bold text-slate-900 dark:text-slate-100">Contacte</h2>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {data?.items.map((client) => (
-          <ClientContactsCard key={client.id} clientId={client.id} clientName={client.name} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ClientContactsCard({ clientId, clientName }: { clientId: string; clientName: string }) {
-  const { data: contacts } = useClientContacts(clientId);
-  if (!contacts || contacts.length === 0) return null;
-
-  return (
-    <Panel title={clientName}>
-      <ul className="space-y-3">
-        {contacts.map((contact) => (
-          <li key={contact.id} className="text-sm">
-            <p className="font-medium text-slate-900 dark:text-slate-100">
-              {contact.fullName}
-              <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
-                {contact.role}
-              </span>
-            </p>
-            <p className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-              {contact.email && (
-                <span className="flex items-center gap-1">
-                  <Mail className="h-3 w-3" aria-hidden="true" />
-                  {contact.email}
-                </span>
-              )}
-              {contact.phone && (
-                <span className="flex items-center gap-1">
-                  <Phone className="h-3 w-3" aria-hidden="true" />
-                  {contact.phone}
-                </span>
-              )}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </Panel>
   );
 }

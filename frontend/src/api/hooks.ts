@@ -9,6 +9,7 @@ import type { QueryParams } from "@/api/types";
 import {
   administration,
   clients,
+  contacts,
   dashboard,
   documents,
   anaf,
@@ -29,6 +30,7 @@ export const queryKeys = {
   clients: (params: QueryParams) => ["clients", params] as const,
   client: (id: string) => ["clients", id] as const,
   clientContacts: (id: string) => ["clients", id, "contacts"] as const,
+  contacts: (params: QueryParams) => ["contacts", params] as const,
   clientNotes: (id: string) => ["clients", id, "notes"] as const,
   clientExpectations: (id: string) => ["clients", id, "expectations"] as const,
   intakes: (params: QueryParams) => ["intakes", params] as const,
@@ -78,6 +80,14 @@ export function useClient(id: string) {
 
 export function useClientContacts(id: string) {
   return useQuery({ queryKey: queryKeys.clientContacts(id), queryFn: () => clients.contacts(id) });
+}
+
+/** Agenda întreagă, căutabilă. */
+export function useContacts(params: QueryParams) {
+  return useQuery({
+    queryKey: queryKeys.contacts(params),
+    queryFn: () => contacts.list(params),
+  });
 }
 
 export function useClientNotes(id: string) {

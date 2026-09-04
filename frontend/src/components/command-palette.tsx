@@ -64,6 +64,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  //: Cine a deschis paleta. La închidere focalizarea se întoarce acolo — altfel
+  //: navigarea cu tastatura reîncepe din capul paginii, la fiecare căutare.
+  const opener = useRef<HTMLElement | null>(null);
 
   const debounced = useDebounced(query.trim(), DEBOUNCE_MS);
   const searching = debounced.length >= MIN_QUERY;
@@ -103,10 +107,17 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   useEffect(() => setActive(0), [debounced, query]);
 
   useEffect(() => {
-    if (!open) {
-      setQuery("");
-      setActive(0);
+    if (open) {
+      // Ordinea contează: întâi reținem cine a deschis paleta, abia apoi mutăm
+      // focalizarea. `autoFocus` s-ar aplica înaintea acestui efect, iar paleta
+      // și-ar aminti de ea însăși.
+      opener.current = document.activeElement as HTMLElement | null;
+      inputRef.current?.focus();
+      return;
     }
+    setQuery("");
+    setActive(0);
+    opener.current?.focus();
   }, [open]);
 
   // Rândul selectat trebuie să rămână vizibil când se navighează cu tastele.
@@ -138,7 +149,11 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       event.preventDefault();
       const entry = flat[active];
       if (entry) go(entry);
+      return;
     }
+    // Focalizarea nu are voie să iasă din dialog cât timp el este deschis.
+    // Paleta se conduce oricum din câmp: rezultatele se aleg cu săgețile.
+    if (event.key === "Tab") event.preventDefault();
   }
 
   return (
@@ -157,14 +172,18 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         <div className="flex items-center gap-3 border-b border-slate-200 px-4 dark:border-slate-800">
           <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
           <input
-            // eslint-disable-next-line jsx-a11y/no-autofocus -- paleta se deschide ca să se scrie în ea
-            autoFocus
+            ref={inputRef}
             type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Caută client, CUI, document sau ecran…"
             aria-label="Caută client, CUI, document sau ecran"
+            role="combobox"
+            aria-expanded={flat.length > 0}
             aria-controls="command-palette-results"
+            // Selecția se mută cu săgețile, dar focalizarea rămâne în câmp;
+            // fără asta, un cititor de ecran nu ar afla niciodată ce e selectat.
+            aria-activedescendant={flat[active] ? `palette-${flat[active].id}` : undefined}
             className="h-14 w-full bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
           />
           <kbd className="hidden shrink-0 rounded border border-slate-200 px-1.5 py-0.5 text-[10px] text-slate-500 sm:block dark:border-slate-700 dark:text-slate-400">
@@ -201,6 +220,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                     <li key={entry.id}>
                       <button
                         type="button"
+                        id={`palette-${entry.id}`}
                         role="option"
                         aria-selected={selected}
                         data-active={selected}

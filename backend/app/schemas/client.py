@@ -35,6 +35,16 @@ class ContactOut(ApiModel):
     is_active: bool
 
 
+class ContactListItemOut(ContactOut):
+    """Un contact văzut din agendă, nu din fișa clientului.
+
+    Poartă și numele firmei: ecranul le arată amestecate, iar fără el fiecare
+    rând ar cere o cerere în plus — exact ce a fost de reparat.
+    """
+
+    client_name: str
+
+
 class ClientNoteOut(ApiModel):
     id: uuid.UUID
     client_id: uuid.UUID
@@ -130,3 +140,18 @@ class ClientFilters(ApiModel):
     q: str | None = Field(default=None, max_length=200)
     status: ClientStatus | None = None
     accountant_id: uuid.UUID | None = None
+
+
+class ContactFilters(ApiModel):
+    """Filtrele agendei.
+
+    `q` caută în numele persoanei, email, telefon **și** în numele firmei: cine
+    deschide agenda caută uneori omul, alteori firma, și nu are de unde ști în
+    care câmp stă ce caută.
+    """
+
+    q: str | None = Field(default=None, max_length=200)
+    client_id: uuid.UUID | None = None
+    #: Implicit doar contactele active: un contact dezactivat este cineva care a
+    #: plecat din firmă, iar agenda nu are de ce să propună să-l suni.
+    include_inactive: bool = False

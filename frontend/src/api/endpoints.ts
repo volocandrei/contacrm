@@ -13,6 +13,7 @@ import type {
   ClientNote,
   ClientStatus,
   Contact,
+  ContactListItem,
   CurrentUser,
   DashboardData,
   DocumentDetail,
@@ -112,6 +113,17 @@ export const clients = {
     expectations: Array<{ documentTypeCode: string; expectedMinCount: number }>,
   ) => api.put<ClientExpectation[]>(`/clients/${id}/expectations`, { expectations }),
   periods: (id: string) => api.get<AccountingPeriod[]>(`/clients/${id}/periods`),
+};
+
+/**
+ * Agenda cabinetului (§8).
+ *
+ * O singură cerere pentru tot ecranul. Înainte, „Contacte" cerea lista de
+ * clienți și apoi contactele fiecăruia — treizeci de cereri pentru treizeci
+ * de clienți, pornite deodată.
+ */
+export const contacts = {
+  list: (params: QueryParams) => api.get<Paginated<ContactListItem>>("/contacts", params),
 };
 
 export const documents = {

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, aliased, selectinload
 
 from app.models.client import Client, ClientNote, Contact
 from app.models.user import User
-from app.schemas.client import ClientFilters
+from app.schemas.client import ClientFilters, ContactFilters
 from app.schemas.common import PageParams
 
 # Coloanele în care caută bara de căutare — aceleași ca în backendul simulat.
@@ -122,6 +122,54 @@ class ClientRepository:
             .order_by(Contact.is_primary.desc(), Contact.full_name)
         )
         return list(self.session.scalars(stmt))
+
+    def all_contacts(
+        self, organization_id: uuid.UUID, filters: ContactFilters, page: PageParams
+    ) -> tuple[Sequence[tuple[Contact, str]], int]:
+        """Agenda întreagă a organizației, cu numele firmei pe fiecare rând.
+
+        O singură interogare, cu `JOIN` — nu una per client, cum făcea ecranul
+        cerând `/clients/{id}/contacts` de treizeci de ori.
+        """
+        stmt = (
+            select(Contact, Client.name)
+            .join(Client, Contact.client_id == Client.id)
+            .where(
+                Client.organization_id == organization_id,
+                Client.deleted_at.is_(None),
+                Contact.deleted_at.is_(None),
+            )
+        )
+        if not filters.include_inactive:
+            stmt = stmt.where(Contact.is_active.is_(True))
+        if filters.client_id is not None:
+            stmt = stmt.where(Contact.client_id == filters.client_id)
+        if filters.q:
+            needle = func.concat("%", func.app_unaccent(func.lower(_escape_like(filters.q))), "%")
+            stmt = stmt.where(
+                or_(
+                    _normalised(Contact.full_name).like(needle, escape="\\"),
+                    _normalised(Contact.email).like(needle, escape="\\"),
+                    _normalised(Contact.phone).like(needle, escape="\\"),
+                    _normalised(Contact.whatsapp_number).like(needle, escape="\\"),
+                    _normalised(Client.name).like(needle, escape="\\"),
+                )
+            )
+
+        total = self.session.scalar(
+            select(func.count()).select_from(stmt.order_by(None).subquery())
+        )
+
+        rows = self.session.execute(
+            # Firmele în ordine, iar în interiorul fiecăreia contactul principal
+            # primul: agenda se citește pe verticală, ca o agendă.
+            stmt.order_by(
+                _normalised(Client.name), Contact.is_primary.desc(), _normalised(Contact.full_name)
+            )
+            .offset(page.offset)
+            .limit(page.page_size)
+        ).all()
+        return [(row[0], row[1]) for row in rows], total or 0
 
     def notes(self, organization_id: uuid.UUID, client_id: uuid.UUID) -> Sequence[ClientNote]:
         stmt = (

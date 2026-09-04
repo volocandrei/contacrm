@@ -5,7 +5,8 @@ import { AnafPage } from "@/features/admin/anaf-page";
 import { DrivePage } from "@/features/admin/drive-page";
 import { LoginPage } from "@/features/auth/login-page";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { ClientDetailPage, ContactsPage } from "@/features/clients/client-detail-page";
+import { ClientDetailPage } from "@/features/clients/client-detail-page";
+import { ContactsPage } from "@/features/clients/contacts-page";
 import { ClientsPage } from "@/features/clients/clients-page";
 import {
   MessagesPage,

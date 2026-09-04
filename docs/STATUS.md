@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  15.308 linii sursă +  2.339 linii teste  →   189 teste
-backend   19.994 linii sursă + 17.501 linii teste  → 1.202 teste
-end-to-end 1.222 linii                             →    46 teste (browser real)
+frontend  15.534 linii sursă +  2.388 linii teste  →   193 teste
+backend   20.132 linii sursă + 17.665 linii teste  → 1.212 teste
+end-to-end 1.287 linii                             →    50 teste (browser real)
 migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.437 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.455 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -133,7 +133,7 @@ Toate cele **23 de rute** sunt ecrane reale, nu placeholdere:
 | Zonă | Ecrane |
 |---|---|
 | Panou principal | KPI, inbox recent, „necesită atenție", perioade, cronologie |
-| CRM | listă clienți (filtre + paginare), detaliu client, contacte, sarcini (kanban) |
+| CRM | listă clienți (filtre + paginare), detaliu client, **agendă de contacte căutabilă**, sarcini (kanban) |
 | Documente | inbox, în procesare, verificare, arhivă, **ecranul de verificare** |
 | Contabilitate | perioade cu checklist, documente lipsă |
 | Comunicare | mesaje, șabloane, remindere |
@@ -145,6 +145,12 @@ Toate cele **23 de rute** sunt ecrane reale, nu placeholdere:
 din antet, care promitea o căutare globală și, orice s-ar fi scris în el, ducea în
 inboxul de documente. Nu ocolește nicio permisiune: ecranele se filtrează ca în
 bara laterală, iar interogările pornesc doar dacă rolul le poate cere.
+
+„Contacte" a devenit o agendă: o singură cerere pentru tot ecranul (cerea
+înainte contactele fiecărui client în parte — treizeci de cereri pentru treizeci
+de clienți, pornite deodată), căutare care acoperă și persoana și firma, și date
+de contact **acționabile** — un click sună, scrie sau deschide WhatsApp. Un număr
+pe care trebuie să-l copiezi cu ochiul nu este o agendă, este o listă.
 
 Pe „Documente lipsă", fiecare rând are **Copiază solicitarea**: textul către
 client, cu lista lipsurilor și termenul lunii, gata de trimis din clientul de
@@ -382,7 +388,7 @@ Vechile și noile valori nu ies prin API: auditul răspunde la „cine, ce, cân
 „ce scria pe factură". Cine are nevoie de conținut deschide documentul, iar acea
 deschidere se auditează la rândul ei.
 
-Rute reale existente **azi**: **62 de căi** sub `/api/v1`, cu 75 de operații
+Rute reale existente **azi**: **63 de căi** sub `/api/v1`, cu 76 de operații
 HTTP — plus cele trei `/health/*` de la rădăcină și `/internal/run-queue`, care nu
 apare în OpenAPI pentru că nu face parte din contractul cu frontend-ul.
 

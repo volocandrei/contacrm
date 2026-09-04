@@ -39,6 +39,20 @@ test.describe("paleta de comenzi", () => {
     await expect(page).toHaveURL(/\/crm\/sarcini$/);
   });
 
+  test("selecția este anunțată, iar la închidere focalizarea se întoarce", async ({ page }) => {
+    await loginAs(page, ACCOUNTS.admin);
+    const trigger = page.getByRole("button", { name: /Caută client/ });
+    await trigger.click();
+
+    // Selecția se mută cu săgețile, dar focalizarea rămâne în câmp: singurul
+    // mod în care un cititor de ecran află ce e selectat este acest atribut.
+    const input = page.getByRole("combobox", { name: /Caută client/ });
+    await expect(input).toHaveAttribute("aria-activedescendant", /^palette-/);
+
+    await page.keyboard.press("Escape");
+    await expect(trigger).toBeFocused();
+  });
+
   test("Escape o închide fără să navigheze nicăieri", async ({ page }) => {
     await loginAs(page, ACCOUNTS.admin);
     const before = page.url();
