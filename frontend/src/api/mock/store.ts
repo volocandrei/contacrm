@@ -26,6 +26,7 @@ import {
 } from "@/api/mock/seed";
 import { buildArchivePath, buildDocumentFilename, type FilenameInput } from "@/lib/filename";
 import type {
+  AccountingPeriod,
   AnafMandate,
   AnafStatus,
   AnafSyncResult,
@@ -35,6 +36,7 @@ import type {
   ClientNote,
   Contact,
   CurrentUser,
+  DashboardClosing,
   DashboardData,
   DocumentAction,
   DocumentDetail,
@@ -1849,6 +1851,7 @@ export function getDashboard(): DashboardData {
     attention: attention.slice(0, 8),
     recentDocuments: docs.slice(0, 8).map(toListItem),
     periods: currentPeriods.slice(0, 6),
+    closing: buildClosing(currentPeriods),
     // Doar ce s-a întâmplat cu documentele: panoul principal este despre fluxul
     // de documente, nu despre autentificări.
     timeline: state.audit
@@ -1865,6 +1868,56 @@ export function getDashboard(): DashboardData {
               : ("MESSAGE" as const),
         description: `${entry.userName}: ${entry.action}${entry.detail ? ` — ${entry.detail}` : ""}`,
       })),
+  };
+}
+
+/** Ziua din luna următoare până la care se depun declarațiile (`FILING_DEADLINE_DAY`). */
+const MOCK_DEADLINE_DAY = 25;
+
+/** Câți clienți în întârziere încap pe panou, și câte etichete pe rând. */
+const MOCK_MAX_LAGGARDS = 5;
+const MOCK_MAX_MISSING_LABELS = 3;
+
+/**
+ * Termenul lunii și cine încă nu a trimis.
+ *
+ * Termenul este în luna **următoare**: documentele lui august se depun până pe
+ * 25 septembrie. Clienții se ordonează după cât le lipsește, nu alfabetic —
+ * primul rând trebuie să fie cel care costă cel mai mult dacă rămâne așa.
+ */
+function buildClosing(periods: AccountingPeriod[]): DashboardClosing {
+  const [year, month] = CURRENT_MONTH.split("-").map(Number) as [number, number];
+  const deadline =
+    month === 12
+      ? `${year + 1}-01-${String(MOCK_DEADLINE_DAY).padStart(2, "0")}`
+      : `${year}-${String(month + 1).padStart(2, "0")}-${String(MOCK_DEADLINE_DAY).padStart(2, "0")}`;
+
+  const waiting = periods
+    .map((period) => ({
+      period,
+      gaps: period.checklist.filter((item) => item.receivedCount < item.expectedMinCount),
+    }))
+    .filter((entry) => entry.gaps.length > 0)
+    .sort(
+      (a, b) =>
+        b.gaps.length - a.gaps.length || a.period.clientName.localeCompare(b.period.clientName),
+    );
+
+  const midnight = new Date(`${deadline}T00:00:00`).getTime();
+  const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00").getTime();
+
+  return {
+    referenceMonth: CURRENT_MONTH,
+    deadline,
+    daysLeft: Math.round((midnight - today) / 86_400_000),
+    clientsWaiting: waiting.length,
+    laggards: waiting.slice(0, MOCK_MAX_LAGGARDS).map(({ period, gaps }) => ({
+      clientId: period.clientId,
+      clientName: period.clientName,
+      receivedCount: period.receivedCount,
+      missingCount: gaps.length,
+      missing: gaps.slice(0, MOCK_MAX_MISSING_LABELS).map((item) => item.documentTypeLabel),
+    })),
   };
 }
 

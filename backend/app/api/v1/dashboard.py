@@ -13,7 +13,7 @@ le-a făcut cât a putut și care acum așteaptă un om. Include documentele în
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
@@ -25,6 +25,7 @@ from app.api.deps import DbSession, require_permission
 from app.api.v1.periods import AccountingPeriodOut, to_period
 from app.core.config import settings
 from app.domain.enums import ClientStatus, DocumentStatus, PeriodStatus, TaskStatus
+from app.domain.periods import split_reference_month
 from app.domain.permissions import Permission
 from app.models.audit import AuditLog
 from app.models.client import Client
@@ -52,6 +53,10 @@ MAX_ATTENTION = 8
 PER_REASON = 3
 TIMELINE_EVENTS = 6
 MAX_PERIODS = 6
+
+#: Câți clienți în întârziere încap pe panou, și câte etichete pe rând.
+MAX_LAGGARDS = 5
+MAX_MISSING_LABELS = 3
 
 
 class SidebarCountsOut(ApiModel):
@@ -107,6 +112,37 @@ class TimelineEventOut(ApiModel):
     description: str
 
 
+class LaggardOut(ApiModel):
+    """Un client de la care încă se așteaptă documente pentru luna în lucru."""
+
+    client_id: uuid.UUID
+    client_name: str
+    received_count: int
+    missing_count: int
+    #: Ce anume lipsește, în cuvintele tipurilor de document. Trunchiată: un rând
+    #: de panou nu poate arăta zece etichete, iar fișa clientului le are pe toate.
+    missing: list[str]
+
+
+class ClosingOut(ApiModel):
+    """Termenul lunii încheiate și cine mai are de trimis.
+
+    Panoul spunea până acum **starea**: câte documente au intrat, câte așteaptă
+    verificare. Nu spunea niciodată *cât mai e până trebuie depus* — singurul
+    lucru care dă ordinea muncii într-un cabinet. Numărul de zile schimbă ce faci
+    azi mai mult decât orice contor.
+    """
+
+    reference_month: str
+    #: Ziua până la care trebuie depuse declarațiile lunii, în fusul cabinetului.
+    deadline: date
+    #: Poate fi negativ: termenul a trecut. Se spune, nu se ascunde.
+    days_left: int
+    #: Câți clienți încă nu au trimis tot. Zero înseamnă „luna e strânsă".
+    clients_waiting: int
+    laggards: list[LaggardOut]
+
+
 class DashboardOut(ApiModel):
     #: Luna pe care o descriu cifrele de mai jos, sau `None` când nu există niciun
     #: document. Se trimite pentru că altfel ecranul ar trebui să o ghicească — și
@@ -118,6 +154,9 @@ class DashboardOut(ApiModel):
     recent_documents: list[DocumentListItemOut]
     periods: list[AccountingPeriodOut]
     timeline: list[TimelineEventOut]
+    #: `None` când nu există nicio lună în lucru — nu un termen inventat pentru
+    #: luna calendaristică de azi.
+    closing: ClosingOut | None
 
 
 @router.get("/counts", response_model=SidebarCountsOut)
@@ -152,10 +191,57 @@ def dashboard(session: DbSession, user: DashboardReader) -> DashboardOut:
         ],
         periods=[to_period(view) for view in periods[:MAX_PERIODS]],
         timeline=_timeline(session, organization_id),
+        closing=_closing(current, periods) if current else None,
     )
 
 
 # ── Indicatori ───────────────────────────────────────────────────────────────
+
+
+def filing_deadline(reference_month: str, *, day: int) -> date:
+    """Termenul de depunere pentru o lună încheiată.
+
+    Este în luna **următoare**: documentele lui august se depun până pe 25
+    septembrie. Ziua este mărginită la 28 în configurare, deci există în orice
+    lună — inclusiv februarie, unde altfel termenul ar fi dispărut exact când
+    contează.
+    """
+    year, month = split_reference_month(reference_month)
+    return date(year + 1, 1, day) if month == 12 else date(year, month + 1, day)
+
+
+def _closing(reference_month: str, periods: list[PeriodView]) -> ClosingOut:
+    """Cât a mai rămas până la termen și cine încă nu a trimis.
+
+    Se calculează din perioadele deja citite pentru panou — nicio interogare în
+    plus. Clienții se ordonează după **cât** le lipsește, nu alfabetic: primul
+    rând trebuie să fie cel care costă cel mai mult dacă rămâne așa.
+    """
+    deadline = filing_deadline(reference_month, day=settings.filing_deadline_day)
+    today = datetime.now(ZoneInfo(settings.default_timezone)).date()
+
+    waiting = [
+        (view, [item for item in view.checklist if not item.is_satisfied]) for view in periods
+    ]
+    waiting = [(view, gaps) for view, gaps in waiting if gaps]
+    waiting.sort(key=lambda pair: (-len(pair[1]), pair[0].client_name))
+
+    return ClosingOut(
+        reference_month=reference_month,
+        deadline=deadline,
+        days_left=(deadline - today).days,
+        clients_waiting=len(waiting),
+        laggards=[
+            LaggardOut(
+                client_id=view.client_id,
+                client_name=view.client_name,
+                received_count=view.received_count,
+                missing_count=len(gaps),
+                missing=[item.document_type_label for item in gaps[:MAX_MISSING_LABELS]],
+            )
+            for view, gaps in waiting[:MAX_LAGGARDS]
+        ],
+    )
 
 
 def _open_tasks(session: Session, organization_id: uuid.UUID) -> int:

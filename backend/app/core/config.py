@@ -48,6 +48,9 @@ ANAF_ENVIRONMENTS = frozenset({"prod", "test"})
 #: avertizează. Nu este o preferință de stil: sub prag, semnătura devine ghicibilă.
 MIN_SECRET_KEY_LENGTH = 32
 
+#: Ziua maximă acceptată ca termen. Peste 28, ziua nu există în februarie.
+MAX_DEADLINE_DAY = 28
+
 
 class Environment(StrEnum):
     DEVELOPMENT = "development"
@@ -206,6 +209,17 @@ class Settings(BaseSettings):
     # nimic — o luna gresita este mai rea decat una absenta.
     reference_period_strategy: str = "document_date"
 
+    # ── Termenul lunii ───────────────────────────────────────────────────────
+    # Ziua din luna **următoare** până la care trebuie depuse declarațiile pentru
+    # luna încheiată. 25 este termenul obișnuit în România (D300, D394), dar
+    # rămâne configurabil: un cabinet care își impune un termen intern mai
+    # devreme trebuie să-l poată pune, iar legea se poate schimba fără noi.
+    #
+    # Nu se acceptă peste 28: ziua trebuie să existe în orice lună, inclusiv
+    # februarie, altfel panoul ar rămâne fără termen exact în luna în care
+    # contează.
+    filing_deadline_day: int = 25
+
     # ── Notificări ───────────────────────────────────────────────────────────
     notifications_enabled: bool = False
 
@@ -230,6 +244,16 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"OCR_PROVIDER necunoscut sau neimplementat: {value!r}. Valori acceptate: "
                 + ", ".join(sorted(EXTRACTION_PROVIDERS))
+            )
+        return value
+
+    @field_validator("filing_deadline_day")
+    @classmethod
+    def _valid_deadline_day(cls, value: int) -> int:
+        if not 1 <= value <= MAX_DEADLINE_DAY:
+            raise ValueError(
+                f"FILING_DEADLINE_DAY trebuie să fie între 1 și {MAX_DEADLINE_DAY}: "
+                "ziua trebuie să existe în orice lună, inclusiv februarie."
             )
         return value
 

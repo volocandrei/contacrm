@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import io
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -32,6 +32,7 @@ from app.models.document import (
     DocumentVersion,
 )
 from app.models.organization import Organization
+from app.models.period import ClientExpectation
 from app.models.user import Permission, Role, User
 from app.services.storage import LocalStorageProvider
 from tests.conftest import requires_db
@@ -1677,6 +1678,100 @@ class TestDashboard:
         """`null`, nu luna de azi: o instalare nouă nu are încă nicio lună în lucru."""
         login(api_storage, admin.email)
         assert api_storage.get("/api/v1/dashboard").json()["referenceMonth"] is None
+
+    def test_without_a_month_there_is_no_deadline(
+        self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
+    ) -> None:
+        """`null`, nu termenul lunii calendaristice: nu există nicio lună în lucru."""
+        login(api_storage, admin.email)
+        assert api_storage.get("/api/v1/dashboard").json()["closing"] is None
+
+    def test_the_deadline_falls_in_the_month_after_the_one_being_closed(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Documentele lui august se depun în septembrie, nu în august."""
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        document = db.get(Document, uuid.UUID(document_id))
+        assert document is not None
+        document.client_id = client_row.id
+        document.reference_month = "2026-08"
+        db.flush()
+
+        closing = api_storage.get("/api/v1/dashboard").json()["closing"]
+        assert closing["referenceMonth"] == "2026-08"
+        assert closing["deadline"] == "2026-09-25"
+
+    def test_a_december_month_rolls_into_the_next_year(self) -> None:
+        """Decembrie se depune în ianuarie anul următor, nu în luna 13."""
+        from app.api.v1.dashboard import filing_deadline
+
+        assert filing_deadline("2026-12", day=25) == date(2027, 1, 25)
+
+    def test_the_deadline_day_exists_in_february_too(self) -> None:
+        """Configurarea mărginește ziua la 28 tocmai ca luna asta să nu rămână fără termen."""
+        from app.api.v1.dashboard import filing_deadline
+
+        assert filing_deadline("2027-01", day=28) == date(2027, 2, 28)
+
+    def test_the_clients_who_still_owe_documents_are_named(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Panoul spunea *câți*; ca să fie de folos trebuie să spună **cine**."""
+        login(api_storage, admin.email)
+        db.add(
+            ClientExpectation(
+                organization_id=admin.organization_id,
+                client_id=client_row.id,
+                document_type_id=types["FACTURA_INTRARE"].id,
+                expected_min_count=2,
+            )
+        )
+        db.flush()
+        document_id = upload(api_storage)["id"]
+        document = db.get(Document, uuid.UUID(document_id))
+        assert document is not None
+        document.client_id = client_row.id
+        document.reference_month = "2026-08"
+        document.document_type_id = types["FACTURA_INTRARE"].id
+        db.flush()
+
+        closing = api_storage.get("/api/v1/dashboard").json()["closing"]
+        assert closing["clientsWaiting"] == 1
+        assert closing["laggards"][0]["clientName"] == client_row.name
+        assert closing["laggards"][0]["missingCount"] == 1
+        # Ce lipsește, în cuvintele tipului de document — nu un cod.
+        assert closing["laggards"][0]["missing"] == [types["FACTURA_INTRARE"].label]
+
+    def test_a_month_with_nothing_missing_has_no_laggards(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = upload(api_storage)["id"]
+        document = db.get(Document, uuid.UUID(document_id))
+        assert document is not None
+        document.client_id = client_row.id
+        document.reference_month = "2026-08"
+        db.flush()
+
+        closing = api_storage.get("/api/v1/dashboard").json()["closing"]
+        assert closing["clientsWaiting"] == 0
+        assert closing["laggards"] == []
 
     def test_a_document_without_a_client_asks_for_attention(
         self,

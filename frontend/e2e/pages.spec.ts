@@ -33,6 +33,7 @@ const SCREENS = [
   ["/administrare/roluri", "Roluri"],
   ["/administrare/setari", "Setări"],
   ["/administrare/surse", "Surse documente"],
+  ["/administrare/e-factura", "e-Factura"],
   ["/administrare/audit", "Jurnal de audit"],
 ] as const;
 

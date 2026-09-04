@@ -1,7 +1,9 @@
 import { Link } from "react-router-dom";
 import {
   Building2,
+  CalendarClock,
   CircleAlert,
+  CircleCheck,
   Clock,
   Copy,
   FileStack,
@@ -14,9 +16,12 @@ import {
 import { useDashboard } from "@/api/hooks";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { ConfidenceBadge, DocumentStatusBadge, PeriodStatusBadge } from "@/components/status-badge";
-import { formatReferenceMonth, formatTime } from "@/lib/format";
+import { formatDate, formatReferenceMonth, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { AttentionReason, DocumentSource } from "@/types/domain";
+import type { AttentionReason, DashboardClosing, DocumentSource } from "@/types/domain";
+
+/** Sub atâtea zile rămase, termenul nu mai poate fi lăsat pe săptămâna viitoare. */
+const URGENT_DAYS = 7;
 
 const SOURCE_LABEL: Record<DocumentSource, string> = {
   EMAIL: "Email",
@@ -95,6 +100,8 @@ export function DashboardPage() {
           to="/documente/inbox?status=ERROR"
         />
       </div>
+
+      {data.closing && <ClosingBand closing={data.closing} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MiniStat
@@ -340,6 +347,93 @@ const KPI_TONE = {
   amber: "bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400",
   red: "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400",
 } as const;
+
+/**
+ * Termenul lunii și cine încă nu a trimis.
+ *
+ * Restul panoului spune **starea**: câte documente au intrat, câte așteaptă
+ * verificare. Nu spunea niciodată *cât mai e până trebuie depus* — singurul
+ * lucru care dă ordinea muncii într-un cabinet. Numărul de zile schimbă ce faci
+ * azi mai mult decât orice contor.
+ *
+ * Clienții sunt ordonați după cât le lipsește, nu alfabetic, și fiecare rând
+ * duce direct la fișa lui: panoul spunea „3 clienți cu documente lipsă" fără să
+ * spună **care**, deci cineva trebuia oricum să caute în altă parte.
+ */
+function ClosingBand({ closing }: { closing: DashboardClosing }) {
+  const { daysLeft } = closing;
+  const overdue = daysLeft < 0;
+  const urgent = !overdue && daysLeft <= URGENT_DAYS;
+
+  const tone = overdue
+    ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40"
+    : urgent
+      ? "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40"
+      : "border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900";
+
+  return (
+    <section aria-label="Termenul lunii" className={cn("rounded-xl border p-4", tone)}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="flex items-center gap-2 font-semibold text-gray-900 dark:text-gray-100">
+          <CalendarClock className="h-5 w-5 shrink-0" aria-hidden="true" />
+          {overdue
+            ? `Termenul a trecut de ${Math.abs(daysLeft)} ${plural(Math.abs(daysLeft))}`
+            : daysLeft === 0
+              ? "Termenul este azi"
+              : `Mai sunt ${daysLeft} ${plural(daysLeft)} până la termen`}
+        </span>
+        <span className="text-sm text-gray-600 dark:text-gray-400">
+          depunere până pe {formatDate(closing.deadline)}, pentru{" "}
+          {formatReferenceMonth(closing.referenceMonth)}
+        </span>
+      </div>
+
+      {closing.clientsWaiting === 0 ? (
+        <p className="mt-2 flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
+          <CircleCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+          Toți clienții au trimis ce se aștepta de la ei.
+        </p>
+      ) : (
+        <>
+          <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
+            {closing.clientsWaiting}{" "}
+            {closing.clientsWaiting === 1 ? "client nu a trimis" : "clienți nu au trimis"} tot:
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {closing.laggards.map((laggard) => (
+              <li key={laggard.clientId} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                <Link
+                  to={`/crm/clienti/${laggard.clientId}`}
+                  className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                >
+                  {laggard.clientName}
+                </Link>
+                <span className="text-gray-600 dark:text-gray-400">
+                  {laggard.missing.join(", ")}
+                  {laggard.missingCount > laggard.missing.length &&
+                    ` +${laggard.missingCount - laggard.missing.length}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {closing.clientsWaiting > closing.laggards.length && (
+            <Link
+              to="/contabilitate/lipsa"
+              className="mt-2 inline-block text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+            >
+              Vezi toți cei {closing.clientsWaiting} →
+            </Link>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** „zi" / „zile", ca textul să nu sune a mesaj de robot. */
+function plural(days: number): string {
+  return days === 1 ? "zi" : "zile";
+}
 
 function KpiCard({
   Icon,

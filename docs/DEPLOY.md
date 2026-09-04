@@ -67,6 +67,7 @@ Pe serviciul **backend**:
 | `TRUSTED_PROXY_COUNT` | `1` | Vercel este singurul proxy din față; fără el, jurnalul de audit notează adresa platformei la fiecare acțiune — **și limitarea autentificării ar număra toate încercările la aceeași adresă** |
 | `LOGIN_ATTEMPTS_PER_MINUTE`, `LOGIN_ATTEMPTS_PER_ADDRESS_PER_MINUTE` | implicit `10` și `60` | câte încercări de autentificare acceptă o adresă pentru un cont, și în total. Contorul stă în proces: pe o platformă care pornește un proces per cerere nu limitează nimic, deci acolo limita trebuie pusă la marginea rețelei |
 | `OCR_PROVIDER` | `local` | citește și facturi electronice, și PDF-uri; pornirea în producție refuză `mock` — vezi mai jos |
+| `FILING_DEADLINE_DAY` | implicit `25` | ziua din luna următoare până la care se depun declarațiile lunii încheiate. Panoul principal numără zilele rămase după ea |
 
 **Pornirea în producție refuză `OCR_PROVIDER=mock`.** Providerul acela inventează
 furnizori, sume și date, iar ecranul de verificare le arată cu proveniență și scor

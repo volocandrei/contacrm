@@ -398,6 +398,33 @@ export type DashboardData = {
   recentDocuments: DocumentListItem[];
   periods: AccountingPeriod[];
   timeline: TimelineEvent[];
+  /**
+   * Termenul lunii în lucru și cine mai are de trimis.
+   *
+   * `null` când nu există nicio lună în lucru — nu un termen inventat pentru luna
+   * calendaristică de azi.
+   */
+  closing: DashboardClosing | null;
+};
+
+/** Un client de la care încă se așteaptă documente pentru luna în lucru. */
+export type Laggard = {
+  clientId: string;
+  clientName: string;
+  receivedCount: number;
+  missingCount: number;
+  /** Ce lipsește, în cuvintele tipurilor de document. Trunchiată la câteva. */
+  missing: string[];
+};
+
+export type DashboardClosing = {
+  referenceMonth: string;
+  /** Ziua până la care trebuie depuse declarațiile lunii încheiate. */
+  deadline: string;
+  /** Poate fi negativ: termenul a trecut. Se spune, nu se ascunde. */
+  daysLeft: number;
+  clientsWaiting: number;
+  laggards: Laggard[];
 };
 
 /* ─── Audit (§31) ──────────────────────────────────────────────────────────── */
