@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { ChevronDown, ChevronsRight } from "lucide-react";
+import { divider, pillClass } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS, NAV_ROOT, type BadgeKey, type NavItem } from "@/lib/navigation";
 import { usePermissionCheck } from "@/features/auth/use-auth";
@@ -30,8 +31,8 @@ export function AppSidebar({ open, onToggle, badges = {} }: AppSidebarProps) {
     <nav
       aria-label="Navigație principală"
       className={cn(
-        "sticky top-0 h-screen shrink-0 border-r p-2 shadow-sm transition-[width] duration-300 ease-in-out",
-        "border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900",
+        "sticky top-0 h-screen shrink-0 border-r p-2 transition-[width] duration-300 ease-in-out",
+        "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
         open ? "w-64" : "w-16",
       )}
     >
@@ -71,7 +72,7 @@ function SidebarGroup({
 
   // În modul restrâns rămân vizibile doar iconurile, fără antetul grupului.
   if (!open) {
-    return <div className="space-y-1 border-t border-gray-100 pt-1 dark:border-gray-800">{children}</div>;
+    return <div className="space-y-1 border-t border-slate-100 pt-1 dark:border-slate-800">{children}</div>;
   }
 
   return (
@@ -79,7 +80,7 @@ function SidebarGroup({
       <button
         onClick={() => setExpanded((value) => !value)}
         aria-expanded={expanded}
-        className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 transition-colors hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+        className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[11px] font-semibold tracking-wide text-slate-400 uppercase transition-colors hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300"
       >
         {label}
         <ChevronDown
@@ -113,11 +114,14 @@ function SidebarLink({
       title={open ? undefined : label}
       className={({ isActive }) =>
         cn(
-          "relative flex h-10 w-full items-center rounded-md transition-colors duration-200",
+          "group relative flex h-10 w-full items-center rounded-lg transition-colors duration-200",
           "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none",
           isActive
-            ? "border-l-2 border-blue-500 bg-blue-50 text-blue-700 shadow-sm dark:bg-blue-900/40 dark:text-blue-300"
-            : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200",
+            // Accentul stă într-un pseudo-element lipit de margine, nu într-un
+            // `border-l`: chenarul împingea iconul cu doi pixeli, iar rândul activ
+            // nu se mai alinia cu celelalte.
+            ? "bg-blue-50 font-medium text-blue-700 before:absolute before:top-1.5 before:bottom-1.5 before:-left-2 before:w-1 before:rounded-r-full before:bg-blue-500 dark:bg-blue-500/15 dark:text-blue-300 dark:before:bg-blue-400"
+            : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200",
         )
       }
     >
@@ -132,9 +136,7 @@ function SidebarLink({
       )}
 
       {count !== undefined && count > 0 && open && (
-        <span className="absolute right-3 flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1.5 text-xs font-medium text-white dark:bg-blue-600">
-          {count}
-        </span>
+        <span className={cn("absolute right-2.5", pillClass("blue"))}>{count}</span>
       )}
       {count !== undefined && count > 0 && !open && (
         <span
@@ -148,15 +150,15 @@ function SidebarLink({
 
 function BrandSection({ open }: { open: boolean }) {
   return (
-    <div className="mb-4 border-b border-gray-200 pb-3 dark:border-gray-800">
+    <div className="mb-4 border-b border-slate-200 pb-3 dark:border-slate-800">
       <div className="flex items-center gap-3 rounded-md p-2">
         <Logo />
         {open && (
           <div className="min-w-0">
-            <span className="block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <span className="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
               ContaCRM
             </span>
-            <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+            <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
               Cabinet contabil
             </span>
           </div>
@@ -190,20 +192,23 @@ function ToggleClose({ open, onToggle }: { open: boolean; onToggle: () => void }
       onClick={onToggle}
       aria-expanded={open}
       aria-label={open ? "Restrânge meniul" : "Extinde meniul"}
-      className="absolute right-0 bottom-0 left-0 border-t border-gray-200 transition-colors hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800"
+      className={cn(
+        "absolute right-0 bottom-0 left-0 border-t transition-colors hover:bg-slate-100/70 dark:hover:bg-slate-800",
+        divider,
+      )}
     >
       <div className="flex items-center p-3">
         <div className="grid size-10 place-content-center">
           <ChevronsRight
             className={cn(
-              "h-4 w-4 text-gray-500 transition-transform duration-300 dark:text-gray-400",
+              "h-4 w-4 text-slate-500 transition-transform duration-300 dark:text-slate-400",
               open && "rotate-180",
             )}
             aria-hidden="true"
           />
         </div>
         {open && (
-          <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Restrânge</span>
+          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Restrânge</span>
         )}
       </div>
     </button>

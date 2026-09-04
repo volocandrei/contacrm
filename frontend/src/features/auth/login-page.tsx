@@ -50,7 +50,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6 dark:bg-gray-950">
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 dark:bg-slate-950">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center gap-3">
           <div className="grid size-11 place-content-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 shadow-sm">
@@ -60,19 +60,19 @@ export function LoginPage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">ContaCRM</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Autentificare</p>
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">ContaCRM</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Autentificare</p>
           </div>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+          className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
         >
           <div>
             <label
               htmlFor="email"
-              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+              className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300"
             >
               Email
             </label>
@@ -83,14 +83,14 @@ export function LoginPage() {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
             />
           </div>
 
           <div>
             <label
               htmlFor="password"
-              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+              className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300"
             >
               Parolă
             </label>
@@ -101,7 +101,7 @@ export function LoginPage() {
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
             />
           </div>
 
@@ -140,7 +140,7 @@ export function LoginPage() {
                   key={account.email}
                   type="button"
                   onClick={() => setEmail(account.email)}
-                  className="rounded-md bg-white px-2 py-1 font-medium text-amber-900 ring-1 ring-amber-200 transition-colors hover:bg-amber-100 dark:bg-gray-900 dark:text-amber-200 dark:ring-amber-800"
+                  className="rounded-md bg-white px-2 py-1 font-medium text-amber-900 ring-1 ring-amber-200 transition-colors hover:bg-amber-100 dark:bg-slate-900 dark:text-amber-200 dark:ring-amber-800"
                 >
                   {account.label}
                 </button>

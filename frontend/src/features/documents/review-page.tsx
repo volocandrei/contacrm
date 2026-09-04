@@ -231,13 +231,13 @@ function ReviewScreen({
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-xl font-bold text-gray-900 dark:text-gray-100">
+            <h2 className="truncate text-xl font-bold text-slate-900 dark:text-slate-100">
               {document.storedFilename ?? document.originalFilename}
             </h2>
             <DocumentStatusBadge status={document.status} />
             <ConfidenceBadge confidence={document.confidence} />
           </div>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {formatFileSize(document.fileSize)} · {document.mimeType} · recepționat{" "}
             {formatDateTime(document.receivedAt)} · SHA-256 {document.sha256.slice(0, 12)}…
           </p>
@@ -250,7 +250,7 @@ function ReviewScreen({
                 void run(() => download(document), "Descărcarea a pornit.")
               }
               disabled={downloading}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               <Download className="h-4 w-4" aria-hidden="true" />
               Descarcă
@@ -258,7 +258,7 @@ function ReviewScreen({
           )}
           <Link
             to="/documente/verificare"
-            className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             <X className="h-4 w-4" aria-hidden="true" />
             Închide
@@ -341,7 +341,7 @@ function ReviewScreen({
       <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-5">
         {/* Stânga: previzualizare */}
         <div className="lg:col-span-3">
-          <div className="h-[70vh] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:sticky lg:top-20 dark:border-gray-800 dark:bg-gray-900">
+          <div className="h-[70vh] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:sticky lg:top-20 dark:border-slate-800 dark:bg-slate-900">
             <DocumentPreview document={document} />
           </div>
         </div>
@@ -350,7 +350,7 @@ function ReviewScreen({
         <div className="space-y-4 lg:col-span-2">
           {!document.clientId && can("assignClient") && (
             <Panel title="Atribuie client">
-              <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
                 Expeditorul nu a putut fi mapat automat. Alege clientul căruia îi aparține documentul.
               </p>
               <select
@@ -367,7 +367,7 @@ function ReviewScreen({
                     "Clientul a fost atribuit.",
                   );
                 }}
-                className="h-9 w-full cursor-pointer rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                className="h-9 w-full cursor-pointer rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
               >
                 <option value="">Selectează clientul…</option>
                 {(clientsPage?.items ?? []).map((client) => (
@@ -382,7 +382,7 @@ function ReviewScreen({
           <Panel
             title="Date extrase"
             action={
-              <span className="text-xs text-gray-400 dark:text-gray-500">
+              <span className="text-xs text-slate-400 dark:text-slate-500">
                 {document.extraction.provider ?? "—"}
                 {document.extraction.promptVersion ? ` · ${document.extraction.promptVersion}` : ""}
               </span>
@@ -390,7 +390,7 @@ function ReviewScreen({
           >
             {/* Un formular blocat fără explicație pare stricat. */}
             {document.status === "ARCHIVED" && (
-              <p className="mb-3 flex items-start gap-1.5 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-gray-800/60 dark:text-gray-400">
+              <p className="mb-3 flex items-start gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-400">
                 <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 <span>
                   Documentul este arhivat, iar numele fișierului este format din datele de
@@ -446,17 +446,17 @@ function ReviewScreen({
                   type="button"
                   onClick={handleSave}
                   disabled={!isDirty || busy}
-                  className="flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                  className="flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   <Save className="h-4 w-4" aria-hidden="true" />
                   Salvează
-                  <kbd className="rounded bg-gray-200 px-1 text-[10px] dark:bg-gray-700">Alt+S</kbd>
+                  <kbd className="rounded bg-slate-200 px-1 text-[10px] dark:bg-slate-700">Alt+S</kbd>
                 </button>
               )}
             </div>
 
             {can("approve") && approvalBlocked && (
-              <ul className="mt-2 ml-1 list-disc space-y-0.5 pl-4 text-xs text-gray-500 dark:text-gray-400">
+              <ul className="mt-2 ml-1 list-disc space-y-0.5 pl-4 text-xs text-slate-500 dark:text-slate-400">
                 {document.approvalBlockers.map((blocker) => (
                   <li key={blocker}>{blocker}</li>
                 ))}
@@ -469,7 +469,7 @@ function ReviewScreen({
                   type="button"
                   onClick={() => setRejecting((value) => !value)}
                   disabled={busy}
-                  className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                   Respinge
@@ -486,7 +486,7 @@ function ReviewScreen({
                     )
                   }
                   disabled={busy}
-                  className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                 >
                   <Copy className="h-4 w-4" aria-hidden="true" />
                   Duplicat
@@ -502,7 +502,7 @@ function ReviewScreen({
                     )
                   }
                   disabled={busy}
-                  className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                 >
                   <RefreshCw className="h-4 w-4" aria-hidden="true" />
                   Reprocesează
@@ -513,16 +513,16 @@ function ReviewScreen({
             {/* Când reprocesarea nu se poate, spunem de ce. Un buton care dispare
                 fără explicație face documentul să pară pur și simplu uitat. */}
             {canWrite && document.reprocessBlockedReason && (
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 {document.reprocessBlockedReason}
               </p>
             )}
 
             {rejecting && (
-              <div className="mt-3 space-y-2 rounded-lg bg-gray-50 p-3 dark:bg-gray-800/60">
+              <div className="mt-3 space-y-2 rounded-lg bg-slate-50 p-3 dark:bg-slate-800/60">
                 <label
                   htmlFor="reject-reason"
-                  className="block text-xs font-medium text-gray-700 dark:text-gray-300"
+                  className="block text-xs font-medium text-slate-700 dark:text-slate-300"
                 >
                   Motivul respingerii (obligatoriu, rămâne în audit)
                 </label>
@@ -531,7 +531,7 @@ function ReviewScreen({
                   rows={2}
                   value={rejectReason}
                   onChange={(event) => setRejectReason(event.target.value)}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
                 <button
                   type="button"
@@ -547,7 +547,7 @@ function ReviewScreen({
 
           {document.duplicateOfId && (
             <Panel title="Posibil duplicat">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-slate-600 dark:text-slate-400">
                 Documentul pare identic cu{" "}
                 <button
                   type="button"
@@ -565,13 +565,13 @@ function ReviewScreen({
             <ol className="space-y-3">
               {document.history.map((entry) => (
                 <li key={entry.id} className="flex gap-2.5 text-xs">
-                  <History className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden="true" />
+                  <History className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
                   <div className="min-w-0">
-                    <p className="font-medium text-gray-900 dark:text-gray-100">{entry.action}</p>
+                    <p className="font-medium text-slate-900 dark:text-slate-100">{entry.action}</p>
                     {entry.detail && (
-                      <p className="text-gray-500 dark:text-gray-400">{entry.detail}</p>
+                      <p className="text-slate-500 dark:text-slate-400">{entry.detail}</p>
                     )}
-                    <p className="text-gray-400 dark:text-gray-500">
+                    <p className="text-slate-400 dark:text-slate-500">
                       {entry.actor} · {formatDateTime(entry.at)}
                     </p>
                   </div>
@@ -599,8 +599,8 @@ function FilesBlock({ document }: { document: DocumentDetail }) {
   const [problem, setProblem] = useState<string | null>(null);
 
   return (
-    <div className="mb-4 rounded-lg border border-gray-200 px-4 py-3 text-sm dark:border-gray-800">
-      <p className="mb-2 flex items-center gap-1.5 font-medium text-gray-900 dark:text-gray-100">
+    <div className="mb-4 rounded-lg border border-slate-200 px-4 py-3 text-sm dark:border-slate-800">
+      <p className="mb-2 flex items-center gap-1.5 font-medium text-slate-900 dark:text-slate-100">
         <Paperclip className="h-4 w-4" aria-hidden="true" />
         Fișierele documentului
       </p>
@@ -629,7 +629,7 @@ function FilesBlock({ document }: { document: DocumentDetail }) {
             >
               {file.label}
             </button>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className="text-xs text-slate-500 dark:text-slate-400">
               {formatFileSize(file.fileSize)}
             </span>
           </li>
@@ -668,7 +668,7 @@ function FieldRow({
     <div>
       <label
         htmlFor={inputId}
-        className="mb-1 flex items-center justify-between gap-2 text-xs font-medium text-gray-600 dark:text-gray-400"
+        className="mb-1 flex items-center justify-between gap-2 text-xs font-medium text-slate-600 dark:text-slate-400"
       >
         <span>{label}</span>
         <FieldOrigin field={field} isDirty={isDirty} />
@@ -680,7 +680,7 @@ function FieldRow({
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           className={cn(
-            "h-9 w-full cursor-pointer rounded-lg border bg-white px-3 text-sm dark:bg-gray-950 dark:text-gray-100",
+            "h-9 w-full cursor-pointer rounded-lg border bg-white px-3 text-sm dark:bg-slate-950 dark:text-slate-100",
             fieldBorder(lowConfidence, mediumConfidence, isDirty),
           )}
         >
@@ -699,7 +699,7 @@ function FieldRow({
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           className={cn(
-            "h-9 w-full rounded-lg border bg-white px-3 text-sm dark:bg-gray-950 dark:text-gray-100",
+            "h-9 w-full rounded-lg border bg-white px-3 text-sm dark:bg-slate-950 dark:text-slate-100",
             fieldBorder(lowConfidence, mediumConfidence, isDirty),
           )}
         />
@@ -712,7 +712,7 @@ function fieldBorder(low: boolean, medium: boolean, isDirty: boolean): string {
   if (isDirty) return "border-blue-400 ring-2 ring-blue-500/20";
   if (low) return "border-red-300 dark:border-red-800";
   if (medium) return "border-amber-300 dark:border-amber-800";
-  return "border-gray-200 dark:border-gray-700";
+  return "border-slate-200 dark:border-slate-700";
 }
 
 /** Fiecare câmp arată de unde vine valoarea (§22): AI, corectură manuală sau gol. */
@@ -729,12 +729,12 @@ function FieldOrigin({ field, isDirty }: { field: ExtractedField<string>; isDirt
     );
   }
   if (field.source === "EMPTY" || field.value === null) {
-    return <span className="text-[10px] text-gray-400 dark:text-gray-500">lipsă</span>;
+    return <span className="text-[10px] text-slate-400 dark:text-slate-500">lipsă</span>;
   }
   if (field.source === "DERIVED") {
     // Nu a citit-o nimeni de pe document: a calculat-o o regulă (ADR-008).
     return (
-      <span className="flex items-center gap-1 text-[10px] font-medium text-gray-500 dark:text-gray-400">
+      <span className="flex items-center gap-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
         <Calculator className="h-3 w-3" aria-hidden="true" />
         dedus
       </span>
@@ -755,7 +755,7 @@ function FieldOrigin({ field, isDirty }: { field: ExtractedField<string>; isDirt
           ? "text-red-600 dark:text-red-400"
           : percent !== null && percent < 90
             ? "text-amber-600 dark:text-amber-400"
-            : "text-gray-400 dark:text-gray-500",
+            : "text-slate-400 dark:text-slate-500",
       )}
       title={
         readFromDocument
@@ -789,16 +789,16 @@ export function ReviewQueuePage() {
 
   return (
     <div className="flex min-h-[50vh] items-center justify-center">
-      <div className="max-w-md rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {next ? (
           <>
             <div className="mx-auto mb-3 grid h-11 w-11 place-content-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
               <Inbox className="h-5 w-5" aria-hidden="true" />
             </div>
-            <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+            <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
               Următorul document care așteaptă verificare:
               <br />
-              <span className="font-medium text-gray-900 dark:text-gray-100">
+              <span className="font-medium text-slate-900 dark:text-slate-100">
                 {next.storedFilename ?? next.originalFilename}
               </span>
             </p>
@@ -815,7 +815,7 @@ export function ReviewQueuePage() {
             <div className="mx-auto mb-3 grid h-11 w-11 place-content-center rounded-lg bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400">
               <CircleCheck className="h-5 w-5" aria-hidden="true" />
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               Nu mai este niciun document în așteptare. Alege unul din listă dacă vrei să
               revii asupra lui.
             </p>

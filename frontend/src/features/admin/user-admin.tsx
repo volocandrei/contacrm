@@ -33,7 +33,7 @@ import type { RoleCode, UserSummary } from "@/types/domain";
 export const MIN_PASSWORD_LENGTH = 12;
 
 const FIELD_CLASS =
-  "h-9 w-full rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100";
+  "h-9 w-full rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100";
 
 function Field({
   id,
@@ -48,7 +48,7 @@ function Field({
     <div>
       <label
         htmlFor={id}
-        className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
+        className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300"
       >
         {label}
       </label>
@@ -101,11 +101,11 @@ export function UserRow({
   return (
     <>
       <tr>
-        <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+        <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
           {user.fullName}
-          {isMe && <span className="ml-2 text-xs text-gray-400">(tu)</span>}
+          {isMe && <span className="ml-2 text-xs text-slate-400">(tu)</span>}
         </td>
-        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{user.email}</td>
+        <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{user.email}</td>
         <td className="px-4 py-3">
           <label className="sr-only" htmlFor={`role-${user.id}`}>
             Rol pentru {user.fullName}
@@ -115,7 +115,7 @@ export function UserRow({
             value={user.role}
             disabled={isMe || update.isPending}
             onChange={(event) => change({ role: event.target.value as RoleCode })}
-            className="h-8 rounded-md border border-gray-200 bg-white px-2 text-sm disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+            className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           >
             <RoleOptions labels={roleLabels} />
           </select>
@@ -125,13 +125,13 @@ export function UserRow({
             className={
               user.isActive
                 ? "text-green-600 dark:text-green-400"
-                : "text-gray-400 dark:text-gray-500"
+                : "text-slate-400 dark:text-slate-500"
             }
           >
             {user.isActive ? "Activ" : "Dezactivat"}
           </span>
         </td>
-        <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+        <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
           {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "—"}
         </td>
         <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -146,7 +146,7 @@ export function UserRow({
             type="button"
             disabled={isMe || update.isPending}
             onClick={() => change({ isActive: !user.isActive })}
-            className="text-sm font-medium text-gray-600 hover:underline disabled:opacity-40 dark:text-gray-300"
+            className="text-sm font-medium text-slate-600 hover:underline disabled:opacity-40 dark:text-slate-300"
           >
             {user.isActive ? "Dezactivează" : "Reactivează"}
           </button>
@@ -165,7 +165,7 @@ export function UserRow({
 
       {resetting && (
         <tr>
-          <td colSpan={6} className="bg-gray-50 px-4 py-3 dark:bg-gray-800/60">
+          <td colSpan={6} className="bg-slate-50 px-4 py-3 dark:bg-slate-800/60">
             <PasswordResetForm user={user} onDone={() => setResetting(false)} />
           </td>
         </tr>
@@ -232,7 +232,7 @@ function PasswordResetForm({ user, onDone }: { user: UserSummary; onDone: () => 
       <button
         type="button"
         onClick={onDone}
-        className="h-9 text-sm font-medium text-gray-600 hover:underline dark:text-gray-300"
+        className="h-9 text-sm font-medium text-slate-600 hover:underline dark:text-slate-300"
       >
         Renunță
       </button>
@@ -287,7 +287,7 @@ export function AddUserButton({ roleLabels }: { roleLabels: Record<RoleCode, str
   return (
     <form
       onSubmit={submit}
-      className="w-full max-w-2xl rounded-xl border border-gray-200 p-4 text-left dark:border-gray-800"
+      className="w-full max-w-2xl rounded-xl border border-slate-200 p-4 text-left dark:border-slate-800"
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field id="user-fullName" label="Nume complet">
@@ -329,7 +329,7 @@ export function AddUserButton({ roleLabels }: { roleLabels: Record<RoleCode, str
         </Field>
       </div>
 
-      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
         Parola o alegi tu și i-o spui colegului direct. Nu pleacă niciun email — aplicația încă
         nu trimite mesaje.
       </p>
@@ -344,7 +344,7 @@ export function AddUserButton({ roleLabels }: { roleLabels: Record<RoleCode, str
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="h-9 text-sm font-medium text-gray-600 hover:underline dark:text-gray-300"
+          className="h-9 text-sm font-medium text-slate-600 hover:underline dark:text-slate-300"
         >
           Renunță
         </button>

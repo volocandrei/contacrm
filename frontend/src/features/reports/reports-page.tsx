@@ -104,7 +104,7 @@ export function ReportsPage() {
               // Lista este scurtă; numărul real nu se ascunde nicăieri.
               action={
                 data.clientCount > data.byClient.length ? (
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
                     primii {data.byClient.length} din {data.clientCount}
                   </span>
                 ) : undefined
@@ -122,16 +122,16 @@ export function ReportsPage() {
               {data.byStatus.map((bucket) => (
                 <li
                   key={bucket.key}
-                  className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-800"
+                  className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800"
                 >
                   <DocumentStatusBadge status={bucket.key as DocumentStatus} />
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
                     {bucket.count}
                   </span>
                 </li>
               ))}
               {data.byStatus.length === 0 && (
-                <li className="py-2 text-xs text-gray-400 dark:text-gray-500">Fără date</li>
+                <li className="py-2 text-xs text-slate-400 dark:text-slate-500">Fără date</li>
               )}
             </ul>
           </Panel>
@@ -143,13 +143,13 @@ export function ReportsPage() {
 
 function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="mb-3 grid h-9 w-9 place-content-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
         <ChartColumn className="h-5 w-5" aria-hidden="true" />
       </div>
-      <p className="text-sm text-gray-600 dark:text-gray-400">{label}</p>
-      <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
-      {hint && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
+      <p className="text-sm text-slate-600 dark:text-slate-400">{label}</p>
+      <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{value}</p>
+      {hint && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</p>}
     </div>
   );
 }
@@ -167,12 +167,12 @@ function BarList({
       {items.map((item) => (
         <li key={item.key ?? "absent"}>
           <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-            <span className="truncate text-gray-600 dark:text-gray-400">{render(item)}</span>
-            <span className="shrink-0 font-medium text-gray-900 dark:text-gray-100">
+            <span className="truncate text-slate-600 dark:text-slate-400">{render(item)}</span>
+            <span className="shrink-0 font-medium text-slate-900 dark:text-slate-100">
               {item.count}
             </span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
             <div
               className="h-1.5 rounded-full bg-blue-500"
               style={{ width: `${(item.count / max) * 100}%` }}
@@ -181,7 +181,7 @@ function BarList({
         </li>
       ))}
       {items.length === 0 && (
-        <li className="py-4 text-center text-xs text-gray-400 dark:text-gray-500">Fără date</li>
+        <li className="py-4 text-center text-xs text-slate-400 dark:text-slate-500">Fără date</li>
       )}
     </ul>
   );
@@ -248,7 +248,7 @@ function ExportButton({ filters }: { filters: Record<string, string> }) {
         type="button"
         onClick={() => void download()}
         disabled={busy}
-        className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+        className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
       >
         {busy ? (
           <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />

@@ -113,12 +113,12 @@ export function UploadPanel() {
             "flex flex-1 cursor-pointer items-center gap-3 rounded-lg border-2 border-dashed px-4 py-5 text-sm transition-colors",
             dragging
               ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40"
-              : "border-gray-300 hover:border-gray-400 dark:border-gray-700 dark:hover:border-gray-600",
+              : "border-slate-300 hover:border-slate-400 dark:border-slate-700 dark:hover:border-slate-600",
           )}
         >
-          <Upload className="h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
-          <span className="text-gray-600 dark:text-gray-300">
-            <span className="font-medium text-gray-900 dark:text-gray-100">
+          <Upload className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+          <span className="text-slate-600 dark:text-slate-300">
+            <span className="font-medium text-slate-900 dark:text-slate-100">
               Încarcă documente
             </span>{" "}
             — trage fișierele aici sau apasă pentru a alege
@@ -126,13 +126,13 @@ export function UploadPanel() {
         </label>
 
         <label className="text-sm sm:w-56">
-          <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+          <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
             Client (opțional)
           </span>
           <select
             value={clientId}
             onChange={(event) => setClientId(event.target.value)}
-            className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-sm dark:border-gray-700 dark:bg-gray-900"
+            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
           >
             {/* Gol este alegerea corectă implicit: sistemul identifică singur
                 clientul din codul fiscal citit de pe document. Selecția e pentru
@@ -172,11 +172,11 @@ export function UploadPanel() {
           {rows.map((row) => (
             <li
               key={row.key}
-              className="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/60"
+              className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/60"
             >
               {row.outcome.state === "pending" && (
                 <Loader2
-                  className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-gray-400"
+                  className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-slate-400"
                   aria-hidden="true"
                 />
               )}
@@ -191,11 +191,11 @@ export function UploadPanel() {
               )}
 
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-gray-900 dark:text-gray-100">
+                <span className="block truncate text-slate-900 dark:text-slate-100">
                   {row.filename}
                 </span>
                 {row.outcome.state === "pending" && (
-                  <span className="text-xs text-gray-500">Se încarcă…</span>
+                  <span className="text-xs text-slate-500">Se încarcă…</span>
                 )}
                 {row.outcome.state === "failed" && (
                   <span role="alert" className="text-xs text-red-600 dark:text-red-400">
@@ -203,7 +203,7 @@ export function UploadPanel() {
                   </span>
                 )}
                 {row.outcome.state === "done" && (
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-slate-500">
                     Încărcat — se procesează.{" "}
                     <Link
                       to={`/documente/verificare/${row.outcome.documentId}`}

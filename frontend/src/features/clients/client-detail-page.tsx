@@ -55,7 +55,7 @@ export function ClientDetailPage() {
     <div>
       <Link
         to="/crm/clienti"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-gray-500 transition-colors hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
         Toți clienții
@@ -64,10 +64,10 @@ export function ClientDetailPage() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{client.name}</h2>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{client.name}</h2>
             <ClientStatusBadge status={client.status} />
           </div>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             {client.taxId} · {client.registrationNumber} · {client.address}
           </p>
         </div>
@@ -75,7 +75,7 @@ export function ClientDetailPage() {
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <Pencil className="h-4 w-4" aria-hidden="true" />
             Modifică
@@ -96,7 +96,7 @@ export function ClientDetailPage() {
       <div
         role="tablist"
         aria-label="Secțiuni client"
-        className="mb-4 flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-800"
+        className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
       >
         {TABS.map((item) => (
           <button
@@ -108,7 +108,7 @@ export function ClientDetailPage() {
               "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
               tab === item.id
                 ? "border-blue-500 text-blue-700 dark:text-blue-400"
-                : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200",
+                : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
             )}
           >
             {item.label}
@@ -159,7 +159,7 @@ function GeneralTab({ clientId }: { clientId: string }) {
             <Row label="WhatsApp" value={primary.whatsappNumber ?? "—"} />
           </dl>
         ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Niciun contact principal definit.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Niciun contact principal definit.</p>
         )}
       </Panel>
 
@@ -167,18 +167,18 @@ function GeneralTab({ clientId }: { clientId: string }) {
         {currentPeriod ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
                 {formatReferenceMonth(currentPeriod.referenceMonth)}
               </span>
               <PeriodStatusBadge status={currentPeriod.status} />
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               {currentPeriod.satisfiedCount} din {currentPeriod.expectedCount} documente așteptate
             </p>
             <ul className="space-y-1 text-xs">
               {currentPeriod.checklist.map((item) => (
                 <li key={item.documentType} className="flex items-center justify-between gap-2">
-                  <span className="text-gray-600 dark:text-gray-400">{item.documentTypeLabel}</span>
+                  <span className="text-slate-600 dark:text-slate-400">{item.documentTypeLabel}</span>
                   <span
                     className={cn(
                       "font-medium",
@@ -194,7 +194,7 @@ function GeneralTab({ clientId }: { clientId: string }) {
             </ul>
           </div>
         ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Nicio perioadă deschisă.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Nicio perioadă deschisă.</p>
         )}
       </Panel>
     </div>
@@ -227,7 +227,7 @@ function ContactsTab({ clientId }: { clientId: string }) {
         <button
           type="button"
           onClick={() => setEditing("")}
-          className="mb-4 inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
           Contact nou
@@ -237,7 +237,7 @@ function ContactsTab({ clientId }: { clientId: string }) {
     <Panel bodyClassName="p-0">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-gray-200 text-xs tracking-wide text-gray-500 uppercase dark:border-gray-800 dark:text-gray-400">
+          <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
             <tr>
               <th scope="col" className="px-4 py-3 font-medium">Nume</th>
               <th scope="col" className="px-4 py-3 font-medium">Rol</th>
@@ -250,10 +250,10 @@ function ContactsTab({ clientId }: { clientId: string }) {
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {contacts?.map((contact) => (
               <tr key={contact.id}>
-                <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
                   {contact.fullName}
                   {contact.isPrimary && (
                     <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
@@ -261,13 +261,13 @@ function ContactsTab({ clientId }: { clientId: string }) {
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{contact.role}</td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{contact.email ?? "—"}</td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{contact.phone ?? "—"}</td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{contact.role}</td>
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{contact.email ?? "—"}</td>
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{contact.phone ?? "—"}</td>
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                   {contact.whatsappNumber ?? "—"}
                 </td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                   {contact.isActive ? "Activ" : "Inactiv"}
                 </td>
                 <td className="px-4 py-3 text-right">
@@ -304,7 +304,7 @@ function AccountingTab({ clientId }: { clientId: string }) {
           title={formatReferenceMonth(period.referenceMonth)}
           action={<PeriodStatusBadge status={period.status} />}
         >
-          <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">
+          <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
             {period.receivedCount} documente primite · {period.satisfiedCount}/{period.expectedCount} așteptate
           </p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -318,8 +318,8 @@ function AccountingTab({ clientId }: { clientId: string }) {
                     : "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-900/20",
                 )}
               >
-                <p className="text-xs text-gray-600 dark:text-gray-400">{item.documentTypeLabel}</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <p className="text-xs text-slate-600 dark:text-slate-400">{item.documentTypeLabel}</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                   {item.receivedCount}/{item.expectedMinCount}
                 </p>
               </div>
@@ -339,7 +339,7 @@ function DocumentsTab({ clientId }: { clientId: string }) {
     <Panel bodyClassName="p-0">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-gray-200 text-xs tracking-wide text-gray-500 uppercase dark:border-gray-800 dark:text-gray-400">
+          <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
             <tr>
               <th scope="col" className="px-4 py-3 font-medium">Dată</th>
               <th scope="col" className="px-4 py-3 font-medium">Tip</th>
@@ -351,22 +351,22 @@ function DocumentsTab({ clientId }: { clientId: string }) {
               <th scope="col" className="px-4 py-3 font-medium">Acțiune</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {data?.items.map((doc) => (
-              <tr key={doc.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-400">
+              <tr key={doc.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                <td className="px-4 py-3 whitespace-nowrap text-slate-600 dark:text-slate-400">
                   {doc.documentDate ? formatDate(doc.documentDate) : "—"}
                 </td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                   {doc.documentTypeLabel ?? "—"}
                 </td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                   {doc.supplierName ?? "—"}
                 </td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                   {doc.documentNumber ?? "—"}
                 </td>
-                <td className="px-4 py-3 whitespace-nowrap text-gray-900 dark:text-gray-100">
+                <td className="px-4 py-3 whitespace-nowrap text-slate-900 dark:text-slate-100">
                   {doc.totalAmount ? formatMoney(doc.totalAmount, doc.currency ?? "RON") : "—"}
                 </td>
                 <td className="px-4 py-3">
@@ -398,7 +398,7 @@ function CommunicationTab({ clientId }: { clientId: string }) {
   // când sistemul chiar trimite mesaje (Faza 2), arătăm ce știm cu adevărat.
   return (
     <Panel title="Comunicare">
-      <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">
+      <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
         Cronologia mesajelor apare odată cu trimiterea automată (Faza 2). Ce a sosit deja de la
         acest client — pe email sau din dosarul lui de OneDrive — se vede în documentele lui.
       </p>
@@ -420,15 +420,15 @@ function NotesTab({ clientId }: { clientId: string }) {
     <Panel title="Note interne">
       <NoteComposer clientId={clientId} />
       {notes?.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Nicio notă internă.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Nicio notă internă.</p>
       ) : (
         <ul className="space-y-3">
           {notes?.map((note) => (
             <li key={note.id} className="flex gap-3">
-              <StickyNote className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+              <StickyNote className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
               <div>
-                <p className="text-sm text-gray-800 dark:text-gray-200">{note.body}</p>
-                <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                <p className="text-sm text-slate-800 dark:text-slate-200">{note.body}</p>
+                <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
                   {note.authorName} · {formatDateTime(note.createdAt)}
                 </p>
               </div>
@@ -481,7 +481,7 @@ function NoteComposer({ clientId }: { clientId: string }) {
         rows={3}
         maxLength={MAX_NOTE_LENGTH}
         placeholder="Ce s-a discutat, ce a promis clientul, ce rămâne de urmărit…"
-        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
       />
       {problem && (
         <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">
@@ -489,7 +489,7 @@ function NoteComposer({ clientId }: { clientId: string }) {
         </p>
       )}
       <div className="mt-2 flex items-center justify-end gap-3">
-        <span className="text-xs text-gray-400 dark:text-gray-500">
+        <span className="text-xs text-slate-400 dark:text-slate-500">
           {body.length}/{MAX_NOTE_LENGTH}
         </span>
         <button
@@ -563,7 +563,7 @@ function ExpectationsPanel({ clientId }: { clientId: string }) {
 
   return (
     <Panel title="Ce așteptăm lunar de la client">
-      <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">
+      <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
         După lista asta se construiește checklistul fiecărei luni și raportul
         „Documente lipsă". Un client fără nicio bifă apare mereu complet, pentru că
         nu i se cere nimic.
@@ -580,16 +580,16 @@ function ExpectationsPanel({ clientId }: { clientId: string }) {
           const expected = current[type.code];
           const checked = expected !== undefined;
           return (
-            <li key={type.code} className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-800">
+            <li key={type.code} className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800">
               <input
                 type="checkbox"
                 id={`expect-${type.code}`}
                 checked={checked}
                 disabled={!editable || save.isPending}
                 onChange={(event) => set(type.code, event.target.checked ? 1 : null)}
-                className="h-4 w-4 rounded border-gray-300 dark:border-gray-600"
+                className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
               />
-              <label htmlFor={`expect-${type.code}`} className="flex-1 text-sm text-gray-800 dark:text-gray-200">
+              <label htmlFor={`expect-${type.code}`} className="flex-1 text-sm text-slate-800 dark:text-slate-200">
                 {type.label}
               </label>
               {checked && (
@@ -605,7 +605,7 @@ function ExpectationsPanel({ clientId }: { clientId: string }) {
                     value={expected}
                     disabled={!editable || save.isPending}
                     onChange={(event) => set(type.code, Math.max(1, Number(event.target.value) || 1))}
-                    className="h-8 w-16 rounded-md border border-gray-200 px-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                    className="h-8 w-16 rounded-md border border-slate-200 px-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </>
               )}
@@ -620,7 +620,7 @@ function ExpectationsPanel({ clientId }: { clientId: string }) {
             <button
               type="button"
               onClick={() => setDraft(null)}
-              className="text-sm font-medium text-gray-600 hover:underline dark:text-gray-300"
+              className="text-sm font-medium text-slate-600 hover:underline dark:text-slate-300"
             >
               Renunță
             </button>
@@ -643,8 +643,8 @@ function ExpectationsPanel({ clientId }: { clientId: string }) {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <dt className="shrink-0 text-gray-500 dark:text-gray-400">{label}</dt>
-      <dd className="text-right font-medium text-gray-900 dark:text-gray-100">{value}</dd>
+      <dt className="shrink-0 text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd className="text-right font-medium text-slate-900 dark:text-slate-100">{value}</dd>
     </div>
   );
 }
@@ -653,7 +653,7 @@ export function ContactsPage() {
   const { data } = useClients({ pageSize: 200 });
   return (
     <div>
-      <h2 className="mb-6 text-2xl font-bold text-gray-900 dark:text-gray-100">Contacte</h2>
+      <h2 className="mb-6 text-2xl font-bold text-slate-900 dark:text-slate-100">Contacte</h2>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data?.items.map((client) => (
           <ClientContactsCard key={client.id} clientId={client.id} clientName={client.name} />
@@ -672,13 +672,13 @@ function ClientContactsCard({ clientId, clientName }: { clientId: string; client
       <ul className="space-y-3">
         {contacts.map((contact) => (
           <li key={contact.id} className="text-sm">
-            <p className="font-medium text-gray-900 dark:text-gray-100">
+            <p className="font-medium text-slate-900 dark:text-slate-100">
               {contact.fullName}
-              <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
+              <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
                 {contact.role}
               </span>
             </p>
-            <p className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+            <p className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
               {contact.email && (
                 <span className="flex items-center gap-1">
                   <Mail className="h-3 w-3" aria-hidden="true" />

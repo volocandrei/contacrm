@@ -5,7 +5,7 @@ type Tone = "neutral" | "info" | "warning" | "success" | "danger" | "muted";
 
 const TONE_CLASS: Record<Tone, string> = {
   neutral:
-    "bg-gray-100 text-gray-700 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700",
+    "bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700",
   info: "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:ring-blue-800",
   warning:
     "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800",
@@ -14,7 +14,7 @@ const TONE_CLASS: Record<Tone, string> = {
   danger:
     "bg-red-50 text-red-700 ring-red-200 dark:bg-red-900/30 dark:text-red-300 dark:ring-red-800",
   muted:
-    "bg-gray-50 text-gray-500 ring-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:ring-gray-800",
+    "bg-slate-50 text-slate-500 ring-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:ring-slate-800",
 };
 
 const DOCUMENT_STATUS_META: Record<DocumentStatus, { label: string; tone: Tone }> = {

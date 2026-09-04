@@ -157,10 +157,10 @@ function ConnectionPanel({ status }: { status: AnafStatus }) {
           <div className="flex flex-wrap items-center gap-4">
             <Landmark className="h-8 w-8 shrink-0 text-blue-600" aria-hidden="true" />
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-gray-900 dark:text-gray-100">
+              <p className="font-medium text-slate-900 dark:text-slate-100">
                 {status.certificateHolder ?? "Certificat digital"}
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 mediul <span className="font-mono">{status.environment}</span> · autorizat{" "}
                 {status.connectedAt ? formatDateTime(status.connectedAt) : ""}
                 {status.lastSyncAt
@@ -178,7 +178,7 @@ function ConnectionPanel({ status }: { status: AnafStatus }) {
                 type="button"
                 onClick={() => sync.mutate(undefined)}
                 disabled={sync.isPending || status.mandates.length === 0}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <RefreshCw
                   className={cn("h-4 w-4", sync.isPending && "animate-spin")}
@@ -190,7 +190,7 @@ function ConnectionPanel({ status }: { status: AnafStatus }) {
                 type="button"
                 onClick={() => disconnect.mutate(undefined)}
                 disabled={disconnect.isPending}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-red-900/20"
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-red-900/20"
               >
                 <Unplug className="h-4 w-4" aria-hidden="true" />
                 Deconectează
@@ -215,9 +215,9 @@ function ConnectionPanel({ status }: { status: AnafStatus }) {
       ) : (
         <div className="space-y-3">
           <div className="flex flex-wrap items-start gap-4">
-            <Landmark className="h-8 w-8 shrink-0 text-gray-300" aria-hidden="true" />
-            <div className="min-w-0 flex-1 text-sm text-gray-600 dark:text-gray-300">
-              <p className="font-medium text-gray-900 dark:text-gray-100">SPV neconectat</p>
+            <Landmark className="h-8 w-8 shrink-0 text-slate-300" aria-hidden="true" />
+            <div className="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">
+              <p className="font-medium text-slate-900 dark:text-slate-100">SPV neconectat</p>
               <p className="text-xs">
                 Autorizarea se face <strong>de la calculatorul cu tokenul USB în port</strong>:
                 ANAF cere certificatul digital calificat înrolat în SPV. După ea, preluarea merge
@@ -229,7 +229,7 @@ function ConnectionPanel({ status }: { status: AnafStatus }) {
             <div>
               <label
                 htmlFor="anaf-holder"
-                className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
+                className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300"
               >
                 Al cui este certificatul
               </label>
@@ -238,7 +238,7 @@ function ConnectionPanel({ status }: { status: AnafStatus }) {
                 value={holder}
                 onChange={(event) => setHolder(event.target.value)}
                 placeholder="Ex. Ioana Marinescu"
-                className="h-9 w-64 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                className="h-9 w-64 rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
               />
             </div>
             <button
@@ -254,7 +254,7 @@ function ConnectionPanel({ status }: { status: AnafStatus }) {
       )}
 
       {sync.data && (
-        <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:bg-gray-800/60 dark:text-gray-300">
+        <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
           {sync.data.ingested === 0
             ? "Nicio factură nouă în SPV."
             : `${sync.data.ingested} facturi aduse, cu tot cu arhiva ANAF și PDF-ul oficial.`}
@@ -272,7 +272,7 @@ function MandatesPanel({ status }: { status: AnafStatus }) {
   if (status.mandates.length === 0) {
     return (
       <Panel title="Clienți cu împuternicire">
-        <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+        <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
           Niciun client încă. Adaugă mai jos clienții care ți-au dat împuternicire în SPV.
         </p>
       </Panel>
@@ -283,7 +283,7 @@ function MandatesPanel({ status }: { status: AnafStatus }) {
     <Panel title={`Clienți cu împuternicire (${status.mandates.length})`} bodyClassName="p-0">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-gray-200 text-xs tracking-wide text-gray-500 uppercase dark:border-gray-800 dark:text-gray-400">
+          <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
             <tr>
               <th scope="col" className="px-4 py-3 font-medium">
                 Client
@@ -305,7 +305,7 @@ function MandatesPanel({ status }: { status: AnafStatus }) {
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {status.mandates.map((mandate) => (
               <MandateRow key={mandate.id} mandate={mandate} />
             ))}
@@ -321,10 +321,10 @@ function MandateRow({ mandate }: { mandate: AnafMandate }) {
   const remove = useRemoveAnafMandate();
 
   return (
-    <tr className="transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60">
+    <tr className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60">
       <td className="px-4 py-3">
-        <span className="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-100">
-          <FileCheck2 className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+        <span className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
+          <FileCheck2 className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
           {mandate.clientName}
         </span>
         {mandate.lastError && (
@@ -337,13 +337,13 @@ function MandateRow({ mandate }: { mandate: AnafMandate }) {
           </span>
         )}
       </td>
-      <td className="px-4 py-3 font-mono text-gray-700 dark:text-gray-300">{mandate.taxId}</td>
-      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{mandate.invoicesIngested}</td>
-      <td className="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
+      <td className="px-4 py-3 font-mono text-slate-700 dark:text-slate-300">{mandate.taxId}</td>
+      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{mandate.invoicesIngested}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-slate-500 dark:text-slate-400">
         {mandate.lastSyncedAt ? formatDateTime(mandate.lastSyncedAt) : "—"}
       </td>
       <td className="px-4 py-3">
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
           <input
             type="checkbox"
             checked={mandate.isActive}
@@ -351,7 +351,7 @@ function MandateRow({ mandate }: { mandate: AnafMandate }) {
             onChange={(event) =>
               update.mutate({ id: mandate.id, isActive: event.target.checked })
             }
-            className="h-4 w-4 rounded border-gray-300 dark:border-gray-600"
+            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
           />
           {mandate.isActive ? "Activă" : "Oprită"}
         </label>
@@ -362,7 +362,7 @@ function MandateRow({ mandate }: { mandate: AnafMandate }) {
           onClick={() => remove.mutate(mandate.id)}
           disabled={remove.isPending}
           aria-label={`Șterge împuternicirea pentru ${mandate.clientName}`}
-          className="rounded-md p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20"
+          className="rounded-md p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20"
         >
           <Trash2 className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -396,7 +396,7 @@ function AddMandatePanel({ status }: { status: AnafStatus }) {
 
   return (
     <Panel title="Adaugă un client">
-      <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">
+      <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
         Adaugă aici clienții care au depus <strong>împuternicirea în SPV</strong> (formularul 150)
         pentru certificatul cabinetului. Rândul nu creează dreptul — spune doar pentru ce CUI să
         întrebăm. Dacă împuternicirea nu există la ANAF, prima sincronizare o va spune, pe rândul
@@ -416,7 +416,7 @@ function AddMandatePanel({ status }: { status: AnafStatus }) {
         <div>
           <label
             htmlFor="anaf-client"
-            className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
+            className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300"
           >
             Client
           </label>
@@ -424,7 +424,7 @@ function AddMandatePanel({ status }: { status: AnafStatus }) {
             id="anaf-client"
             value={clientId}
             onChange={(event) => setClientId(event.target.value)}
-            className="h-9 w-72 rounded-lg border border-gray-200 bg-white px-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+            className="h-9 w-72 rounded-lg border border-slate-200 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           >
             <option value="">— alege clientul —</option>
             {available.map((client) => (

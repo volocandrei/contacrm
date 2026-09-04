@@ -137,7 +137,7 @@ export function DocumentsPage({
             <button
               type="button"
               onClick={reset}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               <X className="h-4 w-4" aria-hidden="true" />
               Șterge filtrele ({activeCount})
@@ -246,16 +246,16 @@ export function DocumentsPage({
       {bulkResult && (
         <div
           role="status"
-          className="mb-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm dark:border-gray-800 dark:bg-gray-900"
+          className="mb-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900"
         >
           <div className="flex items-center justify-between gap-3">
-            <p className="text-gray-700 dark:text-gray-300">
+            <p className="text-slate-700 dark:text-slate-300">
               {bulkResult.succeeded.length} reușite, {bulkResult.failed.length} eșuate.
             </p>
             <button
               type="button"
               onClick={() => setBulkResult(null)}
-              className="text-xs font-medium text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+              className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
             >
               Închide
             </button>
@@ -286,7 +286,7 @@ export function DocumentsPage({
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-gray-200 text-xs tracking-wide text-gray-500 uppercase dark:border-gray-800 dark:text-gray-400">
+                <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
                   <tr>
                     <th scope="col" className="w-10 px-4 py-3">
                       <input
@@ -294,7 +294,7 @@ export function DocumentsPage({
                         checked={allSelected}
                         onChange={toggleAll}
                         aria-label="Selectează toate documentele de pe pagină"
-                        className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-blue-600"
+                        className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-blue-600"
                       />
                     </th>
                     <th scope="col" className="px-4 py-3 font-medium">Document</th>
@@ -308,12 +308,12 @@ export function DocumentsPage({
                     <th scope="col" className="px-4 py-3 font-medium">Acțiune</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {items.map((doc) => (
                     <tr
                       key={doc.id}
                       className={cn(
-                        "transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60",
+                        "transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60",
                         selected.includes(doc.id) && "bg-blue-50/60 dark:bg-blue-900/10",
                       )}
                     >
@@ -323,19 +323,19 @@ export function DocumentsPage({
                           checked={selected.includes(doc.id)}
                           onChange={() => toggleOne(doc.id)}
                           aria-label={`Selectează ${doc.originalFilename}`}
-                          className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-blue-600"
+                          className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-blue-600"
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <div className="max-w-56 truncate font-medium text-gray-900 dark:text-gray-100">
+                        <div className="max-w-56 truncate font-medium text-slate-900 dark:text-slate-100">
                           {doc.storedFilename ?? doc.originalFilename}
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
                           {doc.documentTypeLabel ?? "Tip neidentificat"} ·{" "}
                           {formatDateTime(doc.receivedAt)}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                         {doc.clientId ? (
                           <Link
                             to={`/crm/clienti/${doc.clientId}`}
@@ -347,17 +347,17 @@ export function DocumentsPage({
                           <span className="text-red-600 dark:text-red-400">Neidentificat</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                         <div className="max-w-44 truncate">{doc.supplierName ?? "—"}</div>
                         <div className="text-xs">{doc.documentNumber ?? "—"}</div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-400">
+                      <td className="px-4 py-3 whitespace-nowrap text-slate-600 dark:text-slate-400">
                         {doc.documentDate ? formatDate(doc.documentDate) : "—"}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-900 dark:text-gray-100">
+                      <td className="px-4 py-3 whitespace-nowrap text-slate-900 dark:text-slate-100">
                         {doc.totalAmount ? formatMoney(doc.totalAmount, doc.currency ?? "RON") : "—"}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                         {SOURCE_LABEL[doc.source]}
                       </td>
                       <td className="px-4 py-3">
@@ -413,7 +413,7 @@ function BulkButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex h-8 items-center gap-1.5 rounded-md bg-white px-2.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-900 dark:text-gray-200 dark:ring-gray-700 dark:hover:bg-gray-800"
+      className="flex h-8 items-center gap-1.5 rounded-md bg-white px-2.5 text-xs font-medium text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-800"
     >
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       {label}

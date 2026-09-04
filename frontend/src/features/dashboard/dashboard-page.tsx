@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import {
+  ArrowUpRight,
   Building2,
   CalendarClock,
   CircleAlert,
@@ -17,6 +18,14 @@ import { useDashboard } from "@/api/hooks";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { ConfidenceBadge, DocumentStatusBadge, PeriodStatusBadge } from "@/components/status-badge";
 import { formatDate, formatReferenceMonth, formatTime } from "@/lib/format";
+import {
+  focusRing,
+  iconChip,
+  mutedText,
+  surface,
+  surfaceInteractive,
+  type Tone,
+} from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import type { AttentionReason, DashboardClosing, DocumentSource } from "@/types/domain";
 
@@ -147,7 +156,7 @@ export function DashboardPage() {
           >
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-gray-200 text-xs tracking-wide text-gray-500 uppercase dark:border-gray-800 dark:text-gray-400">
+                <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
                   <tr>
                     <th scope="col" className="px-4 py-3 font-medium">Document</th>
                     <th scope="col" className="px-4 py-3 font-medium">Client</th>
@@ -157,29 +166,29 @@ export function DashboardPage() {
                     <th scope="col" className="px-4 py-3 font-medium">Încredere</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {data.recentDocuments.map((doc) => (
-                    <tr key={doc.id} className="transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                    <tr key={doc.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60">
                       <td className="px-4 py-3">
                         <Link
                           to={`/documente/verificare/${doc.id}`}
-                          className="block max-w-52 truncate font-medium text-gray-900 hover:text-blue-600 dark:text-gray-100 dark:hover:text-blue-400"
+                          className="block max-w-52 truncate font-medium text-slate-900 hover:text-blue-600 dark:text-slate-100 dark:hover:text-blue-400"
                         >
                           {doc.originalFilename}
                         </Link>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
                           {doc.documentTypeLabel ?? "Tip neidentificat"}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                         {doc.clientName ?? (
                           <span className="text-red-600 dark:text-red-400">Neidentificat</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                         {SOURCE_LABEL[doc.source]}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                      <td className="px-4 py-3 whitespace-nowrap text-slate-500 dark:text-slate-400">
                         {formatTime(doc.receivedAt)}
                       </td>
                       <td className="px-4 py-3">
@@ -199,7 +208,7 @@ export function DashboardPage() {
         {/* Needs attention (§20) */}
         <Panel title="Necesită atenție">
           {data.attention.length === 0 ? (
-            <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+            <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
               Nimic în așteptare. Toate documentele au trecut de validare.
             </p>
           ) : (
@@ -219,13 +228,13 @@ export function DashboardPage() {
                       <CircleAlert className="h-4 w-4" aria-hidden="true" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
                         {item.title}
                       </p>
-                      <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                         {item.detail}
                       </p>
-                      <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                      <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
                         {formatTime(item.occurredAt)}
                       </p>
                     </div>
@@ -236,7 +245,7 @@ export function DashboardPage() {
                     {item.documentId ? (
                       <Link
                         to={`/documente/verificare/${item.documentId}`}
-                        className="flex gap-3 rounded-lg p-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                        className="flex gap-3 rounded-lg p-1 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60"
                       >
                         {content}
                       </Link>
@@ -276,19 +285,19 @@ export function DashboardPage() {
                     <div className="mb-1.5 flex items-center justify-between gap-3">
                       <Link
                         to={`/crm/clienti/${period.clientId}`}
-                        className="truncate text-sm font-medium text-gray-900 hover:text-blue-600 dark:text-gray-100 dark:hover:text-blue-400"
+                        className="truncate text-sm font-medium text-slate-900 hover:text-blue-600 dark:text-slate-100 dark:hover:text-blue-400"
                       >
                         {period.clientName}
                       </Link>
                       <div className="flex shrink-0 items-center gap-3">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
                           {period.satisfiedCount}/{period.expectedCount} așteptate
                         </span>
                         <PeriodStatusBadge status={period.status} />
                       </div>
                     </div>
                     <div
-                      className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+                      className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
                       role="progressbar"
                       aria-valuenow={Math.round(ratio * 100)}
                       aria-valuemin={0}
@@ -304,7 +313,7 @@ export function DashboardPage() {
                               ? "bg-blue-500"
                               : ratio > 0
                                 ? "bg-amber-500"
-                                : "bg-gray-300 dark:bg-gray-600",
+                                : "bg-slate-300 dark:bg-slate-600",
                         )}
                         style={{ width: `${Math.round(ratio * 100)}%` }}
                       />
@@ -318,17 +327,17 @@ export function DashboardPage() {
 
         {/* Cronologie generată din evenimente reale (§54) */}
         <Panel title="Activitate recentă">
-          <ol className="relative space-y-4 border-l border-gray-200 pl-4 dark:border-gray-800">
+          <ol className="relative space-y-4 border-l border-slate-200 pl-4 dark:border-slate-800">
             {data.timeline.map((event) => (
               <li key={event.id} className="relative">
                 <span
-                  className="absolute top-1.5 -left-[21px] h-2.5 w-2.5 rounded-full bg-blue-500 ring-4 ring-white dark:ring-gray-900"
+                  className="absolute top-1.5 -left-[21px] h-2.5 w-2.5 rounded-full bg-blue-500 ring-4 ring-white dark:ring-slate-900"
                   aria-hidden="true"
                 />
-                <p className="text-sm break-words text-gray-900 dark:text-gray-100">
+                <p className="text-sm break-words text-slate-900 dark:text-slate-100">
                   {event.description}
                 </p>
-                <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+                <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
                   <Clock className="h-3 w-3" aria-hidden="true" />
                   {formatTime(event.occurredAt)}
                 </p>
@@ -340,13 +349,6 @@ export function DashboardPage() {
     </div>
   );
 }
-
-const KPI_TONE = {
-  blue: "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400",
-  purple: "bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400",
-  amber: "bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400",
-  red: "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400",
-} as const;
 
 /**
  * Termenul lunii și cine încă nu a trimis.
@@ -366,15 +368,18 @@ function ClosingBand({ closing }: { closing: DashboardClosing }) {
   const urgent = !overdue && daysLeft <= URGENT_DAYS;
 
   const tone = overdue
-    ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40"
+    ? "border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/40"
     : urgent
-      ? "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40"
-      : "border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900";
+      ? "border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/40"
+      : "border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900";
 
   return (
-    <section aria-label="Termenul lunii" className={cn("rounded-xl border p-4", tone)}>
+    <section
+      aria-label="Termenul lunii"
+      className={cn("rounded-xl border p-4 shadow-sm", tone)}
+    >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="flex items-center gap-2 font-semibold text-gray-900 dark:text-gray-100">
+        <span className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
           <CalendarClock className="h-5 w-5 shrink-0" aria-hidden="true" />
           {overdue
             ? `Termenul a trecut de ${Math.abs(daysLeft)} ${plural(Math.abs(daysLeft))}`
@@ -382,7 +387,7 @@ function ClosingBand({ closing }: { closing: DashboardClosing }) {
               ? "Termenul este azi"
               : `Mai sunt ${daysLeft} ${plural(daysLeft)} până la termen`}
         </span>
-        <span className="text-sm text-gray-600 dark:text-gray-400">
+        <span className="text-sm text-slate-600 dark:text-slate-400">
           depunere până pe {formatDate(closing.deadline)}, pentru{" "}
           {formatReferenceMonth(closing.referenceMonth)}
         </span>
@@ -395,7 +400,7 @@ function ClosingBand({ closing }: { closing: DashboardClosing }) {
         </p>
       ) : (
         <>
-          <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
+          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
             {closing.clientsWaiting}{" "}
             {closing.clientsWaiting === 1 ? "client nu a trimis" : "clienți nu au trimis"} tot:
           </p>
@@ -408,7 +413,7 @@ function ClosingBand({ closing }: { closing: DashboardClosing }) {
                 >
                   {laggard.clientName}
                 </Link>
-                <span className="text-gray-600 dark:text-gray-400">
+                <span className="text-slate-600 dark:text-slate-400">
                   {laggard.missing.join(", ")}
                   {laggard.missingCount > laggard.missing.length &&
                     ` +${laggard.missingCount - laggard.missing.length}`}
@@ -444,23 +449,30 @@ function KpiCard({
   to,
 }: {
   Icon: LucideIcon;
-  tone: keyof typeof KPI_TONE;
+  tone: Tone;
   label: string;
   value: number;
   hint: string;
   to: string;
 }) {
   return (
-    <Link
-      to={to}
-      className="block rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-gray-800 dark:bg-gray-900"
-    >
-      <div className={cn("mb-4 grid h-9 w-9 place-content-center rounded-lg", KPI_TONE[tone])}>
-        <Icon className="h-5 w-5" aria-hidden="true" />
+    <Link to={to} className={cn("group block p-5", surfaceInteractive, focusRing)}>
+      <div className="mb-4 flex items-start justify-between">
+        <div className={cn("grid h-10 w-10 place-content-center rounded-xl", iconChip[tone])}>
+          <Icon className="h-5 w-5" aria-hidden="true" />
+        </div>
+        {/* Săgeata apare la trecerea cursorului: cardul este un link, dar o
+            săgeată permanentă pe patru carduri devine zgomot. */}
+        <ArrowUpRight
+          className="h-4 w-4 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 dark:text-slate-600"
+          aria-hidden="true"
+        />
       </div>
-      <h3 className="mb-1 text-sm font-medium text-gray-600 dark:text-gray-400">{label}</h3>
-      <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>
+      <h3 className={cn("mb-1 text-sm font-medium", mutedText)}>{label}</h3>
+      <p className="text-3xl font-semibold tracking-tight tabular-nums text-slate-900 dark:text-slate-50">
+        {value}
+      </p>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</p>
     </Link>
   );
 }
@@ -478,16 +490,24 @@ function MiniStat({
 }) {
   const ratio = total === 0 ? 0 : Math.min(value / total, 1);
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <div className={cn("p-4", surface)}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Icon className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
-          <span className="truncate text-sm text-gray-600 dark:text-gray-400">{label}</span>
+          <Icon className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+          <span className={cn("truncate text-sm", mutedText)}>{label}</span>
         </div>
-        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{value}</span>
+        <span className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+          {value}
+          <span className="text-slate-400 dark:text-slate-500">/{total}</span>
+        </span>
       </div>
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-        <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${ratio * 100}%` }} />
+      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+        {/* Tranziția are rost: numărul se schimbă la reîmprospătarea panoului, iar
+            un salt brusc al barei se citește ca o eroare de randare. */}
+        <div
+          className="h-1.5 rounded-full bg-blue-500 transition-[width] duration-500 ease-out"
+          style={{ width: `${ratio * 100}%` }}
+        />
       </div>
     </div>
   );

@@ -69,16 +69,16 @@ export function PeriodsPage() {
                 action={<PeriodStatusBadge status={period.status} />}
               >
                 <div className="mb-3 flex items-center justify-between gap-2 text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">
+                  <span className="text-slate-600 dark:text-slate-400">
                     {formatReferenceMonth(period.referenceMonth)}
                   </span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                  <span className="font-medium text-slate-900 dark:text-slate-100">
                     {period.satisfiedCount}/{period.expectedCount} documente așteptate
                   </span>
                 </div>
 
                 <div
-                  className="mb-4 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+                  className="mb-4 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
                   role="progressbar"
                   aria-valuenow={Math.round(ratio * 100)}
                   aria-valuemin={0}
@@ -97,7 +97,7 @@ export function PeriodsPage() {
                 <ul className="space-y-1.5 text-sm">
                   {period.checklist.map((item) => (
                     <li key={item.documentType} className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
+                      <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
                         {item.isSatisfied ? (
                           <CircleCheck
                             className="h-3.5 w-3.5 text-green-500"
@@ -111,7 +111,7 @@ export function PeriodsPage() {
                         )}
                         {item.documentTypeLabel}
                       </span>
-                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                      <span className="font-medium text-slate-900 dark:text-slate-100">
                         {item.receivedCount}/{item.expectedMinCount}
                       </span>
                     </li>
@@ -158,7 +158,7 @@ export function MissingDocumentsPage() {
         <ErrorState error={error} />
       ) : (data?.length ?? 0) === 0 ? (
         <Panel>
-          <p className="py-6 text-center text-sm text-gray-600 dark:text-gray-400">
+          <p className="py-6 text-center text-sm text-slate-600 dark:text-slate-400">
             Toți clienții au documentele complete pentru luna selectată.
           </p>
         </Panel>
@@ -166,7 +166,7 @@ export function MissingDocumentsPage() {
         <Panel bodyClassName="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-gray-200 text-xs tracking-wide text-gray-500 uppercase dark:border-gray-800 dark:text-gray-400">
+              <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
                 <tr>
                   <th scope="col" className="px-4 py-3 font-medium">Client</th>
                   <th scope="col" className="px-4 py-3 font-medium">Status</th>
@@ -174,13 +174,13 @@ export function MissingDocumentsPage() {
                   <th scope="col" className="px-4 py-3 font-medium">Primite</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {data?.map(({ period, missing }) => (
-                  <tr key={period.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                  <tr key={period.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                     <td className="px-4 py-3">
                       <Link
                         to={`/crm/clienti/${period.clientId}`}
-                        className="font-medium text-gray-900 hover:text-blue-600 hover:underline dark:text-gray-100 dark:hover:text-blue-400"
+                        className="font-medium text-slate-900 hover:text-blue-600 hover:underline dark:text-slate-100 dark:hover:text-blue-400"
                       >
                         {period.clientName}
                       </Link>
@@ -200,7 +200,7 @@ export function MissingDocumentsPage() {
                         ))}
                       </div>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-400">
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-600 dark:text-slate-400">
                       {period.satisfiedCount}/{period.expectedCount}
                     </td>
                   </tr>

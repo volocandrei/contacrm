@@ -1,5 +1,6 @@
 import { CircleAlert, Inbox, LoaderCircle } from "lucide-react";
 import { ApiError } from "@/api/types";
+import { divider, mutedText, surface } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({
@@ -14,10 +15,13 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{title}</h2>
-        {description && (
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{description}</p>
-        )}
+        {/* `tracking-tight` la dimensiunea asta: titlurile lungi — „Roluri și
+            permisiuni", „Documente lipsă" — respirau prea larg și păreau două
+            rânduri diferite de conținut. */}
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+          {title}
+        </h2>
+        {description && <p className={cn("mt-1 max-w-2xl text-sm", mutedText)}>{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -38,21 +42,18 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section
-      className={cn(
-        "rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900",
-        className,
-      )}
-    >
+    <section className={cn(surface, className)}>
       {title && (
-        <div className="flex items-center justify-between gap-3 px-5 py-4">
-          <h3 className="truncate text-base font-semibold text-gray-900 dark:text-gray-100">
+        /* Antetul are linie proprie. Fără ea, un panou cu tabel părea că începe
+           de la titlu, iar capul de tabel se citea ca al doilea titlu. */
+        <div className={cn("flex items-center justify-between gap-3 border-b px-5 py-3.5", divider)}>
+          <h3 className="truncate text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100">
             {title}
           </h3>
           {action}
         </div>
       )}
-      <div className={cn(title ? "px-5 pb-5" : "p-5", bodyClassName)}>{children}</div>
+      <div className={cn("p-5", bodyClassName)}>{children}</div>
     </section>
   );
 }
@@ -61,7 +62,7 @@ export function LoadingState({ label = "Se încarcă…" }: { label?: string }) 
   return (
     <div
       role="status"
-      className="flex items-center justify-center gap-2 py-12 text-sm text-gray-500 dark:text-gray-400"
+      className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500 dark:text-slate-400"
     >
       <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
       {label}
@@ -107,11 +108,11 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
-      <div className="grid h-10 w-10 place-content-center rounded-lg bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+      <div className="grid h-10 w-10 place-content-center rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
         <Inbox className="h-5 w-5" aria-hidden="true" />
       </div>
-      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{title}</p>
-      {description && <p className="max-w-sm text-xs text-gray-500 dark:text-gray-400">{description}</p>}
+      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{title}</p>
+      {description && <p className="max-w-sm text-xs text-slate-500 dark:text-slate-400">{description}</p>}
       {action}
     </div>
   );

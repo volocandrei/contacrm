@@ -68,7 +68,7 @@ function Actions({
       <button
         type="button"
         onClick={onCancel}
-        className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+        className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
       >
         Renunță
       </button>
@@ -129,7 +129,7 @@ export function ClientForm({
             onChange={(value) => set("taxId", value)}
             placeholder="RO12345678"
             hint={
-              <span className="font-normal text-gray-400">după el se identifică facturile</span>
+              <span className="font-normal text-slate-400">după el se identifică facturile</span>
             }
           />
           <TextField
@@ -236,7 +236,7 @@ export function ContactForm({
             value={values.email ?? ""}
             onChange={(value) => set("email", value)}
             hint={
-              <span className="font-normal text-gray-400">
+              <span className="font-normal text-slate-400">
                 după el ajung documentele trimise pe email
               </span>
             }
@@ -257,21 +257,21 @@ export function ContactForm({
         </div>
 
         <div className="mt-4 flex flex-wrap gap-5">
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
             <input
               type="checkbox"
               checked={values.isPrimary ?? false}
               onChange={(event) => set("isPrimary", event.target.checked)}
-              className="h-4 w-4 rounded border-gray-300"
+              className="h-4 w-4 rounded border-slate-300"
             />
             Contact principal
           </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
             <input
               type="checkbox"
               checked={values.isActive ?? true}
               onChange={(event) => set("isActive", event.target.checked)}
-              className="h-4 w-4 rounded border-gray-300"
+              className="h-4 w-4 rounded border-slate-300"
             />
             Activ
           </label>

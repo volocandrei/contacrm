@@ -35,8 +35,8 @@ export function MessagesPage() {
       />
 
       <Panel>
-        <p className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
-          <MessageSquare className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
+        <p className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-400">
+          <MessageSquare className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
           <span>
             Aici este <strong>ce am primit</strong>. Trimiterea — email, WhatsApp,
             remindere — cere un provider și rămâne în Faza 2; până atunci ecranul nu
@@ -60,7 +60,7 @@ export function MessagesPage() {
         {isLoading && <LoadingState />}
         {error && <ErrorState error={error} />}
         {data && data.items.length === 0 && (
-          <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
+          <p className="p-6 text-center text-sm text-slate-500 dark:text-slate-400">
             Nimic încă. Documentele sosesc singure după ce se leagă o sursă în{" "}
             <Link
               to="/administrare/surse"
@@ -72,7 +72,7 @@ export function MessagesPage() {
           </p>
         )}
         {data && data.items.length > 0 && (
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {data.items.map((intake) => (
               <IntakeRow key={intake.id} intake={intake} />
             ))}
@@ -104,10 +104,10 @@ function IntakeRow({ intake }: { intake: Intake }) {
 
   return (
     <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-sm">
-      <span className="w-36 shrink-0 text-xs text-gray-400 dark:text-gray-500">
+      <span className="w-36 shrink-0 text-xs text-slate-400 dark:text-slate-500">
         {formatDateTime(intake.receivedAt)}
       </span>
-      <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         {SOURCE_LABEL[intake.source] ?? intake.source}
       </span>
       <span className="min-w-0 flex-1">
@@ -120,11 +120,11 @@ function IntakeRow({ intake }: { intake: Intake }) {
             {intake.originalFilename}
           </Link>
         ) : (
-          <span className="font-medium text-gray-900 dark:text-gray-100">
+          <span className="font-medium text-slate-900 dark:text-slate-100">
             {intake.originalFilename}
           </span>
         )}
-        <span className="ml-2 text-gray-500 dark:text-gray-400">
+        <span className="ml-2 text-slate-500 dark:text-slate-400">
           de la {intake.sender ?? "expeditor necunoscut"}
         </span>
         {rejected && intake.rejectionReason && (
@@ -134,7 +134,7 @@ function IntakeRow({ intake }: { intake: Intake }) {
           </span>
         )}
       </span>
-      <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+      <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
         {intake.clientId ? (
           <Link
             to={`/crm/clienti/${intake.clientId}`}
@@ -185,8 +185,8 @@ export function TemplatesPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {templates.map((template) => (
           <Panel key={template.code} title={template.code}>
-            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">{template.channel}</p>
-            <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700 dark:bg-gray-800/60 dark:text-gray-300">
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">{template.channel}</p>
+            <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
               {template.preview}
             </p>
           </Panel>
@@ -205,8 +205,8 @@ export function RemindersPage() {
       />
       <Panel>
         <div className="flex items-start gap-3">
-          <Bell className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
-          <div className="text-sm text-gray-600 dark:text-gray-400">
+          <Bell className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+          <div className="text-sm text-slate-600 dark:text-slate-400">
             <p className="mb-2">
               Datele pe care s-ar sprijini reminderele există deja: ecranul „Documente lipsă"
               spune, pentru fiecare client și fiecare lună, ce anume nu a sosit. Ce lipsește este

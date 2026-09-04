@@ -42,12 +42,12 @@ const PERMISSION_LABEL: Record<Permission, string> = {
 export function NoPermissionState({ permission }: { permission: string }) {
   return (
     <div className="flex min-h-[40vh] items-center justify-center">
-      <div className="max-w-sm rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <div className="mx-auto mb-3 grid h-11 w-11 place-content-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+      <div className="max-w-sm rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto mb-3 grid h-11 w-11 place-content-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
           <Lock className="h-5 w-5" aria-hidden="true" />
         </div>
-        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Acces restricționat</p>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Acces restricționat</p>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Rolul tău nu include permisiunea <code>{permission}</code>.
         </p>
       </div>
@@ -73,7 +73,7 @@ export function UsersPage() {
       <Panel bodyClassName="p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-200 text-xs tracking-wide text-gray-500 uppercase dark:border-gray-800 dark:text-gray-400">
+            <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
               <tr>
                 <th scope="col" className="px-4 py-3 font-medium">Nume</th>
                 <th scope="col" className="px-4 py-3 font-medium">Email</th>
@@ -83,7 +83,7 @@ export function UsersPage() {
                 <th scope="col" className="px-4 py-3 font-medium sr-only">Acțiuni</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {data?.map((user) => (
                 <UserRow key={user.id} user={user} roleLabels={ROLE_LABEL} />
               ))}
@@ -109,7 +109,7 @@ export function RolesPage() {
       <Panel bodyClassName="p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-200 text-xs tracking-wide text-gray-500 uppercase dark:border-gray-800 dark:text-gray-400">
+            <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
               <tr>
                 <th scope="col" className="px-4 py-3 font-medium">Permisiune</th>
                 {ROLE_CODE.map((role) => (
@@ -119,12 +119,12 @@ export function RolesPage() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {permissions.map((permission) => (
                 <tr key={permission}>
-                  <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300">
+                  <td className="px-4 py-2.5 text-slate-700 dark:text-slate-300">
                     {PERMISSION_LABEL[permission]}
-                    <span className="ml-2 text-xs text-gray-400">{permission}</span>
+                    <span className="ml-2 text-xs text-slate-400">{permission}</span>
                   </td>
                   {ROLE_CODE.map((role) => {
                     const granted =
@@ -132,11 +132,11 @@ export function RolesPage() {
                     return (
                       <td key={role} className="px-3 py-2.5 text-center">
                         {granted === undefined ? (
-                          <span className="text-gray-300 dark:text-gray-600">·</span>
+                          <span className="text-slate-300 dark:text-slate-600">·</span>
                         ) : granted ? (
                           <span className="text-green-600 dark:text-green-400">✓</span>
                         ) : (
-                          <span className="text-gray-300 dark:text-gray-600">—</span>
+                          <span className="text-slate-300 dark:text-slate-600">—</span>
                         )}
                       </td>
                     );
@@ -146,7 +146,7 @@ export function RolesPage() {
             </tbody>
           </table>
         </div>
-        <p className="border-t border-gray-200 px-4 py-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+        <p className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
           Coloana rolului curent ({user ? ROLE_LABEL[user.role] : "—"}) reflectă permisiunile
           returnate de API. Restul coloanelor se vor popula când backend-ul expune matricea completă.
         </p>
@@ -192,7 +192,7 @@ export function AuditLogPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-gray-200 text-xs tracking-wide text-gray-500 uppercase dark:border-gray-800 dark:text-gray-400">
+                <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
                   <tr>
                     <th scope="col" className="px-4 py-3 font-medium">Moment</th>
                     <th scope="col" className="px-4 py-3 font-medium">Utilizator</th>
@@ -202,27 +202,27 @@ export function AuditLogPage() {
                     <th scope="col" className="px-4 py-3 font-medium">IP</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {data?.items.map((entry) => (
                     <tr key={entry.id}>
-                      <td className="px-4 py-2.5 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                      <td className="px-4 py-2.5 whitespace-nowrap text-slate-500 dark:text-slate-400">
                         {formatDateTime(entry.at)}
                       </td>
-                      <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300">
+                      <td className="px-4 py-2.5 text-slate-700 dark:text-slate-300">
                         {entry.userName}
                       </td>
                       <td className="px-4 py-2.5">
-                        <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                        <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                           {entry.action}
                         </code>
                       </td>
-                      <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
                         {entry.entityType} · {entry.entityId}
                       </td>
-                      <td className="max-w-64 truncate px-4 py-2.5 text-gray-600 dark:text-gray-400">
+                      <td className="max-w-64 truncate px-4 py-2.5 text-slate-600 dark:text-slate-400">
                         {entry.detail ?? "—"}
                       </td>
-                      <td className="px-4 py-2.5 text-gray-400 dark:text-gray-500">{entry.ip}</td>
+                      <td className="px-4 py-2.5 text-slate-400 dark:text-slate-500">{entry.ip}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -331,11 +331,11 @@ export function SettingsPage() {
               <dl className="space-y-2 text-sm">
                 {section.items.map((item) => (
                   <div key={item.key} className="flex items-start justify-between gap-3">
-                    <dt className="text-gray-600 dark:text-gray-400">
+                    <dt className="text-slate-600 dark:text-slate-400">
                       {SETTING_LABEL[item.key] ?? item.key}
-                      <span className="ml-2 text-xs text-gray-400">{item.key}</span>
+                      <span className="ml-2 text-xs text-slate-400">{item.key}</span>
                     </dt>
-                    <dd className="shrink-0 font-medium text-gray-900 dark:text-gray-100">
+                    <dd className="shrink-0 font-medium text-slate-900 dark:text-slate-100">
                       {displayValue(item.value)}
                     </dd>
                   </div>

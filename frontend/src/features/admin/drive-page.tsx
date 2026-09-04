@@ -143,8 +143,8 @@ function ConnectionPanel({ status }: { status: DriveStatus }) {
         <div className="flex flex-wrap items-center gap-4">
           <Cloud className="h-8 w-8 shrink-0 text-blue-600" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <p className="font-medium text-gray-900 dark:text-gray-100">{status.accountEmail}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="font-medium text-slate-900 dark:text-slate-100">{status.accountEmail}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               {status.accountName ? `${status.accountName} · ` : ""}
               conectat {status.connectedAt ? formatDateTime(status.connectedAt) : ""}
               {status.lastSyncAt
@@ -165,7 +165,7 @@ function ConnectionPanel({ status }: { status: DriveStatus }) {
                 sync.isPending ||
                 (status.folders.length === 0 && status.mailFolders.length === 0)
               }
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <RefreshCw
                 className={cn("h-4 w-4", sync.isPending && "animate-spin")}
@@ -177,7 +177,7 @@ function ConnectionPanel({ status }: { status: DriveStatus }) {
               type="button"
               onClick={() => disconnect.mutate(undefined)}
               disabled={disconnect.isPending}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-red-900/20"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-red-900/20"
             >
               <CloudOff className="h-4 w-4" aria-hidden="true" />
               Deconectează
@@ -186,9 +186,9 @@ function ConnectionPanel({ status }: { status: DriveStatus }) {
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-4">
-          <CloudOff className="h-8 w-8 shrink-0 text-gray-300" aria-hidden="true" />
-          <div className="min-w-0 flex-1 text-sm text-gray-600 dark:text-gray-300">
-            <p className="font-medium text-gray-900 dark:text-gray-100">Niciun cont conectat</p>
+          <CloudOff className="h-8 w-8 shrink-0 text-slate-300" aria-hidden="true" />
+          <div className="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">
+            <p className="font-medium text-slate-900 dark:text-slate-100">Niciun cont conectat</p>
             <p className="text-xs">
               Conectează contul Microsoft al cabinetului. Se cere acces{" "}
               <strong>doar la citire</strong>: nimic nu se modifică în dosarele clienților.
@@ -206,7 +206,7 @@ function ConnectionPanel({ status }: { status: DriveStatus }) {
       )}
 
       {sync.data && (
-        <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:bg-gray-800/60 dark:text-gray-300">
+        <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
           {sync.data.ingested === 0
             ? "Nimic nou în dosarele urmărite."
             : `${sync.data.ingested} documente aduse.`}
@@ -224,7 +224,7 @@ function FoldersPanel({ status }: { status: DriveStatus }) {
   if (status.folders.length === 0) {
     return (
       <Panel title="Dosare urmărite">
-        <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+        <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
           Niciun dosar urmărit încă. Alege mai jos dosarele clienților.
         </p>
       </Panel>
@@ -235,7 +235,7 @@ function FoldersPanel({ status }: { status: DriveStatus }) {
     <Panel title={`Dosare urmărite (${status.folders.length})`} bodyClassName="p-0">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-gray-200 text-xs tracking-wide text-gray-500 uppercase dark:border-gray-800 dark:text-gray-400">
+          <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
             <tr>
               <th scope="col" className="px-4 py-3 font-medium">Dosar</th>
               <th scope="col" className="px-4 py-3 font-medium">Client</th>
@@ -244,7 +244,7 @@ function FoldersPanel({ status }: { status: DriveStatus }) {
               <th scope="col" className="px-4 py-3 font-medium sr-only">Acțiuni</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {status.folders.map((folder) => (
               <FolderRow key={folder.id} folder={folder} />
             ))}
@@ -261,10 +261,10 @@ function FolderRow({ folder }: { folder: DriveFolder }) {
   const { data: clientsPage } = useClients({ pageSize: 200, status: "ACTIVE" });
 
   return (
-    <tr className="transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60">
+    <tr className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60">
       <td className="px-4 py-3">
-        <span className="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-100">
-          <FolderOpen className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+        <span className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
+          <FolderOpen className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
           {folder.path}
         </span>
         {folder.lastError && (
@@ -285,9 +285,9 @@ function FolderRow({ folder }: { folder: DriveFolder }) {
             update.mutate({ id: folder.id, clientId: event.target.value || null })
           }
           className={cn(
-            "h-9 w-56 rounded-lg border bg-white px-2 text-sm dark:bg-gray-950 dark:text-gray-100",
+            "h-9 w-56 rounded-lg border bg-white px-2 text-sm dark:bg-slate-950 dark:text-slate-100",
             folder.clientId
-              ? "border-gray-200 dark:border-gray-700"
+              ? "border-slate-200 dark:border-slate-700"
               : // Fără client, documentele intră dar ajung `UNMATCHED`. Se vede.
                 "border-amber-300 dark:border-amber-700",
           )}
@@ -300,8 +300,8 @@ function FolderRow({ folder }: { folder: DriveFolder }) {
           ))}
         </select>
       </td>
-      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{folder.filesIngested}</td>
-      <td className="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
+      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{folder.filesIngested}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-slate-500 dark:text-slate-400">
         {folder.lastSyncedAt ? formatDateTime(folder.lastSyncedAt) : "—"}
       </td>
       <td className="px-4 py-3 text-right">
@@ -310,7 +310,7 @@ function FolderRow({ folder }: { folder: DriveFolder }) {
           onClick={() => untrack.mutate(folder.id)}
           disabled={untrack.isPending}
           aria-label={`Nu mai urmări ${folder.path}`}
-          className="rounded-md p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20"
+          className="rounded-md p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20"
         >
           <Trash2 className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -335,12 +335,12 @@ function BrowsePanel({ status }: { status: DriveStatus }) {
       <nav aria-label="Cale" className="mb-3 flex flex-wrap items-center gap-1 text-sm">
         {trail.map((step, index) => (
           <span key={`${step.id ?? "root"}-${index}`} className="flex items-center gap-1">
-            {index > 0 && <span className="text-gray-300">/</span>}
+            {index > 0 && <span className="text-slate-300">/</span>}
             <button
               type="button"
               onClick={() => setTrail(trail.slice(0, index + 1))}
               disabled={index === trail.length - 1}
-              className="rounded px-1 text-blue-600 hover:underline disabled:text-gray-600 disabled:no-underline dark:text-blue-400 dark:disabled:text-gray-300"
+              className="rounded px-1 text-blue-600 hover:underline disabled:text-slate-600 disabled:no-underline dark:text-blue-400 dark:disabled:text-slate-300"
             >
               {step.name}
             </button>
@@ -351,24 +351,24 @@ function BrowsePanel({ status }: { status: DriveStatus }) {
       {error ? (
         <ErrorState error={error} />
       ) : isLoading ? (
-        <p className="flex items-center gap-2 py-6 text-sm text-gray-500">
+        <p className="flex items-center gap-2 py-6 text-sm text-slate-500">
           <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
           Se citesc dosarele…
         </p>
       ) : (data ?? []).length === 0 ? (
-        <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+        <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
           Niciun subdosar aici.
         </p>
       ) : (
-        <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
           {(data ?? []).map((item) => (
             <li key={item.itemId} className="flex items-center gap-3 py-2">
               <button
                 type="button"
                 onClick={() => setTrail([...trail, { id: item.itemId, name: item.name }])}
-                className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm text-gray-900 hover:text-blue-600 dark:text-gray-100 dark:hover:text-blue-400"
+                className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm text-slate-900 hover:text-blue-600 dark:text-slate-100 dark:hover:text-blue-400"
               >
-                <FolderOpen className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+                <FolderOpen className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
                 <span className="truncate">{item.name}</span>
               </button>
 
@@ -388,7 +388,7 @@ function BrowsePanel({ status }: { status: DriveStatus }) {
                     })
                   }
                   disabled={track.isPending}
-                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
                   Urmărește
@@ -436,15 +436,15 @@ function MailPanel({ status }: { status: DriveStatus }) {
       </p>
 
       {status.mailFolders.length > 0 && (
-        <ul className="mb-4 divide-y divide-gray-100 dark:divide-gray-800">
+        <ul className="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
           {status.mailFolders.map((folder) => (
             <li key={folder.id} className="flex items-center gap-3 py-2">
-              <Mail className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+              <Mail className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                <span className="block truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                   {folder.displayName}
                 </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   {folder.filesIngested} documente ·{" "}
                   {folder.lastSyncedAt
                     ? `ultima sincronizare ${formatDateTime(folder.lastSyncedAt)}`
@@ -461,7 +461,7 @@ function MailPanel({ status }: { status: DriveStatus }) {
                 onClick={() => untrack.mutate(folder.id)}
                 disabled={untrack.isPending}
                 aria-label={`Nu mai urmări ${folder.displayName}`}
-                className="rounded-md p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20"
+                className="rounded-md p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20"
               >
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -473,18 +473,18 @@ function MailPanel({ status }: { status: DriveStatus }) {
       {error ? (
         <ErrorState error={error} />
       ) : isLoading ? (
-        <p className="flex items-center gap-2 py-4 text-sm text-gray-500">
+        <p className="flex items-center gap-2 py-4 text-sm text-slate-500">
           <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
           Se citesc dosarele…
         </p>
       ) : (
-        <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
           {(available ?? []).map((item) => (
             <li key={item.folderId} className="flex items-center gap-3 py-2">
-              <Mail className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
-              <span className="min-w-0 flex-1 text-sm text-gray-900 dark:text-gray-100">
+              <Mail className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-sm text-slate-900 dark:text-slate-100">
                 {item.displayName}
-                <span className="ml-2 text-xs text-gray-500">{item.totalItems} mesaje</span>
+                <span className="ml-2 text-xs text-slate-500">{item.totalItems} mesaje</span>
               </span>
               {item.isTracked ? (
                 <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
@@ -498,7 +498,7 @@ function MailPanel({ status }: { status: DriveStatus }) {
                     track.mutate({ folderId: item.folderId, displayName: item.displayName })
                   }
                   disabled={track.isPending}
-                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
                   Urmărește

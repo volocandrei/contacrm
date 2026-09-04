@@ -27,7 +27,7 @@ if (API_MODE_PROBLEM) {
         <h1 className="mb-3 text-lg font-semibold text-red-700">
           Aplicația nu este configurată
         </h1>
-        <p className="text-sm text-gray-700">{API_MODE_PROBLEM}</p>
+        <p className="text-sm text-slate-700">{API_MODE_PROBLEM}</p>
       </main>
     </StrictMode>,
   );

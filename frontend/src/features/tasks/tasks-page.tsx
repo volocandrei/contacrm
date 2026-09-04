@@ -14,7 +14,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 const PRIORITY_META: Record<TaskPriority, { label: string; className: string }> = {
-  LOW: { label: "Scăzută", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" },
+  LOW: { label: "Scăzută", className: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" },
   NORMAL: { label: "Normală", className: "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
   HIGH: {
     label: "Ridicată",
@@ -46,7 +46,7 @@ export function TasksPage() {
             key={column.status}
             title={STATUS_LABEL[column.status]}
             action={
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                 {column.tasks.length}
               </span>
             }
@@ -61,7 +61,7 @@ export function TasksPage() {
                 />
               ))}
               {column.tasks.length === 0 && (
-                <li className="py-4 text-center text-xs text-gray-400 dark:text-gray-500">
+                <li className="py-4 text-center text-xs text-slate-400 dark:text-slate-500">
                   Nicio sarcină
                 </li>
               )}
@@ -85,9 +85,9 @@ function TaskCard({
   const priority = PRIORITY_META[task.priority];
 
   return (
-    <li className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+    <li className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
       <div className="mb-1.5 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{task.title}</p>
+        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{task.title}</p>
         <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", priority.className)}>
           {priority.label}
         </span>
@@ -102,7 +102,7 @@ function TaskCard({
         </Link>
       )}
 
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         {task.assignedToName ?? "Nealocat"}
         {task.dueDate && ` · termen ${formatDate(task.dueDate)}`}
       </p>
@@ -113,7 +113,7 @@ function TaskCard({
           <select
             value={task.status}
             onChange={(event) => onStatusChange(event.target.value as TaskStatus)}
-            className="h-8 w-full cursor-pointer rounded-md border border-gray-200 bg-white px-2 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+            className="h-8 w-full cursor-pointer rounded-md border border-slate-200 bg-white px-2 text-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           >
             {TASK_STATUS.map((status) => (
               <option key={status} value={status}>

@@ -6,7 +6,9 @@ import { apiMode } from "@/api/client";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { useAuth } from "@/features/auth/use-auth";
 import { useTheme } from "@/hooks/use-theme";
-import { ALL_NAV_ITEMS } from "@/lib/navigation";
+import { ALL_NAV_ITEMS, NAV_GROUPS } from "@/lib/navigation";
+import { divider, iconButton, inputField, pageBackground } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 
 /**
  * Sub această lățime, bara laterală deschisă (256px) nu mai încape.
@@ -29,6 +31,13 @@ export function AppShell() {
   const navigate = useNavigate();
   const { data: counts } = useSidebarCounts();
   const [search, setSearch] = useState("");
+
+  // Grupul din care face parte ecranul curent. Antetul spunea doar numele
+  // ecranului — „Setări", „Roluri" —, iar în aplicații cu multe ecrane numele
+  // singur nu spune unde ești.
+  const section = NAV_GROUPS.find((group) =>
+    group.items.some((item) => pathname === item.path || pathname.startsWith(`${item.path}/`)),
+  )?.label;
 
   const current =
     ALL_NAV_ITEMS.find((item) => item.path === pathname) ??
@@ -54,7 +63,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-screen w-full bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+    <div className={cn("flex min-h-screen w-full", pageBackground)}>
       <AppSidebar
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((value) => !value)}
@@ -62,10 +71,25 @@ export function AppShell() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between gap-4 border-b border-gray-200 bg-white/90 px-6 backdrop-blur dark:border-gray-800 dark:bg-gray-900/90">
-          <h1 className="truncate text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {current?.label ?? "ContaCRM"}
-          </h1>
+        <header
+          className={cn(
+            "sticky top-0 z-10 flex h-16 items-center justify-between gap-4 border-b px-6",
+            // Translucid plus `backdrop-blur`: conținutul care trece pe sub antet
+            // rămâne sugerat, nu tăiat brusc.
+            "bg-white/80 backdrop-blur-md dark:bg-slate-900/80",
+            divider,
+          )}
+        >
+          <div className="min-w-0">
+            {section && (
+              <p className="text-[11px] font-medium tracking-wide text-slate-400 uppercase dark:text-slate-500">
+                {section}
+              </p>
+            )}
+            <h1 className="truncate text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+              {current?.label ?? "ContaCRM"}
+            </h1>
+          </div>
 
           <div className="flex items-center gap-3">
             <form onSubmit={handleSearch} className="relative hidden md:block">
@@ -73,7 +97,7 @@ export function AppShell() {
                 Caută clienți, documente, CUI
               </label>
               <Search
-                className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400"
+                className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400"
                 aria-hidden="true"
               />
               <input
@@ -82,7 +106,7 @@ export function AppShell() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Caută client, CUI, număr document…"
-                className="h-10 w-72 rounded-lg border border-gray-200 bg-gray-50 pr-3 pl-9 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/30 focus:outline-none dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
+                className={cn(inputField, "h-10 w-72 bg-slate-50 pr-3 pl-9 dark:bg-slate-950")}
               />
             </form>
 
@@ -90,11 +114,11 @@ export function AppShell() {
               type="button"
               aria-label={`Notificări${counts ? `: ${counts.review} de verificat` : ""}`}
               onClick={() => navigate("/documente/verificare")}
-              className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+              className={cn(iconButton, "relative")}
             >
               <Bell className="h-4 w-4" aria-hidden="true" />
               {(counts?.review ?? 0) > 0 && (
-                <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-red-500" />
+                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
               )}
             </button>
 
@@ -102,7 +126,7 @@ export function AppShell() {
               type="button"
               onClick={toggleTheme}
               aria-label={theme === "dark" ? "Comută pe tema deschisă" : "Comută pe tema închisă"}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+              className={iconButton}
             >
               {theme === "dark" ? (
                 <Sun className="h-4 w-4" aria-hidden="true" />
@@ -167,7 +191,7 @@ function UserMenu() {
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label="Meniu cont"
-        className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+        className={iconButton}
       >
         <User className="h-4 w-4" aria-hidden="true" />
       </button>
@@ -175,14 +199,14 @@ function UserMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-2 w-60 rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-800 dark:bg-gray-900"
+          className="absolute right-0 z-20 mt-2 w-60 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-800 dark:bg-slate-900"
         >
-          <div className="border-b border-gray-100 px-3 py-2 dark:border-gray-800">
-            <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+          <div className="border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+            <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
               {user?.fullName}
             </p>
-            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
-            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            <p className="truncate text-xs text-slate-500 dark:text-slate-400">{user?.email}</p>
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
               {user ? (ROLE_LABEL[user.role] ?? user.role) : ""} · {user?.organizationName}
             </p>
           </div>
@@ -190,7 +214,7 @@ function UserMenu() {
             type="button"
             role="menuitem"
             onClick={() => void logout()}
-            className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+            className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             <LogOut className="h-4 w-4" aria-hidden="true" />
             Deconectare

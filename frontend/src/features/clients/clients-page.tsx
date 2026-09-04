@@ -96,7 +96,7 @@ export function ClientsPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-gray-200 text-xs tracking-wide text-gray-500 uppercase dark:border-gray-800 dark:text-gray-400">
+                <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
                   <tr>
                     <th scope="col" className="px-4 py-3 font-medium">Denumire</th>
                     <th scope="col" className="px-4 py-3 font-medium">CUI</th>
@@ -106,25 +106,25 @@ export function ClientsPage() {
                     <th scope="col" className="px-4 py-3 font-medium">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {data?.items.map((client) => (
                     <tr
                       key={client.id}
-                      className="transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                      className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60"
                     >
                       <td className="px-4 py-3">
                         <Link
                           to={`/crm/clienti/${client.id}`}
-                          className="font-medium text-gray-900 hover:text-blue-600 hover:underline dark:text-gray-100 dark:hover:text-blue-400"
+                          className="font-medium text-slate-900 hover:text-blue-600 hover:underline dark:text-slate-100 dark:hover:text-blue-400"
                         >
                           {client.name}
                         </Link>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">{client.address}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">{client.address}</div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-400">
+                      <td className="px-4 py-3 whitespace-nowrap text-slate-600 dark:text-slate-400">
                         {client.taxId}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                         {client.assignedAccountantName ?? "—"}
                       </td>
                       <td className="px-4 py-3">
@@ -132,14 +132,14 @@ export function ClientsPage() {
                           {client.tags.map((tag) => (
                             <span
                               key={tag}
-                              className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                              className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
                             >
                               {tag}
                             </span>
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                      <td className="px-4 py-3 whitespace-nowrap text-slate-500 dark:text-slate-400">
                         {client.lastInteractionAt ? formatDateTime(client.lastInteractionAt) : "—"}
                       </td>
                       <td className="px-4 py-3">
