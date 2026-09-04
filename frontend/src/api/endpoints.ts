@@ -143,6 +143,8 @@ export const documents = {
 export type MissingDocumentsEntry = {
   period: AccountingPeriod;
   missing: ChecklistItem[];
+  /** Termenul de depunere al lunii, „YYYY-MM-DD". Același pentru toate rândurile. */
+  deadline: string;
 };
 
 export const periods = {

@@ -26,12 +26,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useClients, useDocuments } from "@/api/hooks";
-import { usePermissionCheck } from "@/features/auth/use-auth";
+import { useAuth } from "@/features/auth/use-auth";
 import { formatDate } from "@/lib/format";
 import { DOCUMENT_STATUS_LABEL } from "@/lib/labels";
 import { ALL_NAV_ITEMS } from "@/lib/navigation";
 import { focusRing, iconChip, mutedText, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
+import type { Permission } from "@/types/domain";
 
 /** Sub două litere, orice căutare întoarce jumătate din bază. */
 const MIN_QUERY = 2;
@@ -55,7 +56,11 @@ type Section = { heading: string; entries: Entry[] };
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
-  const can = usePermissionCheck();
+  const { user } = useAuth();
+  const permissions = user?.permissions ?? [];
+  // Cheia de dependență: lista în sine este un vector nou la fiecare randare.
+  const permissionKey = permissions.join(",");
+  const can = (permission: Permission) => permissions.includes(permission);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
@@ -76,9 +81,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
           tone: "slate" as Tone,
           path: item.path,
         })),
-    // `can` se reconstruiește la fiecare randare; ce contează sunt ecranele și textul.
+    // `can` se reconstruiește la fiecare randare; ce contează sunt textul și
+    // drepturile — de aceea dependența este cheia lor, nu funcția.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [query],
+    [query, permissionKey],
   );
 
   const [clientEntries, setClientEntries] = useState<Entry[]>([]);

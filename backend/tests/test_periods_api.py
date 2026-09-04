@@ -17,8 +17,10 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.domain.document_types import DEFAULT_DOCUMENT_TYPES
 from app.domain.enums import DocumentSource, DocumentStatus
+from app.domain.periods import filing_deadline
 from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS, RoleCode
 from app.models.audit import AuditLog
 from app.models.client import Client
@@ -379,6 +381,13 @@ class TestMissingReport:
         assert [entry["period"]["clientName"] for entry in report] == [client_row.name]
         missing = {item["documentType"] for item in report[0]["missing"]}
         assert missing == {"FACTURA_INTRARE", "EXTRAS_CONT"}
+
+        # Și **până când**: solicitarea pe care o scrie contabilul are nevoie de
+        # o dată, iar ziua vine din `FILING_DEADLINE_DAY` — pe care browserul nu
+        # o cunoaște, fiindcă `/settings` o publică doar administratorilor.
+        expected = filing_deadline(MONTH, day=settings.filing_deadline_day).isoformat()
+        assert {entry["deadline"] for entry in report} == {expected}
+        assert expected.startswith("2026-09")
 
     def test_the_month_is_required(self, api_storage: TestClient, admin: User) -> None:
         login(api_storage, admin.email)

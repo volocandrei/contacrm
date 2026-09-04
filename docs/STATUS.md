@@ -1,6 +1,6 @@
 # STATUS — ContaCRM
 
-Starea proiectului la **03.09.2026**. Documentul acesta răspunde la trei întrebări:
+Starea proiectului la **04.09.2026**. Documentul acesta răspunde la trei întrebări:
 cum pornești pe o mașină nouă, ce este construit și ce urmează.
 
 Pentru arhitectură, schema de bază de date și registrul de riscuri, vezi
@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  13.165 linii sursă +  2.252 linii teste  →   182 teste
-backend   19.889 linii sursă + 17.378 linii teste  → 1.191 teste
-end-to-end 1.089 linii                             →    40 teste (browser real)
+frontend  15.308 linii sursă +  2.339 linii teste  →   189 teste
+backend   19.994 linii sursă + 17.501 linii teste  → 1.202 teste
+end-to-end 1.222 linii                             →    46 teste (browser real)
 migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.413 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.437 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -138,7 +138,19 @@ Toate cele **23 de rute** sunt ecrane reale, nu placeholdere:
 | Contabilitate | perioade cu checklist, documente lipsă |
 | Comunicare | mesaje, șabloane, remindere |
 | Rapoarte | agregări calculate în backend, cu filtre pe lună și client |
-| Administrare | utilizatori, roluri, setări, **surse documente (OneDrive + email)**, jurnal audit |
+| Administrare | utilizatori, **matricea rol × permisiune**, setări, **surse documente (OneDrive + email)**, **e-Factura**, jurnal audit |
+
+**Ctrl+K deschide paleta de comenzi**: caută în același timp în ecrane, clienți
+(inclusiv după CUI) și documente, și duce direct la rezultat. Înlocuiește câmpul
+din antet, care promitea o căutare globală și, orice s-ar fi scris în el, ducea în
+inboxul de documente. Nu ocolește nicio permisiune: ecranele se filtrează ca în
+bara laterală, iar interogările pornesc doar dacă rolul le poate cere.
+
+Pe „Documente lipsă", fiecare rând are **Copiază solicitarea**: textul către
+client, cu lista lipsurilor și termenul lunii, gata de trimis din clientul de
+email al contabilului. Aplicația știe ce lipsește și până când, dar nu poate
+trimite — asta cere un provider și rămâne în Faza 2; butonul acoperă exact
+distanța rămasă, fără să pretindă că o depășește.
 
 Piesa centrală este **ecranul de verificare**: facsimilul documentului lângă
 câmpurile extrase, fiecare câmp cu proveniența lui (`AI 81%`, „corectat manual",
@@ -370,12 +382,15 @@ Vechile și noile valori nu ies prin API: auditul răspunde la „cine, ce, cân
 „ce scria pe factură". Cine are nevoie de conținut deschide documentul, iar acea
 deschidere se auditează la rândul ei.
 
-Rute reale existente **azi**, după M11: 65 sub `/api/v1` (integrări ×21,
-documente ×14, CRM ×12, auth ×3, health ×3, panou ×2, perioade ×2, sarcini ×2,
-plus `/me`, `/users`, `/document-types`, `/reports`, `/settings`, `/audit-logs`),
-cele trei `/health/*` de la rădăcină, și `/internal/run-queue`, care nu apare în
-OpenAPI pentru că nu face parte din contractul cu frontend-ul. La momentul M6
-erau 37.
+Rute reale existente **azi**: **62 de căi** sub `/api/v1`, cu 75 de operații
+HTTP — plus cele trei `/health/*` de la rădăcină și `/internal/run-queue`, care nu
+apare în OpenAPI pentru că nu face parte din contractul cu frontend-ul.
+
+Ultima adăugată este `GET /roles`: matricea rol × permisiune, întreagă. Până la
+ea, ecranul de roluri putea completa **o singură coloană** — a rolului cu care
+ești autentificat, fiindcă doar atât expune `/me` — și își recunoștea limita
+într-o notă de subsol. Nota era cinstită și inutilă: cine deschide „Roluri" vrea
+să afle ce poate face un operator *înainte* de a-i da rolul.
 
 ### Verificat pe date reale, nu doar în teste
 

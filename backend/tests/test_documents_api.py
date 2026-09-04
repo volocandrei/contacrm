@@ -1880,13 +1880,13 @@ class TestDashboard:
 
     def test_a_december_month_rolls_into_the_next_year(self) -> None:
         """Decembrie se depune în ianuarie anul următor, nu în luna 13."""
-        from app.api.v1.dashboard import filing_deadline
+        from app.domain.periods import filing_deadline
 
         assert filing_deadline("2026-12", day=25) == date(2027, 1, 25)
 
     def test_the_deadline_day_exists_in_february_too(self) -> None:
         """Configurarea mărginește ziua la 28 tocmai ca luna asta să nu rămână fără termen."""
-        from app.api.v1.dashboard import filing_deadline
+        from app.domain.periods import filing_deadline
 
         assert filing_deadline("2027-01", day=28) == date(2027, 2, 28)
 

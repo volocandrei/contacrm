@@ -155,3 +155,15 @@ __all__ = [
     "period_progress",
     "split_reference_month",
 ]
+
+
+def filing_deadline(reference_month: str, *, day: int) -> date:
+    """Termenul de depunere pentru o lună încheiată.
+
+    Este în luna **următoare**: documentele lui august se depun până pe 25
+    septembrie. Ziua este mărginită la 28 în configurare, deci există în orice
+    lună — inclusiv februarie, unde altfel termenul ar fi dispărut exact când
+    contează.
+    """
+    year, month = split_reference_month(reference_month)
+    return date(year + 1, 1, day) if month == 12 else date(year, month + 1, day)

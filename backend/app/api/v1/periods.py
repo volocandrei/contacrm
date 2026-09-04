@@ -12,7 +12,7 @@ consultare.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
@@ -20,9 +20,10 @@ from pydantic import Field
 from sqlalchemy import select
 
 from app.api.deps import DbSession, client_ip, require_permission
+from app.core.config import settings
 from app.core.errors import NotFoundError
 from app.domain.enums import PeriodStatus
-from app.domain.periods import ChecklistEntry
+from app.domain.periods import ChecklistEntry, filing_deadline
 from app.domain.permissions import Permission
 from app.models.document import DocumentType
 from app.models.period import ClientExpectation
@@ -110,6 +111,9 @@ class AccountingPeriodOut(ApiModel):
 class MissingDocumentsEntryOut(ApiModel):
     period: AccountingPeriodOut
     missing: list[ChecklistItemOut]
+    #: Termenul de depunere al lunii, aceeași dată pentru toate rândurile. Se
+    #: repetă pe fiecare intrare ca forma răspunsului să rămână o listă simplă.
+    deadline: date
 
 
 class ClosePeriodIn(ApiModel):
@@ -223,8 +227,13 @@ def missing_documents(
     Doar clienții cărora chiar le lipsește ceva. Un raport care listează și clienții
     în regulă ajunge să nu mai fie citit, iar atunci nu mai raportează nimic.
     """
+    deadline = filing_deadline(filters.reference_month, day=settings.filing_deadline_day)
     return [
-        MissingDocumentsEntryOut(period=to_period(view), missing=[_to_item(m) for m in gaps])
+        MissingDocumentsEntryOut(
+            period=to_period(view),
+            missing=[_to_item(m) for m in gaps],
+            deadline=deadline,
+        )
         for view, gaps in PeriodService(session).missing(
             user.organization_id, filters.reference_month
         )

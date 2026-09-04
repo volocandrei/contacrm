@@ -1174,12 +1174,32 @@ export function listPeriods(filters: { referenceMonth?: string; clientId?: strin
   return [...items].sort((a, b) => a.clientName.localeCompare(b.clientName));
 }
 
+/** Ziua din luna următoare până la care se depun declarațiile (`FILING_DEADLINE_DAY`). */
+const MOCK_DEADLINE_DAY = 25;
+
+/**
+ * Termenul de depunere al unei luni, „YYYY-MM-DD".
+ *
+ * Este în luna **următoare**: documentele lui august se depun până pe 25
+ * septembrie. Ziua este mărginită la 28 în configurare, deci există în orice
+ * lună — inclusiv februarie. Oglindește `filing_deadline()` din backend.
+ */
+export function filingDeadline(referenceMonth: string): string {
+  const [year, month] = referenceMonth.split("-").map(Number) as [number, number];
+  const day = String(MOCK_DEADLINE_DAY).padStart(2, "0");
+  return month === 12
+    ? `${year + 1}-01-${day}`
+    : `${year}-${String(month + 1).padStart(2, "0")}-${day}`;
+}
+
 /** Documentele așteptate care încă lipsesc, per client (§19). */
 export function listMissingDocuments(referenceMonth: string) {
+  const deadline = filingDeadline(referenceMonth);
   return listPeriods({ referenceMonth })
     .map((period) => ({
       period,
       missing: period.checklist.filter((item) => !item.isSatisfied),
+      deadline,
     }))
     .filter((entry) => entry.missing.length > 0);
 }
@@ -2228,9 +2248,6 @@ function buildStatusSlices(documents: StoredDocument[]): StatusSlice[] {
     .sort((a, b) => b.count - a.count);
 }
 
-/** Ziua din luna următoare până la care se depun declarațiile (`FILING_DEADLINE_DAY`). */
-const MOCK_DEADLINE_DAY = 25;
-
 /** Câți clienți în întârziere încap pe panou, și câte etichete pe rând. */
 const MOCK_MAX_LAGGARDS = 5;
 const MOCK_MAX_MISSING_LABELS = 3;
@@ -2243,11 +2260,7 @@ const MOCK_MAX_MISSING_LABELS = 3;
  * primul rând trebuie să fie cel care costă cel mai mult dacă rămâne așa.
  */
 function buildClosing(periods: AccountingPeriod[]): DashboardClosing {
-  const [year, month] = CURRENT_MONTH.split("-").map(Number) as [number, number];
-  const deadline =
-    month === 12
-      ? `${year + 1}-01-${String(MOCK_DEADLINE_DAY).padStart(2, "0")}`
-      : `${year}-${String(month + 1).padStart(2, "0")}-${String(MOCK_DEADLINE_DAY).padStart(2, "0")}`;
+  const deadline = filingDeadline(CURRENT_MONTH);
 
   const waiting = periods
     .map((period) => ({

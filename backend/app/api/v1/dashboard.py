@@ -25,7 +25,7 @@ from app.api.deps import DbSession, require_permission
 from app.api.v1.periods import AccountingPeriodOut, to_period
 from app.core.config import settings
 from app.domain.enums import ClientStatus, DocumentStatus, PeriodStatus, TaskStatus
-from app.domain.periods import split_reference_month
+from app.domain.periods import filing_deadline
 from app.domain.permissions import Permission
 from app.models.audit import AuditLog
 from app.models.client import Client
@@ -227,18 +227,6 @@ def dashboard(session: DbSession, user: DashboardReader) -> DashboardOut:
 
 
 # ── Indicatori ───────────────────────────────────────────────────────────────
-
-
-def filing_deadline(reference_month: str, *, day: int) -> date:
-    """Termenul de depunere pentru o lună încheiată.
-
-    Este în luna **următoare**: documentele lui august se depun până pe 25
-    septembrie. Ziua este mărginită la 28 în configurare, deci există în orice
-    lună — inclusiv februarie, unde altfel termenul ar fi dispărut exact când
-    contează.
-    """
-    year, month = split_reference_month(reference_month)
-    return date(year + 1, 1, day) if month == 12 else date(year, month + 1, day)
 
 
 def _closing(reference_month: str, periods: list[PeriodView]) -> ClosingOut:
