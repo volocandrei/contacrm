@@ -21,8 +21,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # disc local, exact acolo unde documentele s-ar pierde la prima repornire.
 STORAGE_PROVIDERS = frozenset({"local", "s3"})
 
-#: Motoarele de răspuns ale asistentului. `rules` merge fără credențiale.
-ASSISTANT_PROVIDERS = frozenset({"rules"})
+#: Motoarele de răspuns ale asistentului. `rules` merge fără credențiale;
+#: `anthropic` cere o cheie și scoate întrebările din tiparul fix.
+ASSISTANT_PROVIDERS = frozenset({"rules", "anthropic"})
 
 # Providerii de extracție care există, toți locali:
 #   `mock`      — date sintetice, pentru demonstrație
@@ -228,6 +229,14 @@ class Settings(BaseSettings):
     # să trimită nimic în afara rețelei cabinetului. Un motor de limbaj se
     # adaugă prin același seam, cu aceleași unelte și aceleași permisiuni.
     assistant_provider: str = "rules"
+    assistant_api_key: str = ""
+    #: Modelul implicit. Sonnet este raportul potrivit între cost și calitate
+    #: pentru un asistent care cheamă unelte peste seturi mici de date.
+    assistant_model: str = "claude-sonnet-5"
+    #: Câte runde de unelte poate cere modelul înainte să răspundă. Trei
+    #: acoperă „găsește clientul, apoi vezi ce-i lipsește"; peste atât, un
+    #: dialog care nu se termină costă bani fără să dea un răspuns.
+    assistant_max_tool_rounds: int = 3
 
     # ── Notificări ───────────────────────────────────────────────────────────
     notifications_enabled: bool = False
@@ -346,6 +355,11 @@ class Settings(BaseSettings):
             problems.append("OCR_PROVIDER real cu AI_PROVIDER=mock — configurare inconsistentă.")
         if self.storage_provider == "s3" and not self.s3_bucket:
             problems.append("STORAGE_PROVIDER=s3 fără S3_BUCKET.")
+        if self.assistant_provider == "anthropic" and not self.assistant_api_key.strip():
+            # Fără cheie, fiecare întrebare ar cădea în motorul cu reguli, iar
+            # cabinetul ar crede că modelul răspunde. Oprirea la pornire este
+            # singurul moment în care cineva chiar citește mesajul.
+            problems.append("ASSISTANT_PROVIDER=anthropic fără ASSISTANT_API_KEY.")
         if problems:
             raise RuntimeError("Configurare invalidă pentru producție: " + " ".join(problems))
 

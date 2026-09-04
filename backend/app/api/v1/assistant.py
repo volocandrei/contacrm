@@ -19,12 +19,16 @@ from fastapi import APIRouter
 from pydantic import Field
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.logging import get_logger
 from app.domain.permissions import permissions_for
 from app.models.user import User
 from app.schemas.common import ApiModel
-from app.services.assistant.base import AssistantContext, AssistantReply
+from app.services.assistant.base import AssistantContext, AssistantError, AssistantReply
 from app.services.assistant.factory import build_assistant
+from app.services.assistant.rules import RuleAssistant
 from app.services.audit import AuditService
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/assistant", tags=["asistent"])
 
@@ -62,12 +66,37 @@ def _context(user: User) -> AssistantContext:
     )
 
 
+#: Ce se adaugă în față când modelul nu a răspuns și a preluat motorul local.
+FALLBACK_NOTE = "Modelul nu a răspuns; am folosit motorul local."
+
+
 @router.post("/chat", response_model=ChatOut)
 def chat(session: DbSession, user: CurrentUser, payload: ChatIn) -> ChatOut:
-    """Răspunde la o întrebare, în limitele rolului celui care o pune."""
+    """Răspunde la o întrebare, în limitele rolului celui care o pune.
+
+    **Când modelul cade, nu cade și chatul.** Un asistent care afișează „eroare"
+    la o pană de rețea a furnizorului devine, în ziua aceea, un buton mort — iar
+    întrebările pe care le acoperă motorul local sunt tocmai cele frecvente.
+    Preluarea se **spune**: o degradare tăcută ar face ca o zi cu răspunsuri mai
+    scurte să pară un capriciu al aplicației.
+    """
     assistant = build_assistant(session)
     context = _context(user)
-    reply: AssistantReply = assistant.answer(payload.message, context)
+    engine = assistant.name
+
+    try:
+        reply: AssistantReply = assistant.answer(payload.message, context)
+    except AssistantError as exc:
+        logger.warning("assistant_fallback", engine=engine, reason=str(exc))
+        local = RuleAssistant(session)
+        reply = local.answer(payload.message, context)
+        reply = AssistantReply(
+            text=f"{FALLBACK_NOTE}\n{reply.text}",
+            links=reply.links,
+            suggestions=reply.suggestions,
+            used=reply.used,
+        )
+        engine = local.name
 
     AuditService(session).record(
         organization_id=user.organization_id,
@@ -86,5 +115,5 @@ def chat(session: DbSession, user: CurrentUser, payload: ChatIn) -> ChatOut:
         links=[LinkOut(label=link.label, path=link.path) for link in reply.links],
         suggestions=list(reply.suggestions),
         used=list(reply.used),
-        engine=assistant.name,
+        engine=engine,
     )

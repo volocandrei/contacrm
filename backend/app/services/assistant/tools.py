@@ -43,6 +43,9 @@ class Tool:
     permission: Permission
     description: str
     run: Callable[[Session, AssistantContext, str], ToolResult]
+    #: Ce înseamnă argumentul, pentru un model care trebuie să-l compună. Gol =
+    #: unealta nu ia argument, iar schema pe care o vede modelul rămâne goală.
+    argument_hint: str = ""
 
 
 def _plural(count: int, one: str, many: str) -> str:
@@ -268,24 +271,28 @@ TOOLS: tuple[Tool, ...] = (
         permission=Permission.DOCUMENTS_READ,
         description="Termenul de depunere pentru luna încheiată.",
         run=deadline,
+        argument_hint="Luna contabilă, ca „2026-08”. Gol = luna care se depune acum.",
     ),
     Tool(
         name="missing_documents",
         permission=Permission.DOCUMENTS_READ,
         description="Ce documente lipsesc, per client, pentru o lună.",
         run=missing_documents,
+        argument_hint="Luna contabilă, ca „2026-08”. Gol = luna care se depune acum.",
     ),
     Tool(
         name="find_client",
         permission=Permission.CLIENTS_READ,
         description="Găsește un client după nume sau CUI.",
         run=find_client,
+        argument_hint="Numele firmei sau CUI-ul, așa cum l-a scris omul.",
     ),
     Tool(
         name="client_month",
         permission=Permission.CLIENTS_READ,
         description="Cum stă un client cu luna în curs de depunere.",
         run=client_month,
+        argument_hint="Numele firmei sau CUI-ul.",
     ),
     Tool(
         name="my_tasks",

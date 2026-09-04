@@ -118,12 +118,12 @@ placeholdere evidente din `.env.example`.
 
 ```
 frontend  16.282 linii sursă +  2.517 linii teste  →   202 teste
-backend   20.900 linii sursă + 17.950 linii teste  → 1.243 teste
+backend   21.171 linii sursă + 18.279 linii teste  → 1.258 teste
 end-to-end 1.484 linii                             →    58 teste (browser real)
 migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.503 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.518 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -156,10 +156,31 @@ trebuie să aibă în spate un om care a apăsat, nu o propoziție interpretată
 **nu inventează**: fiecare cifră vine dintr-o unealtă care a interogat baza; când
 nu știe, spune ce poate în schimb.
 
-Motorul implicit (`ASSISTANT_PROVIDER=rules`) nu cere nicio credențială și nu
-trimite nimic în afara rețelei cabinetului. Un model de limbaj se adaugă prin
-același seam ca la OCR și stocare (ADR-004, ADR-005), cu aceleași unelte și
-aceleași limite de rol.
+Două motoare, același seam ca la OCR și stocare (ADR-004, ADR-005):
+
+- **`rules`** (implicit) — determinist, fără nicio credențială, nu trimite nimic
+  în afara rețelei cabinetului. Acoperă întrebările scurte și frecvente și nu
+  poate greși cifra.
+- **`anthropic`** — model de limbaj cu *tool-calling* peste **exact aceleași**
+  unelte. Modelul nu are acces la baza de date: primește o listă scurtă de
+  unelte declarate de server, alege ce cheamă, iar serverul execută sub
+  permisiunile utilizatorului. Nimic din datele cabinetului nu ajunge la model
+  decât ca rezultat al unei unelte pe care omul avea dreptul să o cheme. Rolul
+  restrânge chiar și lista de unelte *declarate*, nu doar execuția.
+
+**Linkurile din răspuns vin din uneltele executate, nu din textul modelului** —
+un model nu are cum să trimită omul la o adresă inventată. Când modelul nu
+răspunde, preia motorul local **și se spune**: o degradare tăcută ar face ca o zi
+cu răspunsuri mai scurte să pară un capriciu al aplicației.
+
+`ASSISTANT_PROVIDER=anthropic` fără `ASSISTANT_API_KEY` oprește pornirea —
+altfel fiecare întrebare ar cădea tăcut în motorul local, iar cabinetul ar crede
+că plătește pentru un model care răspunde.
+
+**NEVERIFICAT CU UN MODEL REAL — CERE O CREDENȚIALĂ EXTERNĂ.** Protocolul este
+exercitat în teste cu un transport fals, ca la ANAF și Microsoft Graph: ce i se
+trimite modelului, ce se face cu ce cere el, ce se întâmplă când cade. Prima
+cerere adevărată rămâne de făcut o dată, manual, la instalare.
 
 **Ctrl+K deschide paleta de comenzi**: caută în același timp în ecrane, clienți
 (inclusiv după CUI) și documente, și duce direct la rezultat. Înlocuiește câmpul

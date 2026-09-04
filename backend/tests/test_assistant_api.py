@@ -20,11 +20,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.v1 import assistant as assistant_route
 from app.domain.permissions import RoleCode
 from app.models.audit import AuditLog
 from app.models.client import Client
 from app.models.organization import Organization
 from app.models.user import Role, User
+from app.services.assistant.base import AssistantError
 from tests.conftest import requires_db
 from tests.test_crm_api import login, make_user
 
@@ -180,3 +182,33 @@ class TestTheTrace:
         assert entry.user_name == admin.full_name
         assert entry.detail == "find_client"
         assert secret not in (entry.detail or "")
+
+
+class TestWhenTheModelIsAway:
+    """Chatul nu are voie să moară odată cu furnizorul.
+
+    Întrebările pe care le acoperă motorul local sunt tocmai cele frecvente —
+    dacă ele s-ar opri la o pană de rețea a furnizorului, asistentul ar deveni în
+    ziua aceea un buton mort.
+    """
+
+    def test_the_local_engine_takes_over_and_says_so(
+        self, api: TestClient, admin: User, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Preluarea tăcută ar face ca o zi mai slabă să pară un capriciu."""
+
+        class Broken:
+            name = "anthropic"
+
+            def answer(self, message: str, context: object) -> object:
+                raise AssistantError("model indisponibil")
+
+        monkeypatch.setattr(assistant_route, "build_assistant", lambda _session: Broken())
+        login(api, admin.email)
+
+        body = ask(api, "când e termenul?")
+
+        assert body["engine"] == "rules"
+        assert body["text"].startswith(assistant_route.FALLBACK_NOTE)
+        # Și tot răspunde la întrebare, nu doar anunță pana.
+        assert "Termenul pentru luna" in body["text"]

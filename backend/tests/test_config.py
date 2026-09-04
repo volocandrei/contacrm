@@ -163,3 +163,31 @@ class TestEngineForItsEnvironment:
         from app.core.db import connect_arguments
 
         assert "prepare_threshold" not in connect_arguments(_settings())
+
+
+def test_production_refuses_a_declared_model_without_a_key() -> None:
+    """Altfel, fiecare întrebare ar cădea tăcut în motorul local.
+
+    Cabinetul ar crede că plătește pentru un model care răspunde, iar dovada că
+    nu răspunde ar fi doar o linie de log pe care n-o citește nimeni. Pornirea
+    este singurul moment în care cineva chiar vede mesajul.
+    """
+    settings = _settings(
+        environment=Environment.PRODUCTION,
+        secret_key="x" * 64,
+        ocr_provider="pdf_text",
+        assistant_provider="anthropic",
+    )
+
+    with pytest.raises(RuntimeError, match="ASSISTANT_API_KEY"):
+        settings.assert_production_ready()
+
+
+def test_production_accepts_the_local_engine_without_any_key() -> None:
+    """Motorul implicit nu cere nimic: un cabinet poate porni fără niciun cont."""
+    settings = _settings(
+        environment=Environment.PRODUCTION, secret_key="x" * 64, ocr_provider="pdf_text"
+    )
+
+    assert settings.assistant_provider == "rules"
+    settings.assert_production_ready()

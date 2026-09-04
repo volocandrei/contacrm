@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.services.assistant.base import AssistantProvider
+from app.services.assistant.language_model import LanguageModelAssistant
 from app.services.assistant.rules import RuleAssistant
 
 #: Lista valorilor acceptate stă în `core/config.py`, lângă celelalte, și este
@@ -24,6 +25,13 @@ from app.services.assistant.rules import RuleAssistant
 def build_assistant(session: Session) -> AssistantProvider:
     if settings.assistant_provider == "rules":
         return RuleAssistant(session)
+    if settings.assistant_provider == "anthropic":
+        return LanguageModelAssistant(
+            session,
+            api_key=settings.assistant_api_key,
+            model=settings.assistant_model,
+            max_rounds=settings.assistant_max_tool_rounds,
+        )
     # Nu se poate ajunge aici: validatorul din configurare respinge orice altceva
     # la pornire. Ramura există ca adăugarea unui motor nou să fie o eroare
     # vizibilă, nu o cădere tăcută în cel implicit.
