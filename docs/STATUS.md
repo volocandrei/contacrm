@@ -117,24 +117,28 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  15.601 linii sursă +  2.425 linii teste  →   194 teste
+frontend  15.670 linii sursă +  2.425 linii teste  →   194 teste
 backend   20.132 linii sursă + 17.665 linii teste  → 1.212 teste
-end-to-end 1.330 linii                             →    51 teste (browser real)
+end-to-end 1.403 linii                             →    54 teste (browser real)
 migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.457 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.460 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
 
-Toate cele **23 de rute** sunt ecrane reale, nu placeholdere:
+Toate cele **24 de rute** sunt ecrane reale, nu placeholdere. Meniul este ordonat
+după cum se lucrează, nu după cum s-au construit modulele: ziua începe la
+documente, clienții și rapoartele se deschid mai rar, administrarea aproape
+niciodată. „Integrări" stă separat de „Administrare" — „cum adaug un coleg" și
+„cum conectez OneDrive" sunt două întrebări diferite.
 
 | Zonă | Ecrane |
 |---|---|
 | Panou principal | KPI, inbox recent, „necesită atenție", perioade, cronologie |
 | CRM | listă clienți (filtre + paginare), detaliu client, **agendă de contacte căutabilă**, sarcini (kanban) |
-| Documente | inbox, în procesare, verificare, arhivă, **ecranul de verificare** |
+| Documente | inbox, în procesare, verificare, **neatribuite**, arhivă, **ecranul de verificare** |
 | Contabilitate | perioade cu checklist, documente lipsă |
 | Comunicare | mesaje, șabloane, remindere |
 | Rapoarte | agregări calculate în backend, cu filtre pe lună și client |

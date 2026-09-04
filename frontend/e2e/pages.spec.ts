@@ -22,6 +22,7 @@ const SCREENS = [
   ["/documente/inbox", "Inbox documente"],
   ["/documente/procesare", "În procesare"],
   ["/documente/verificare", "Verificare"],
+  ["/documente/neatribuite", "Neatribuite"],
   ["/documente/arhiva", "Arhivă"],
   ["/contabilitate/perioade", "Perioade"],
   ["/contabilitate/lipsa", "Documente lipsă"],

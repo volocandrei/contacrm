@@ -10,6 +10,7 @@ import {
   Landmark,
   Mail,
   MessageSquare,
+  Play,
   Plug,
   RefreshCw,
   ShieldCheck,
@@ -26,7 +27,7 @@ import { useFilterParams } from "@/hooks/use-filter-params";
 import { useHasPermission } from "@/features/auth/use-auth";
 import { UploadPanel } from "@/features/documents/upload-panel";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
-import { focusRing, iconChip, pillClass, type Tone } from "@/lib/ui";
+import { buttonPrimary, focusRing, iconChip, pillClass, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import {
   DOCUMENT_SOURCE,
@@ -35,12 +36,28 @@ import {
   type DocumentStatus,
 } from "@/types/domain";
 
-export type DocumentsPreset = "inbox" | "processing" | "review" | "archive" | "all";
+export type DocumentsPreset =
+  | "inbox"
+  | "processing"
+  | "review"
+  | "unmatched"
+  | "archive"
+  | "all";
 
+/**
+ * Ce stări acoperă fiecare ecran.
+ *
+ * `review` conținea și `UNMATCHED`, iar asta punea două munci diferite în
+ * aceeași listă: un document „necesită verificare" cere un câmp corectat, unul
+ * „neatribuit" cere un client — și adesea altcineva, cine cunoaște firmele.
+ * Mai rău, contorul din meniu numără doar `REVIEW_REQUIRED` (vezi
+ * `/dashboard/counts`), deci insigna spunea 7 și lista arăta 11.
+ */
 const PRESET_STATUS: Record<DocumentsPreset, string> = {
   inbox: "RECEIVED,PROCESSING,REVIEW_REQUIRED,UNMATCHED,ERROR,DUPLICATE",
   processing: "RECEIVED,PROCESSING",
-  review: "REVIEW_REQUIRED,UNMATCHED",
+  review: "REVIEW_REQUIRED",
+  unmatched: "UNMATCHED",
   archive: "ARCHIVED,APPROVED",
   all: "",
 };
@@ -155,7 +172,16 @@ export function DocumentsPage({
         title={title}
         description={description}
         actions={
-          activeCount > 0 ? (
+          <>
+            {/* Coada se conduce din tastatură și merge singură mai departe;
+                fără un buton, singurul drum spre ea era adresa scrisă de mână. */}
+            {preset === "review" && (
+              <Link to="/documente/verificare/coada" className={cn(buttonPrimary, "h-9")}>
+                <Play className="h-4 w-4" aria-hidden="true" />
+                Pornește verificarea
+              </Link>
+            )}
+            {activeCount > 0 ? (
             <button
               type="button"
               onClick={reset}
@@ -164,7 +190,8 @@ export function DocumentsPage({
               <X className="h-4 w-4" aria-hidden="true" />
               Șterge filtrele ({activeCount})
             </button>
-          ) : undefined
+            ) : null}
+          </>
         }
       />
 

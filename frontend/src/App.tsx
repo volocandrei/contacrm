@@ -66,6 +66,16 @@ function App() {
               />
             }
           />
+          <Route
+            path="/documente/neatribuite"
+            element={
+              <DocumentsPage
+                preset="unmatched"
+                title="Neatribuite"
+                description="Documente sosite fără client identificat — au nevoie de cineva care cunoaște firmele"
+              />
+            }
+          />
           <Route path="/documente/verificare/:id" element={<ReviewPage />} />
           <Route path="/documente/verificare/coada" element={<ReviewQueuePage />} />
           <Route

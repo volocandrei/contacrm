@@ -64,22 +64,21 @@ export const NAV_ROOT: NavItem = {
   Icon: LayoutDashboard,
 };
 
+/**
+ * Grupurile, în ordinea în care se lucrează.
+ *
+ * **De ce ordinea asta.** Meniul era ordonat după cum s-au construit modulele —
+ * CRM, Documente, Contabilitate, … —, nu după cum se folosesc. Într-un cabinet,
+ * ziua începe la documente: ce a sosit, ce așteaptă un om, ce se poate închide.
+ * Clienții și rapoartele se deschid mai rar, administrarea aproape niciodată.
+ * Un meniu ordonat după frecvență scurtează drumul care se face de o sută de
+ * ori pe zi și îl lungește pe cel care se face o dată pe lună.
+ *
+ * **De ce „Integrări" separat de „Administrare".** Sunt două întrebări diferite:
+ * „cum adaug un coleg" și „cum conectez OneDrive". Amestecate, ambele se caută
+ * prin șase rânduri.
+ */
 export const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "CRM",
-    Icon: Building2,
-    items: [
-      { label: "Clienți", path: "/crm/clienti", Icon: Building2, permission: "clients:read" },
-      { label: "Contacte", path: "/crm/contacte", Icon: Contact, permission: "clients:read" },
-      {
-        label: "Sarcini",
-        path: "/crm/sarcini",
-        Icon: ClipboardList,
-        badgeKey: "tasks",
-        permission: "tasks:read",
-      },
-    ],
-  },
   {
     label: "Documente",
     Icon: FileStack,
@@ -105,6 +104,16 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: "documents:read",
       },
       {
+        // Contorul `unmatched` exista de la început, dar nu avea ecran: singurul
+        // loc unde apăreau documentele fără client era lista de verificare, unde
+        // se amestecau cu o muncă de alt fel. Insigna spunea 7 și lista arăta 11.
+        label: "Neatribuite",
+        path: "/documente/neatribuite",
+        Icon: FileQuestionMark,
+        badgeKey: "unmatched",
+        permission: "documents:read",
+      },
+      {
         label: "Arhivă",
         path: "/documente/arhiva",
         Icon: Archive,
@@ -125,7 +134,36 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         label: "Documente lipsă",
         path: "/contabilitate/lipsa",
-        Icon: FileQuestionMark,
+        Icon: ClipboardList,
+        permission: "documents:read",
+      },
+    ],
+  },
+  {
+    label: "CRM",
+    Icon: Building2,
+    items: [
+      { label: "Clienți", path: "/crm/clienti", Icon: Building2, permission: "clients:read" },
+      { label: "Contacte", path: "/crm/contacte", Icon: Contact, permission: "clients:read" },
+      {
+        label: "Sarcini",
+        path: "/crm/sarcini",
+        Icon: ClipboardList,
+        badgeKey: "tasks",
+        permission: "tasks:read",
+      },
+    ],
+  },
+  {
+    // Un singur ecran: bara laterală îl arată ca legătură simplă, fără antet de
+    // grup. Grupul rămâne aici doar ca formă de date.
+    label: "Rapoarte",
+    Icon: ChartColumn,
+    items: [
+      {
+        label: "Rapoarte",
+        path: "/rapoarte",
+        Icon: ChartColumn,
         permission: "documents:read",
       },
     ],
@@ -155,14 +193,20 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Rapoarte",
-    Icon: ChartColumn,
+    label: "Integrări",
+    Icon: Cloud,
     items: [
       {
-        label: "Rapoarte",
-        path: "/rapoarte",
-        Icon: ChartColumn,
-        permission: "documents:read",
+        label: "Surse documente",
+        path: "/administrare/surse",
+        Icon: Cloud,
+        permission: "admin:settings",
+      },
+      {
+        label: "e-Factura",
+        path: "/administrare/e-factura",
+        Icon: Landmark,
+        permission: "admin:settings",
       },
     ],
   },
@@ -186,18 +230,6 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Setări",
         path: "/administrare/setari",
         Icon: Settings,
-        permission: "admin:settings",
-      },
-      {
-        label: "Surse documente",
-        path: "/administrare/surse",
-        Icon: Cloud,
-        permission: "admin:settings",
-      },
-      {
-        label: "e-Factura",
-        path: "/administrare/e-factura",
-        Icon: Landmark,
         permission: "admin:settings",
       },
       {
