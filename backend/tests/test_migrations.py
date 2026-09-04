@@ -39,6 +39,8 @@ _EXPECTED_ONLY_IN_DATABASE = {
     "ix_documents_supplier_name_trgm",
     "ix_documents_original_filename_trgm",
     "ix_documents_document_number_trgm",
+    # Index GIN de căutare integrală: to_tsvector('romanian', app_unaccent(ocr_text))
+    "ix_documents_ocr_text_fts",
     # Indexuri unice parțiale (au clauză WHERE)
     "uq_clients_organization_id_tax_id",
     "uq_organizations_tax_id",

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, func, literal_column, or_, select
 from sqlalchemy.orm import Session, joinedload, lazyload
 
 from app.domain.enums import DocumentStatus
@@ -27,6 +27,36 @@ from app.schemas.document import SORTABLE_FIELDS, DocumentFilters
 
 # Coloanele în care caută bara de căutare. `client_name` vine din tabela alăturată.
 _SEARCHABLE_COLUMNS = ("original_filename", "stored_filename", "supplier_name", "document_number")
+
+
+#: Configurarea de căutare integrală. `romanian` aduce rădăcina cuvântului —
+#: „facturi" găsește „factura" —, ceea ce contează într-un document de câteva
+#: pagini, spre deosebire de un nume de firmă.
+_TEXT_SEARCH_CONFIG = "romanian"
+
+
+def _content_matches(query: str) -> ColumnElement[bool]:
+    """Textul citit de pe document conține ce s-a căutat.
+
+    Expresia trebuie să fie **identică**, până la ultimul apel, cu cea din
+    indexul creat de migrarea `8f3d61c47a92`:
+    `to_tsvector('romanian', app_unaccent(ocr_text))`. Aceeași lecție ca la
+    indexurile trigram, care au stat moarte fiindcă interogarea împacheta
+    coloana într-un `coalesce` pe care indexul nu îl avea.
+
+    `app_unaccent` pe amândouă părțile: textul OCR și ce scrie omul în căsuță
+    diferă aproape întotdeauna prin diacritice.
+
+    Nu se selectează nimic din `ocr_text` — se filtrează doar. Textul integral nu
+    iese niciodată într-un răspuns de listă (§64).
+    """
+    # `literal_column`, nu un parametru: configurarea este de tip `regconfig`, iar
+    # un bind nu se poate reda literal — de care are nevoie și `EXPLAIN` din test,
+    # și planificatorul, ca să recunoască expresia indexului.
+    config: ColumnElement[str] = literal_column(f"'{_TEXT_SEARCH_CONFIG}'")
+    document = func.to_tsvector(config, func.app_unaccent(Document.ocr_text))
+    wanted = func.plainto_tsquery(config, func.app_unaccent(query))
+    return document.op("@@")(wanted)
 
 
 def _normalised(column: Any) -> ColumnElement[str]:
@@ -105,12 +135,15 @@ class DocumentRepository:
 
         if filters.q:
             needle = func.concat("%", func.app_unaccent(func.lower(escape_like(filters.q))), "%")
-            conditions = [
+            conditions: list[ColumnElement[bool]] = [
                 _normalised(getattr(Document, column)).like(needle, escape="\\")
                 for column in _SEARCHABLE_COLUMNS
             ]
             # Numele clientului este căutabil deși stă în altă tabelă.
             conditions.append(_normalised(Client.name).like(needle, escape="\\"))
+            # Și ce scrie **în** document. Coloanele de mai sus sunt toate
+            # *despre* document; asta este singura care caută în el.
+            conditions.append(_content_matches(filters.q))
             stmt = stmt.where(or_(*conditions))
 
         return stmt

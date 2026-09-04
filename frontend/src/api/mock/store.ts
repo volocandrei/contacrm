@@ -848,7 +848,18 @@ export function listDocuments(filters: DocumentFilters): Paginated<DocumentListI
   if (filters.q) {
     items = items.filter((d) =>
       matches(
-        [d.originalFilename, d.storedFilename, d.clientName, d.supplierName, d.documentNumber],
+        [
+          d.originalFilename,
+          d.storedFilename,
+          d.clientName,
+          d.supplierName,
+          d.documentNumber,
+          // Și ce scrie **în** document. Toate celelalte sunt *despre* el.
+          // Serverul caută în `ocr_text` întreg, cu index de căutare integrală;
+          // aici avem doar fragmentul, dar semantica este aceeași: căsuța de
+          // căutare găsește și documentele al căror text conține termenul.
+          d.ocr.textPreview,
+        ],
         filters.q!,
       ),
     );

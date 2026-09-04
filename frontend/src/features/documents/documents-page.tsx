@@ -156,7 +156,7 @@ export function DocumentsPage({
           label="Caută documente"
           value={values.q}
           onChange={(value) => setValue("q", value)}
-          placeholder="Fișier, furnizor, număr…"
+          placeholder="Fișier, furnizor, număr, text din document…"
           className="col-span-2 xl:col-span-2"
         />
         <SelectFilter

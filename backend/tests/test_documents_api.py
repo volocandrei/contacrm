@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1617,6 +1618,134 @@ class TestArchivedDocumentsAreClosed:
 
 
 # ── Panoul principal ─────────────────────────────────────────────────────────
+
+
+class TestSearchingInsideDocuments:
+    """Căutarea se uita doar la ce e **despre** document, nu la ce scrie în el.
+
+    Numele fișierului, numele standardizat, furnizorul, numărul, numele
+    clientului — toate metadate. Textul citit de pe document stă în `ocr_text` de
+    la M5 și era singurul lucru care nu se putea căuta, deși este exact ce caută
+    un contabil: „unde e factura aia de la Orange din mai".
+    """
+
+    def _with_text(self, db: Session, document_id: str, text: str, client: Client) -> None:
+        document = db.get(Document, uuid.UUID(document_id))
+        assert document is not None
+        document.ocr_text = text
+        document.client_id = client.id
+        db.flush()
+
+    def test_a_word_that_exists_only_in_the_body_is_found(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        login(api_storage, admin.email)
+        document_id = upload(api_storage, name="scan-oarecare.pdf")["id"]
+        self._with_text(db, document_id, "Abonament telefonie Portocala Mobile SA", client_row)
+
+        found = api_storage.get("/api/v1/documents", params={"q": "portocala"}).json()
+
+        assert found["total"] == 1
+        assert found["items"][0]["id"] == document_id
+
+    def test_diacritics_do_not_have_to_match(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Textul OCR și ce scrie omul în căsuță diferă aproape întotdeauna prin ele."""
+        login(api_storage, admin.email)
+        document_id = upload(api_storage, name="scan-diacritice.pdf")["id"]
+        self._with_text(db, document_id, "Servicii de distribuție și mentenanță", client_row)
+
+        found = api_storage.get("/api/v1/documents", params={"q": "distributie"}).json()
+        assert found["total"] == 1
+
+    def test_the_stem_is_enough(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Configurarea `romanian` aduce rădăcina: „facturi" găsește „factura"."""
+        login(api_storage, admin.email)
+        document_id = upload(api_storage, name="scan-radacina.pdf")["id"]
+        self._with_text(db, document_id, "Factura pentru servicii de consultanta", client_row)
+
+        assert api_storage.get("/api/v1/documents", params={"q": "facturi"}).json()["total"] == 1
+
+    def test_a_word_that_is_nowhere_finds_nothing(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Căutarea trebuie să și refuze, altfel nu este căutare."""
+        login(api_storage, admin.email)
+        document_id = upload(api_storage, name="scan-gol.pdf")["id"]
+        self._with_text(db, document_id, "Text care nu conține cuvântul cerut", client_row)
+
+        assert api_storage.get("/api/v1/documents", params={"q": "elicopter"}).json()["total"] == 0
+
+    def test_a_document_without_text_does_not_break_the_search(
+        self, api_storage: TestClient, admin: User, types: dict[str, DocumentType]
+    ) -> None:
+        """`to_tsvector(NULL)` este `NULL`: rândul nu se potrivește, nu explodează."""
+        login(api_storage, admin.email)
+        upload(api_storage, name="fara-text.pdf")
+
+        assert api_storage.get("/api/v1/documents", params={"q": "orice"}).status_code == 200
+
+    def test_the_index_is_actually_usable(self, db: Session) -> None:
+        """Un index pe expresie este mort dacă interogarea nu îl scrie identic.
+
+        S-a mai întâmplat în proiectul ăsta: trei indexuri GIN trigram au stat
+        nefolosite fiindcă interogarea împacheta coloana într-un `coalesce` pe
+        care indexul nu îl avea, iar căutarea scana tot tabelul fără să se
+        plângă nimeni.
+
+        Se cere aici planificatorului să prefere indexuri. Dacă expresia din
+        `_content_matches` s-ar despărți de cea din migrare, Postgres nu ar avea
+        ce folosi și ar rămâne tot la scanare — exact ce prinde testul.
+        """
+        from app.repositories.document import _content_matches
+
+        statement = select(Document.id).where(_content_matches("portocala"))
+        compiled = statement.compile(db.get_bind(), compile_kwargs={"literal_binds": True})
+
+        db.execute(sa_text("SET LOCAL enable_seqscan = off"))
+        rows = db.execute(sa_text(f"EXPLAIN {compiled}")).all()
+        plan = " | ".join(row[0] for row in rows)
+
+        assert "ix_documents_ocr_text_fts" in plan, plan
+
+    def test_the_body_text_still_never_leaves_in_a_listing(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        db: Session,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Se caută în text, dar textul nu iese în listă (§64)."""
+        login(api_storage, admin.email)
+        document_id = upload(api_storage, name="scan-secret.pdf")["id"]
+        self._with_text(db, document_id, "Portocala Mobile SA sold restant 4210 lei", client_row)
+
+        body = api_storage.get("/api/v1/documents", params={"q": "portocala"}).text
+        assert "sold restant" not in body
 
 
 class TestDashboard:

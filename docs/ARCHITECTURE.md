@@ -186,6 +186,14 @@ UNIQUE parțial pe `document_intakes(source, external_message_id, attachment_id)
 
 ---
 
+**Căutarea în conținut are propriul index, și e alt fel de index.** Trigramul
+caută bucăți de cuvânt într-un câmp scurt („distrib" în „Distribuție SRL");
+conținutul unui document se caută pe **cuvinte**, cu rădăcină comună, deci GIN
+peste `to_tsvector('romanian', app_unaccent(ocr_text))`. Expresia din interogare
+trebuie să fie identică, până la ultimul apel, cu cea din migrare — un test rulează
+`EXPLAIN` și cade dacă cele două se despart, pentru că exact asta s-a întâmplat
+o dată cu indexurile trigram, tăcut.
+
 ## 5. Pipeline de procesare
 
 ```
