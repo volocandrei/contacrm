@@ -35,6 +35,7 @@ Ordinea de prioritate în decizii (§104):
 | Auth | JWT access + refresh rotativ, Argon2id | ✅ RBAC granular, cookie-uri httpOnly |
 | Storage | `StorageProvider` abstract | Local FS în MVP → S3/OneDrive/Azure ulterior |
 | OCR/AI | `DocumentExtractionProvider` abstract | ✅ `local` (PDF cu strat de text + e-Factura) pentru producție; `mock` doar în dev, iar pornirea în producție îl refuză (ADR-005) |
+| Surse externe | `DriveClient` (Microsoft Graph), `AnafClient` (SPV) | ✅ amândouă protocoale, ca sincronizarea să poată fi exercitată fără credențiale (ADR-009) |
 
 Versiuni reale instalate: React 19.2, Vite 8.2, TypeScript 6.0, Tailwind 4.3,
 lucide-react 1.34 · Python 3.13.15, FastAPI 0.121, SQLAlchemy 2.0.52, Alembic 1.18,
@@ -53,12 +54,12 @@ CONTACRM/
 │   │   ├── models/            # ✅ organization, user, audit, client/contact/note/tag, task
 │   │   ├── schemas/           # ✅ ApiModel, Paginated, PageParams
 │   │   ├── repositories/      # ✅ user, client, task — filtrarea pe organization_id
-│   │   ├── services/          # ✅ documente, extracție, storage, microsoft/ (Graph)
+│   │   ├── services/          # ✅ documente, extracție, storage, microsoft/ (Graph), anaf/ (SPV)
 │   │   ├── domain/            # ✅ permissions.py, enums.py
 │   │   └── worker.py          # ✅ consumă coada și întreabă sursele externe
 │   ├── alembic/versions/      # ✅
 │   ├── Dockerfile             # ✅ multi-stage, rulează ca utilizator neprivilegiat
-│   └── tests/                 # ✅ 980 de teste, pe PostgreSQL construit cu migrări
+│   └── tests/                 # ✅ 1.114 teste, pe PostgreSQL construit cu migrări
 ├── frontend/                  # ✅ Vite + React + TS strict + Tailwind
 │   └── src/
 │       ├── api/               # client + endpoints + hooks + mock/ (backend simulat)

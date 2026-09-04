@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  10.855 linii sursă +  1.410 linii teste  →  113 teste
-backend   15.378 linii sursă + 13.459 linii teste  →  948 teste
-end-to-end   728 linii                             →   22 teste (browser real)
-migrări    1.685 linii
+frontend  11.743 linii sursă +  1.785 linii teste  →   146 teste
+backend   18.817 linii sursă + 16.265 linii teste  → 1.114 teste
+end-to-end   932 linii                             →    32 teste (browser real)
+migrări    1.857 linii
 ```
 
-Toate verificările trec: **1.083 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.292 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -370,14 +370,17 @@ Vechile și noile valori nu ies prin API: auditul răspunde la „cine, ce, cân
 „ce scria pe factură". Cine are nevoie de conținut deschide documentul, iar acea
 deschidere se auditează la rândul ei.
 
-Rute reale existente: 37 de endpoint-uri (auth ×3, `/me`, `/users`, CRM ×6,
-documente ×13, `/dashboard` ×2, perioade ×5, audit, rapoarte, setări, health ×3),
-plus `/internal/run-queue`, care nu apare în OpenAPI pentru că nu face parte din
-contractul cu frontend-ul.
+Rute reale existente **azi**, după M11: 65 sub `/api/v1` (integrări ×21,
+documente ×14, CRM ×12, auth ×3, health ×3, panou ×2, perioade ×2, sarcini ×2,
+plus `/me`, `/users`, `/document-types`, `/reports`, `/settings`, `/audit-logs`),
+cele trei `/health/*` de la rădăcină, și `/internal/run-queue`, care nu apare în
+OpenAPI pentru că nu face parte din contractul cu frontend-ul. La momentul M6
+erau 37.
 
 ### Verificat pe date reale, nu doar în teste
 
-- Toate cele opt migrări se aplică **și se dau înapoi** curat
+- Toate cele **12** migrări se aplică **și se dau înapoi** curat — verificat
+  dus-întors la fiecare adăugare, nu presupus
 - Flux HTTP complet: parolă greșită → 401, login → `CurrentUser`, cookie-uri
   `HttpOnly`, `/me`, `/users` ca ADMIN, refresh, logout, `/me` după logout → 401
 - În baza de date: audit cu `ip` și `request_id`, `timestamptz` cu offset,
