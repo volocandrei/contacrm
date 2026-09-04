@@ -99,6 +99,8 @@ export const clients = {
   get: (id: string) => api.get<Client>(`/clients/${id}`),
   contacts: (id: string) => api.get<Contact[]>(`/clients/${id}/contacts`),
   notes: (id: string) => api.get<ClientNote[]>(`/clients/${id}/notes`),
+  createNote: (id: string, body: string) =>
+    api.post<ClientNote>(`/clients/${id}/notes`, { body }),
   periods: (id: string) => api.get<AccountingPeriod[]>(`/clients/${id}/periods`),
 };
 

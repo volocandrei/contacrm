@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Mail, Pencil, Phone, Plus, StickyNote } from "lucide-react";
+import { ArrowLeft, LoaderCircle, Mail, Pencil, Phone, Plus, StickyNote } from "lucide-react";
 import {
   useClient,
   useClientContacts,
   useClientNotes,
   useClientPeriods,
   useClients,
+  useCreateNote,
   useDocuments,
 } from "@/api/hooks";
+import { ApiError } from "@/api/types";
 import { ErrorState, LoadingState, Panel } from "@/components/page";
 import { usePermissionCheck } from "@/features/auth/use-auth";
 import { ClientForm, ContactForm } from "@/features/clients/client-form";
@@ -20,6 +22,9 @@ import {
 } from "@/components/status-badge";
 import { formatDate, formatDateTime, formatMoney, formatReferenceMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+/** Cât poate avea o notă. Oglindește `MAX_NOTE_LENGTH` din backend. */
+const MAX_NOTE_LENGTH = 4000;
 
 const TABS = [
   { id: "general", label: "General" },
@@ -409,6 +414,7 @@ function NotesTab({ clientId }: { clientId: string }) {
 
   return (
     <Panel title="Note interne">
+      <NoteComposer clientId={clientId} />
       {notes?.length === 0 ? (
         <p className="text-sm text-gray-500 dark:text-gray-400">Nicio notă internă.</p>
       ) : (
@@ -427,6 +433,75 @@ function NotesTab({ clientId }: { clientId: string }) {
         </ul>
       )}
     </Panel>
+  );
+}
+
+/**
+ * Scrierea unei notițe.
+ *
+ * Lista de note exista de la M4, fără nimic care să scrie în ea — un CRM în care
+ * nu poți consemna „am vorbit cu clientul, aduce actele vineri". Aici se repară.
+ *
+ * Nu există modificare și nu există ștergere, deliberat: o notă este o
+ * consemnare, iar una care se poate rescrie nu mai este una. Când cineva
+ * greșește, scrie următoarea.
+ */
+function NoteComposer({ clientId }: { clientId: string }) {
+  const create = useCreateNote(clientId);
+  const can = usePermissionCheck();
+  const [body, setBody] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+
+  // Ascunderea este ergonomie; refuzul îl dă serverul, la fiecare cerere (§31).
+  if (!can("clients:write")) return null;
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setProblem(null);
+    create.mutate(body, {
+      onSuccess: () => setBody(""),
+      onError: (caught) =>
+        setProblem(caught instanceof ApiError ? caught.message : "Nota nu a putut fi salvată."),
+    });
+  }
+
+  return (
+    <form onSubmit={submit} className="mb-4">
+      <label htmlFor="note-body" className="sr-only">
+        Notă internă
+      </label>
+      <textarea
+        id="note-body"
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
+        rows={3}
+        maxLength={MAX_NOTE_LENGTH}
+        placeholder="Ce s-a discutat, ce a promis clientul, ce rămâne de urmărit…"
+        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+      />
+      {problem && (
+        <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">
+          {problem}
+        </p>
+      )}
+      <div className="mt-2 flex items-center justify-end gap-3">
+        <span className="text-xs text-gray-400 dark:text-gray-500">
+          {body.length}/{MAX_NOTE_LENGTH}
+        </span>
+        <button
+          type="submit"
+          disabled={!body.trim() || create.isPending}
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+        >
+          {create.isPending ? (
+            <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <StickyNote className="h-4 w-4" aria-hidden="true" />
+          )}
+          Adaugă nota
+        </button>
+      </div>
+    </form>
   );
 }
 

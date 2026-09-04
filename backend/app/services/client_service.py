@@ -39,8 +39,9 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode, NotFoundError, ValidationError
 from app.domain.enums import ClientStatus
-from app.models.client import Client, Contact
+from app.models.client import Client, ClientNote, Contact
 from app.models.user import User
+from app.schemas.client import MAX_NOTE_LENGTH
 from app.services.audit import AuditService
 from app.services.client_matching import normalize_tax_id
 
@@ -206,6 +207,55 @@ class ClientService:
             user_agent=actor.user_agent,
         )
         return contact
+
+    def add_note(
+        self,
+        organization_id: uuid.UUID,
+        client_id: uuid.UUID,
+        values: dict[str, Any],
+        actor: ActorContext,
+    ) -> ClientNote:
+        """Scrie o notă internă pe client.
+
+        **Autorul se păstrează ca text**, nu doar ca legătură: cine a scris o
+        notă nu trebuie să dispară odată cu contul lui. Modelul avea deja
+        `author_name` tocmai pentru asta; până acum nu avea cine să-l scrie.
+
+        Nu există modificare și nu există ștergere, deliberat. O notă este o
+        consemnare — „am vorbit cu clientul, aduce actele vineri" —, iar o
+        consemnare care se poate rescrie nu mai este o consemnare. Ce se face
+        când cineva greșește: se scrie următoarea.
+        """
+        client = self._client(organization_id, client_id)
+        body = _required_text(values.get("body"), "body", "Textul notei")
+        if len(body) > MAX_NOTE_LENGTH:
+            raise ValidationError(
+                f"Nota depășește {MAX_NOTE_LENGTH} de caractere.", {"body": ["Text prea lung."]}
+            )
+
+        note = ClientNote(
+            client_id=client.id,
+            author_id=actor.user.id,
+            author_name=actor.user.full_name,
+            body=body,
+        )
+        self.session.add(note)
+        self.session.flush()
+
+        self.audit.record(
+            organization_id=organization_id,
+            action="CLIENT_NOTE_ADDED",
+            entity_type="Client",
+            entity_id=str(client.id),
+            user_id=actor.user.id,
+            user_name=actor.user.full_name,
+            # Auditul spune **că** s-a scris o notă, nu ce scrie în ea: conținutul
+            # trăiește într-un singur loc, iar jurnalul nu este o a doua copie.
+            detail=f"Notă pe {client.name}",
+            ip=actor.ip,
+            user_agent=actor.user_agent,
+        )
+        return note
 
     def update_contact(
         self,

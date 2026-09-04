@@ -23,6 +23,7 @@ from app.repositories.document import DocumentRepository
 from app.schemas.client import (
     ClientCreate,
     ClientFilters,
+    ClientNoteCreate,
     ClientNoteOut,
     ClientOut,
     ClientUpdate,
@@ -179,6 +180,28 @@ def update_client(
         _actor(user, request),
     )
     return _to_out(client, repository.accountant_names([client]))
+
+
+@router.post(
+    "/{client_id}/notes", response_model=ClientNoteOut, status_code=status.HTTP_201_CREATED
+)
+def create_note(
+    session: DbSession,
+    user: ClientWriter,
+    request: Request,
+    client_id: uuid.UUID,
+    payload: ClientNoteCreate,
+) -> ClientNoteOut:
+    """Scrie o notă internă pe client.
+
+    Nu există modificare și nu există ștergere, deliberat: o notă este o
+    consemnare, iar o consemnare care se poate rescrie nu mai este una. Când
+    cineva greșește, se scrie următoarea.
+    """
+    note = ClientService(session).add_note(
+        user.organization_id, client_id, payload.model_dump(), _actor(user, request)
+    )
+    return ClientNoteOut.model_validate(note)
 
 
 @router.post(

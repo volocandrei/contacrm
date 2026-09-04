@@ -12,8 +12,10 @@ import { ApiError } from "@/api/types";
 import {
   createClient,
   createContact,
+  createNote,
   getClient,
   listContacts,
+  listNotes,
   mockLogin,
   updateClient,
   updateContact,
@@ -138,5 +140,34 @@ describe("autorizare", () => {
     mockLogin(OPERATOR);
     // Ascunderea butonului este ergonomie; decizia se ia aici și pe server.
     expect(() => createClient({ name: "Nu Se Poate SRL" })).toThrowError(/permisiunea/);
+  });
+});
+
+describe("notițe", () => {
+  it("nota se scrie și apare în listă", () => {
+    const client = createClient({ name: "Cu Notiță SRL" });
+    createNote(client.id, "Am vorbit cu clientul, aduce actele vineri.");
+
+    expect(listNotes(client.id)[0]?.body).toBe("Am vorbit cu clientul, aduce actele vineri.");
+  });
+
+  it("autorul se păstrează ca text, nu ca legătură", () => {
+    // Cine a scris o notă nu trebuie să dispară odată cu contul lui.
+    const client = createClient({ name: "Cu Autor SRL" });
+
+    expect(createNote(client.id, "Consemnare.").authorName.trim().length).toBeGreaterThan(0);
+  });
+
+  it("o notă goală este refuzată", () => {
+    const client = createClient({ name: "Fara Text SRL" });
+
+    expect(() => createNote(client.id, "   ")).toThrowError(ApiError);
+  });
+
+  it("un operator nu poate scrie notițe", () => {
+    const client = createClient({ name: "Interzis SRL" });
+    mockLogin(OPERATOR);
+
+    expect(() => createNote(client.id, "Nu se poate.")).toThrowError(/permisiunea/);
   });
 });

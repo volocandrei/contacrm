@@ -16,6 +16,12 @@ from app.domain.enums import ClientStatus
 from app.schemas.common import ApiModel
 from app.schemas.email import EmailAddress
 
+#: Cât poate avea o notă. Generos pentru o consemnare, strâmt cât să nu ajungă
+#: cineva să lipească un document întreg într-un câmp de text. Stă aici, la
+#: granița prin care intră datele, iar serviciul îl citește de aici — direcția
+#: obișnuită în proiect este serviciu → schemă, nu invers.
+MAX_NOTE_LENGTH = 4000
+
 
 class ContactOut(ApiModel):
     id: uuid.UUID
@@ -35,6 +41,12 @@ class ClientNoteOut(ApiModel):
     author_name: str
     body: str
     created_at: datetime
+
+
+class ClientNoteCreate(ApiModel):
+    """O consemnare pe client: „am vorbit cu el, aduce actele vineri"."""
+
+    body: str = Field(min_length=1, max_length=MAX_NOTE_LENGTH)
 
 
 class ClientOut(ApiModel):

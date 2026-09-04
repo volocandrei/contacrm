@@ -77,6 +77,11 @@ const routes: Route[] = [
   },
   { method: "GET", pattern: "/clients/:id/notes", handler: ({ params }) => store.listNotes(params.id!) },
   {
+    method: "POST",
+    pattern: "/clients/:id/notes",
+    handler: ({ params, body }) => store.createNote(params.id!, str(body, "body")),
+  },
+  {
     method: "GET",
     pattern: "/clients/:id/periods",
     handler: ({ params }) => store.listClientPeriods(params.id!),

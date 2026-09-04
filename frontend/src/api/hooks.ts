@@ -113,6 +113,17 @@ export function useSaveContact(clientId: string) {
   });
 }
 
+/** Scrierea unei notițe. Lista se reîncarcă: nota nouă trebuie să apară acolo. */
+export function useCreateNote(clientId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => clients.createNote(clientId, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.clientNotes(clientId) });
+    },
+  });
+}
+
 export function useDocuments(params: QueryParams) {
   return useQuery({ queryKey: queryKeys.documents(params), queryFn: () => documents.list(params) });
 }

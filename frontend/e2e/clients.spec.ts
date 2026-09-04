@@ -10,7 +10,7 @@
  * primit la clientul potrivit (§8).
  */
 import { expect, test } from "@playwright/test";
-import { ACCOUNTS, loginAs, unique } from "./support";
+import { ACCOUNTS, SEED_CLIENT, loginAs, unique } from "./support";
 
 test("un client nou primește un contact, iar amândouă apar în listă", async ({ page }) => {
   const marker = unique();
@@ -44,6 +44,21 @@ test("un client nou primește un contact, iar amândouă apar în listă", async
   // etichete se potrivesc amândouă.
   await page.locator('input[placeholder="Denumire, CUI, adresă…"]').fill(name);
   await expect(page.getByRole("link", { name })).toBeVisible();
+});
+
+test("o notiță scrisă pe client rămâne acolo", async ({ page }) => {
+  const marker = unique();
+
+  await loginAs(page, ACCOUNTS.admin);
+  await page.goto("/crm/clienti");
+  await page.getByRole("link", { name: SEED_CLIENT.name }).first().click();
+  await page.getByRole("tab", { name: "Note" }).click();
+
+  // Lista de note exista de la M4 fără nimic care să scrie în ea.
+  await page.locator("#note-body").fill(`Aduce actele vineri · ${marker}`);
+  await page.getByRole("button", { name: "Adaugă nota" }).click();
+
+  await expect(page.getByText(`Aduce actele vineri · ${marker}`)).toBeVisible();
 });
 
 test("aceeași firmă nu poate fi adăugată de două ori", async ({ page }) => {

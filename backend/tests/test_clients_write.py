@@ -293,6 +293,99 @@ class TestContacts:
 # ── Cine are voie ────────────────────────────────────────────────────────────
 
 
+class TestNotes:
+    """Notițele interne pe client.
+
+    `GET /clients/:id/notes` exista de la M4 și nu avea pereche: o listă de
+    notițe pe care nimeni nu le putea scrie. Modelul avea deja `author_name`
+    tocmai pentru ce se cere aici — cine a scris o notă nu trebuie să dispară
+    odată cu contul lui.
+    """
+
+    def test_a_note_can_be_written_and_read_back(
+        self, api: TestClient, admin: User, clients: list[Client]
+    ) -> None:
+        login(api, admin.email)
+
+        created = api.post(
+            f"/api/v1/clients/{clients[0].id}/notes",
+            json={"body": "Am vorbit cu clientul, aduce actele vineri."},
+        )
+        assert created.status_code == 201, created.text
+
+        listed = api.get(f"/api/v1/clients/{clients[0].id}/notes").json()
+        assert listed[0]["body"] == "Am vorbit cu clientul, aduce actele vineri."
+
+    def test_the_author_is_kept_as_text(
+        self, api: TestClient, admin: User, clients: list[Client]
+    ) -> None:
+        """Ca nota să rămână atribuită și după ce contul autorului dispare."""
+        login(api, admin.email)
+
+        body = api.post(
+            f"/api/v1/clients/{clients[0].id}/notes", json={"body": "Consemnare."}
+        ).json()
+
+        assert body["authorName"] == admin.full_name
+
+    def test_an_empty_note_is_refused(
+        self, api: TestClient, admin: User, clients: list[Client]
+    ) -> None:
+        login(api, admin.email)
+
+        response = api.post(f"/api/v1/clients/{clients[0].id}/notes", json={"body": "   "})
+        assert response.status_code == 422
+
+    def test_a_note_on_another_office_client_is_not_found(
+        self, api: TestClient, db: Session, roles: dict[RoleCode, Role], clients: list[Client]
+    ) -> None:
+        """NOT_FOUND, nu FORBIDDEN: răspunsul nu confirmă că id-ul există undeva (§72)."""
+        other = Organization(name="Cabinet Rival SRL")
+        db.add(other)
+        db.flush()
+        stranger = make_user(db, other, roles, email="admin@rival2.test", role=RoleCode.ADMIN)
+        login(api, stranger.email)
+
+        response = api.post(
+            f"/api/v1/clients/{clients[0].id}/notes", json={"body": "Nota altcuiva."}
+        )
+        assert response.status_code == 404
+
+    def test_the_audit_says_a_note_was_written_not_what_it_says(
+        self, api: TestClient, db: Session, admin: User, clients: list[Client]
+    ) -> None:
+        """Jurnalul nu este o a doua copie a conținutului (§33)."""
+        login(api, admin.email)
+        secret = "Clientul are probleme cu ANAF, discutat confidențial."
+        api.post(f"/api/v1/clients/{clients[0].id}/notes", json={"body": secret})
+
+        entry = db.scalars(select(AuditLog).where(AuditLog.action == "CLIENT_NOTE_ADDED")).one()
+        assert secret not in str(entry.detail)
+        assert secret not in str(entry.new_value)
+
+    @pytest.mark.parametrize(
+        ("role", "allowed"),
+        [(RoleCode.ADMIN, True), (RoleCode.ACCOUNTANT, False), (RoleCode.VIEWER, False)],
+    )
+    def test_writing_a_note_needs_clients_write(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        roles: dict[RoleCode, Role],
+        clients: list[Client],
+        role: RoleCode,
+        allowed: bool,
+    ) -> None:
+        user = make_user(
+            db, org, roles, email=f"note-{role.value.lower()}@contacrm.test", role=role
+        )
+        login(api, user.email)
+
+        response = api.post(f"/api/v1/clients/{clients[0].id}/notes", json={"body": "Ceva."})
+        assert (response.status_code == 201) is allowed, response.text
+
+
 class TestPermissions:
     @pytest.mark.parametrize(
         ("role", "allowed"),

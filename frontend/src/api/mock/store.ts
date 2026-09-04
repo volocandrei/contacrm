@@ -373,6 +373,51 @@ export function listNotes(clientId: string): ClientNote[] {
   return state.notes.filter((n) => n.clientId === clientId);
 }
 
+/** Cât poate avea o notă. Oglindește `MAX_NOTE_LENGTH` din backend. */
+const MOCK_MAX_NOTE_LENGTH = 4000;
+
+/**
+ * Scrie o notă internă pe client.
+ *
+ * **Autorul se păstrează ca text**, nu ca legătură: cine a scris o notă nu
+ * trebuie să dispară odată cu contul lui.
+ *
+ * Nu există modificare și nu există ștergere, deliberat: o notă este o
+ * consemnare, iar una care se poate rescrie nu mai este una.
+ */
+export function createNote(clientId: string, body: string): ClientNote {
+  requirePermission("clients:write");
+  getClient(clientId);
+
+  const text = body.trim();
+  if (!text) {
+    throw new ApiError("VALIDATION_ERROR", "Nota nu poate fi goală.", 422, {
+      body: ["Text obligatoriu."],
+    });
+  }
+  if (text.length > MOCK_MAX_NOTE_LENGTH) {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      `Nota depășește ${MOCK_MAX_NOTE_LENGTH} de caractere.`,
+      422,
+      { body: ["Text prea lung."] },
+    );
+  }
+
+  const note: ClientNote = {
+    id: `note-${state.notes.length + 1}-${Date.now()}`,
+    clientId,
+    authorName: currentUser.fullName,
+    body: text,
+    createdAt: new Date().toISOString(),
+  };
+  // Cele mai noi primele, ca în listă.
+  state.notes.unshift(note);
+  // Jurnalul spune **că** s-a scris o notă, nu ce scrie în ea.
+  recordAudit("CLIENT_NOTE_ADDED", "Client", clientId, `Notă pe ${getClient(clientId).name}`);
+  return note;
+}
+
 /**
  * `RO14399840` și `14399840` sunt același cod fiscal.
  *
