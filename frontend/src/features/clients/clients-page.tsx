@@ -9,6 +9,8 @@ import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/compo
 import { ClientStatusBadge } from "@/components/status-badge";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { formatDateTime } from "@/lib/format";
+import { iconChip, pillClass, type Tone } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 import { CLIENT_STATUS } from "@/types/domain";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -113,13 +115,31 @@ export function ClientsPage() {
                       className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60"
                     >
                       <td className="px-4 py-3">
-                        <Link
-                          to={`/crm/clienti/${client.id}`}
-                          className="font-medium text-slate-900 hover:text-blue-600 hover:underline dark:text-slate-100 dark:hover:text-blue-400"
-                        >
-                          {client.name}
-                        </Link>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">{client.address}</div>
+                        <div className="flex items-center gap-3">
+                          {/* Inițialele în locul unei iconițe generice: într-o
+                              listă de treizeci de firme, ochiul găsește „AC"
+                              mai repede decât citește „Alfa Conta SRL". */}
+                          <span
+                            className={cn(
+                              "grid h-9 w-9 shrink-0 place-content-center rounded-lg text-xs font-semibold",
+                              iconChip[avatarTone(client.name)],
+                            )}
+                            aria-hidden="true"
+                          >
+                            {initials(client.name)}
+                          </span>
+                          <div className="min-w-0">
+                            <Link
+                              to={`/crm/clienti/${client.id}`}
+                              className="font-medium text-slate-900 hover:text-blue-600 hover:underline dark:text-slate-100 dark:hover:text-blue-400"
+                            >
+                              {client.name}
+                            </Link>
+                            <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                              {client.address}
+                            </div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-slate-600 dark:text-slate-400">
                         {client.taxId}
@@ -130,10 +150,7 @@ export function ClientsPage() {
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
                           {client.tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                            >
+                            <span key={tag} className={pillClass("slate")}>
                               {tag}
                             </span>
                           ))}
@@ -164,4 +181,28 @@ export function ClientsPage() {
       </Panel>
     </div>
   );
+}
+
+/** Inițialele firmei, cel mult două litere. */
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter((word) => /\p{L}/u.test(word))
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+/**
+ * Tonul pastilei, derivat din nume.
+ *
+ * Stabil — același client are mereu aceeași culoare, deci devine recognoscibil —
+ * și fără sens semantic: culoarea nu spune nimic despre client, doar îl separă
+ * de vecinii lui din listă.
+ */
+const AVATAR_TONES: Tone[] = ["blue", "green", "amber", "purple", "red", "slate"];
+
+function avatarTone(name: string): Tone {
+  const sum = [...name].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return AVATAR_TONES[sum % AVATAR_TONES.length]!;
 }

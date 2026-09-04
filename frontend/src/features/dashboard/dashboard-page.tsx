@@ -21,6 +21,7 @@ import { Donut, TrendArea } from "@/components/charts";
 import { ErrorState, LoadingState, Panel } from "@/components/page";
 import { ConfidenceBadge, DocumentStatusBadge, PeriodStatusBadge } from "@/components/status-badge";
 import { DOCUMENT_STATUS_LABEL } from "@/lib/labels";
+import { STATUS_ARC, statusDot } from "@/lib/status-colors";
 import { formatDate, formatReferenceMonth, formatTime } from "@/lib/format";
 import {
   focusRing,
@@ -36,7 +37,6 @@ import type {
   DashboardClosing,
   DashboardData,
   DocumentSource,
-  DocumentStatus,
 } from "@/types/domain";
 
 /** Sub atâtea zile rămase, termenul nu mai poate fi lăsat pe săptămâna viitoare. */
@@ -585,19 +585,6 @@ function KpiCard({
   );
 }
 
-/** Culorile feliilor. Aceleași cu ale insignelor de stare, ca să nu existe două limbaje. */
-const STATUS_ARC: Partial<Record<DocumentStatus, string>> = {
-  ARCHIVED: "stroke-emerald-500",
-  APPROVED: "stroke-emerald-400",
-  REVIEW_REQUIRED: "stroke-amber-500",
-  PROCESSING: "stroke-blue-500",
-  RECEIVED: "stroke-blue-400",
-  UNMATCHED: "stroke-violet-500",
-  DUPLICATE: "stroke-slate-400",
-  ERROR: "stroke-red-500",
-  REJECTED: "stroke-red-400",
-};
-
 /**
  * Unde stau documentele, ca inel.
  *
@@ -622,17 +609,14 @@ function StatusPanel({ slices }: { slices: DashboardData["byStatus"] }) {
             slices={slices.map((slice) => ({
               label: DOCUMENT_STATUS_LABEL[slice.status],
               value: slice.count,
-              className: STATUS_ARC[slice.status] ?? "stroke-slate-400",
+              className: STATUS_ARC[slice.status],
             }))}
           />
           <ul className="min-w-0 flex-1 space-y-1.5">
             {slices.slice(0, MAX_STATUS_ROWS).map((slice) => (
               <li key={slice.status} className="flex items-center gap-2 text-sm">
                 <span
-                  className={cn(
-                    "h-2.5 w-2.5 shrink-0 rounded-full",
-                    (STATUS_ARC[slice.status] ?? "stroke-slate-400").replace("stroke-", "bg-"),
-                  )}
+                  className={cn("h-2.5 w-2.5 shrink-0 rounded-full", statusDot(slice.status))}
                   aria-hidden="true"
                 />
                 <span className={cn("min-w-0 flex-1 truncate", mutedText)}>

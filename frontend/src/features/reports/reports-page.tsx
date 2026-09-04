@@ -1,13 +1,26 @@
 import { useState } from "react";
-import { ChartColumn, Download, LoaderCircle } from "lucide-react";
+import {
+  CircleCheck,
+  Copy,
+  Download,
+  FileStack,
+  LoaderCircle,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import { apiMode, fetchFile } from "@/api/client";
 import { useClients, useReportSummary } from "@/api/hooks";
 import { ApiError } from "@/api/types";
+import { Donut } from "@/components/charts";
 import { MonthFilter, SelectFilter } from "@/components/form-controls";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { DocumentStatusBadge } from "@/components/status-badge";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { formatPercent, formatReferenceMonth } from "@/lib/format";
+import { DOCUMENT_STATUS_LABEL } from "@/lib/labels";
+import { STATUS_ARC } from "@/lib/status-colors";
+import { iconChip, mutedText, surface, type Tone } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 import type { DocumentStatus, ReportBucket } from "@/types/domain";
 
 /**
@@ -70,8 +83,16 @@ export function ReportsPage() {
       ) : !data ? null : (
         <>
           <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Documente" value={String(data.total)} />
             <StatCard
+              Icon={FileStack}
+              tone="blue"
+              label="Documente"
+              value={String(data.total)}
+              delayClass="rise-delay-1"
+            />
+            <StatCard
+              Icon={CircleCheck}
+              tone="green"
               label="Rată de procesare reușită"
               value={data.successRate === null ? "—" : formatPercent(data.successRate)}
               hint={
@@ -79,9 +100,22 @@ export function ReportsPage() {
                   ? "Niciun document nu a terminat încă procesarea"
                   : `din ${data.processed} procesate`
               }
+              delayClass="rise-delay-2"
             />
-            <StatCard label="Documente cu erori" value={String(data.failed)} />
-            <StatCard label="Duplicate detectate" value={String(data.duplicates)} />
+            <StatCard
+              Icon={TriangleAlert}
+              tone="red"
+              label="Documente cu erori"
+              value={String(data.failed)}
+              delayClass="rise-delay-3"
+            />
+            <StatCard
+              Icon={Copy}
+              tone="amber"
+              label="Duplicate detectate"
+              value={String(data.duplicates)}
+              delayClass="rise-delay-4"
+            />
           </div>
 
           <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -118,22 +152,39 @@ export function ReportsPage() {
           </div>
 
           <Panel title="Documente pe stare">
-            <ul className="flex flex-wrap gap-2">
-              {data.byStatus.map((bucket) => (
-                <li
-                  key={bucket.key}
-                  className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800"
-                >
-                  <DocumentStatusBadge status={bucket.key as DocumentStatus} />
-                  <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    {bucket.count}
-                  </span>
-                </li>
-              ))}
-              {data.byStatus.length === 0 && (
-                <li className="py-2 text-xs text-slate-400 dark:text-slate-500">Fără date</li>
-              )}
-            </ul>
+            {data.byStatus.length === 0 ? (
+              <p className={cn("py-6 text-center text-sm", mutedText)}>Fără date</p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-8">
+                {/* Insignele spun câte sunt în fiecare stare; inelul spune ce
+                    parte din întreg reprezintă fiecare — iar asta este întrebarea
+                    pe care o pune cineva care deschide un raport. */}
+                <Donut
+                  className="h-36 w-36 shrink-0"
+                  label="Distribuția documentelor pe stări"
+                  centerValue={String(data.total)}
+                  centerLabel="documente"
+                  slices={data.byStatus.map((bucket) => ({
+                    label: DOCUMENT_STATUS_LABEL[bucket.key as DocumentStatus],
+                    value: bucket.count,
+                    className: STATUS_ARC[bucket.key as DocumentStatus],
+                  }))}
+                />
+                <ul className="flex flex-wrap gap-2">
+                  {data.byStatus.map((bucket) => (
+                    <li
+                      key={bucket.key}
+                      className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800"
+                    >
+                      <DocumentStatusBadge status={bucket.key as DocumentStatus} />
+                      <span className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                        {bucket.count}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </Panel>
         </>
       )}
@@ -141,14 +192,32 @@ export function ReportsPage() {
   );
 }
 
-function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function StatCard({
+  Icon,
+  tone,
+  label,
+  value,
+  hint,
+  delayClass,
+}: {
+  Icon: LucideIcon;
+  tone: Tone;
+  label: string;
+  value: string;
+  hint?: string;
+  delayClass?: string;
+}) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="mb-3 grid h-9 w-9 place-content-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
-        <ChartColumn className="h-5 w-5" aria-hidden="true" />
+    <div className={cn("p-5", surface, "rise-in", delayClass)}>
+      {/* Patru carduri cu aceeași iconiță albastră nu spuneau nimic: ochiul nu
+          avea după ce să le deosebească, deci le citea pe toate. */}
+      <div className={cn("mb-3 grid h-11 w-11 place-content-center rounded-2xl", iconChip[tone])}>
+        <Icon className="h-5 w-5" aria-hidden="true" />
       </div>
-      <p className="text-sm text-slate-600 dark:text-slate-400">{label}</p>
-      <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{value}</p>
+      <p className={cn("text-sm", mutedText)}>{label}</p>
+      <p className="text-3xl font-semibold tracking-tight tabular-nums text-slate-900 dark:text-slate-50">
+        {value}
+      </p>
       {hint && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</p>}
     </div>
   );
@@ -172,9 +241,11 @@ function BarList({
               {item.count}
             </span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+            {/* Gradientul face vârful vizibil fără să fie citit: prima bară este
+                cea mai lungă prin construcție, iar ochiul o găsește imediat. */}
             <div
-              className="h-1.5 rounded-full bg-blue-500"
+              className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-[width] duration-700 ease-out"
               style={{ width: `${(item.count / max) * 100}%` }}
             />
           </div>
