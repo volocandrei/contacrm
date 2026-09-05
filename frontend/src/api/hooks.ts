@@ -292,7 +292,7 @@ export function useSaveExpectations(clientId: string) {
   });
 }
 
-/* ─── Șabloane de așteptări ───────────────────────────────────────────────── */
+/* ─── Profiluri de client ─────────────────────────────────────────────────── */
 
 export function useExpectationTemplates() {
   return useQuery({
@@ -317,8 +317,15 @@ function invalidateAfterApply(queryClient: ReturnType<typeof useQueryClient>) {
 export function useCreateExpectationTemplate() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, expectations }: { name: string; expectations: ExpectationInput[] }) =>
-      expectationTemplates.create(name, expectations),
+    mutationFn: ({
+      name,
+      expectations,
+      obligationTypeIds,
+    }: {
+      name: string;
+      expectations: ExpectationInput[];
+      obligationTypeIds?: string[];
+    }) => expectationTemplates.create(name, expectations, obligationTypeIds),
     onSuccess: () =>
       void queryClient.invalidateQueries({ queryKey: queryKeys.expectationTemplates }),
   });
@@ -331,11 +338,13 @@ export function useSaveExpectationTemplate() {
       id,
       name,
       expectations,
+      obligationTypeIds,
     }: {
       id: string;
       name: string;
       expectations: ExpectationInput[];
-    }) => expectationTemplates.update(id, name, expectations),
+      obligationTypeIds?: string[];
+    }) => expectationTemplates.update(id, name, expectations, obligationTypeIds),
     onSuccess: () =>
       void queryClient.invalidateQueries({ queryKey: queryKeys.expectationTemplates }),
   });

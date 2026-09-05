@@ -30,10 +30,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.domain.enums import ClientStatus
+from app.domain.enums import ClientStatus, ObligationFrequency
 from app.domain.permissions import RoleCode
 from app.models.audit import AuditLog
 from app.models.client import Client
+from app.models.obligation import ObligationType
 from app.models.organization import Organization
 from app.models.period import ClientExpectation
 from app.models.user import Role, User
@@ -61,11 +62,41 @@ def second_client(db: Session, org: Organization) -> Client:
     return row
 
 
-def create(api: TestClient, name: str = "SRL plătitor de TVA", expectations: list | None = None):
+def create(
+    api: TestClient,
+    name: str = "SRL plătitor de TVA",
+    expectations: list | None = None,
+    obligation_type_ids: list[str] | None = None,
+):
     return api.post(
         URL,
-        json={"name": name, "expectations": PROFILE if expectations is None else expectations},
+        json={
+            "name": name,
+            "expectations": PROFILE if expectations is None else expectations,
+            "obligationTypeIds": obligation_type_ids or [],
+        },
     )
+
+
+@pytest.fixture
+def vat(db: Session, org: Organization) -> ObligationType:
+    row = ObligationType(
+        organization_id=org.id,
+        code="D300",
+        label="D300 — decont TVA",
+        frequency=ObligationFrequency.MONTHLY,
+        months_after=1,
+        deadline_day=25,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def obligations_of(api: TestClient, client_row: Client) -> set[str]:
+    response = api.get(f"/api/v1/obligations/clients/{client_row.id}")
+    assert response.status_code == 200, response.text
+    return {row["code"] for row in response.json()}
 
 
 def expectations_of(api: TestClient, client_row: Client) -> dict[str, int]:
@@ -165,6 +196,110 @@ class TestTheProfile:
 
 
 # ── Ce nu trebuie să facă ────────────────────────────────────────────────────
+
+
+class TestTheProfileCarriesDeclarationsToo:
+    """Un profil de cabinet este un singur lucru.
+
+    „SRL plătitor de TVA lunar" spune și ce se așteaptă de la client, și ce se
+    depune pentru el. Ținute separat, jumătate din configurare se făcea pe profil,
+    dintr-un clic, iar cealaltă jumătate client cu client — de treizeci de ori, la
+    fiecare instalare.
+    """
+
+    def test_applying_a_profile_sets_the_declarations(
+        self,
+        api: TestClient,
+        db: Session,
+        admin: User,
+        types: dict,
+        client_row: Client,
+        vat: ObligationType,
+    ) -> None:
+        db.commit()
+        login(api, admin.email)
+        template = create(api, obligation_type_ids=[str(vat.id)]).json()
+
+        api.post(f"{URL}/{template['id']}/apply", json={"clientIds": [str(client_row.id)]})
+
+        assert obligations_of(api, client_row) == {"D300"}
+
+    def test_it_replaces_rather_than_adds(
+        self,
+        api: TestClient,
+        db: Session,
+        admin: User,
+        types: dict,
+        org: Organization,
+        client_row: Client,
+        vat: ObligationType,
+    ) -> None:
+        """Două profiluri aplicate pe rând ar lăsa o listă pe care n-a ales-o nimeni."""
+        db.commit()
+        login(api, admin.email)
+        other = ObligationType(
+            organization_id=org.id,
+            code="D112",
+            label="D112",
+            frequency=ObligationFrequency.MONTHLY,
+            months_after=1,
+            deadline_day=25,
+        )
+        db.add(other)
+        db.flush()
+        wide = create(api, "Cu tot", obligation_type_ids=[str(vat.id), str(other.id)]).json()
+        narrow = create(api, "Doar salarii", obligation_type_ids=[str(other.id)]).json()
+
+        api.post(f"{URL}/{wide['id']}/apply", json={"clientIds": [str(client_row.id)]})
+        api.post(f"{URL}/{narrow['id']}/apply", json={"clientIds": [str(client_row.id)]})
+
+        assert obligations_of(api, client_row) == {"D112"}
+
+    def test_a_profile_without_declarations_clears_them(
+        self,
+        api: TestClient,
+        db: Session,
+        admin: User,
+        types: dict,
+        client_row: Client,
+        vat: ObligationType,
+    ) -> None:
+        """Profilul se trimite întreg: lipsă înseamnă „niciuna", nu „lasă-le cum erau".
+
+        Altfel, un client mutat de pe un profil cu declarații pe unul fără ar
+        rămâne cu ele, iar ecranul de termene ar cere ceva ce nimeni n-a cerut.
+        """
+        db.commit()
+        login(api, admin.email)
+        withd = create(api, "Cu declarații", obligation_type_ids=[str(vat.id)]).json()
+        without = create(api, "Fără declarații").json()
+        api.post(f"{URL}/{withd['id']}/apply", json={"clientIds": [str(client_row.id)]})
+
+        api.post(f"{URL}/{without['id']}/apply", json={"clientIds": [str(client_row.id)]})
+
+        assert obligations_of(api, client_row) == set()
+
+    def test_a_profile_saved_from_a_client_carries_its_declarations(
+        self,
+        api: TestClient,
+        db: Session,
+        admin: User,
+        types: dict,
+        client_row: Client,
+        vat: ObligationType,
+    ) -> None:
+        """Altfel, aplicat pe alți doisprezece, le-ar șterge declarațiile."""
+        db.commit()
+        login(api, admin.email)
+        api.put(
+            f"/api/v1/obligations/clients/{client_row.id}",
+            json={"obligationTypeIds": [str(vat.id)]},
+        )
+
+        saved = api.post(f"{URL}/from-client/{client_row.id}", json={"name": "Ca la Alfa"})
+
+        assert saved.status_code == 201, saved.text
+        assert saved.json()["obligationTypeIds"] == [str(vat.id)]
 
 
 class TestRestraint:

@@ -84,3 +84,24 @@ test("profilul se poate salva din ce e deja configurat pe un client", async ({ p
   await page.goto("/contabilitate/sabloane");
   await expect(page.getByText(name, { exact: true })).toBeVisible();
 });
+
+test("profilul poartă și declarațiile, aplicate odată cu așteptările", async ({ page }) => {
+  // Un profil de cabinet este un singur lucru. Ținute separat, jumătate din
+  // configurare s-ar face pe profil, dintr-un clic, iar cealaltă jumătate client
+  // cu client — de treizeci de ori la fiecare instalare.
+  await loginAs(page, ACCOUNTS.admin);
+  await page.goto("/contabilitate/sabloane");
+  // Editorul se deschide pe un profil: fără el, ecranul arată doar lista.
+  await page.getByRole("button", { name: "Profil nou" }).click();
+
+  await expect(page.getByText("Ce declarații depune")).toBeVisible();
+  const vat = page.getByRole("checkbox", { name: /D300 — decont TVA$/ }).first();
+  await expect(vat).toBeVisible();
+  await vat.check();
+
+  // Un profil cu declarații și fără așteptări este legitim — un PFA de la care
+  // nu se așteaptă documente lunar, dar pentru care se depune.
+  await page.getByLabel("Nume").fill(`Doar declarații ${Date.now()}`);
+  await page.getByRole("button", { name: "Creează profilul" }).click();
+  await expect(page.getByRole("button", { name: "Salvează" })).toBeVisible();
+});

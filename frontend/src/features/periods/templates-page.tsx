@@ -1,5 +1,5 @@
 /**
- * Șabloane de așteptări: profilurile de client ale cabinetului.
+ * Profilurile de client ale cabinetului.
  *
  * **De ce există ecranul ăsta.** Fără așteptări configurate, checklistul lunii
  * este gol, „Documente lipsă" nu are ce raporta, iar fiecare lună apare completă
@@ -18,6 +18,7 @@ import {
   useApplyExpectationTemplate,
   useClients,
   useCreateExpectationTemplate,
+  useObligationTypes,
   useDeleteExpectationTemplate,
   useDocumentTypes,
   useExpectationTemplates,
@@ -44,9 +45,11 @@ type Draft = {
   id: string | null;
   name: string;
   counts: Record<string, number>;
+  /** Declarațiile din profil. Un profil de cabinet este un singur lucru. */
+  obligationTypeIds: string[];
 };
 
-const EMPTY: Draft = { id: null, name: "", counts: {} };
+const EMPTY: Draft = { id: null, name: "", counts: {}, obligationTypeIds: [] };
 
 function toDraft(template: ExpectationTemplate): Draft {
   return {
@@ -58,6 +61,7 @@ function toDraft(template: ExpectationTemplate): Draft {
         item.expectedMinCount,
       ]),
     ),
+    obligationTypeIds: template.obligationTypeIds,
   };
 }
 
@@ -74,14 +78,15 @@ export function ExpectationTemplatesPage() {
   return (
     <div>
       <PageHeader
-        title="Șabloane de așteptări"
-        description="Profilurile de client ale cabinetului, aplicate pe mai mulți deodată"
+        title="Profiluri de client"
+        description="Ce se așteaptă lunar și ce se depune, scrise o dată și aplicate pe mai mulți deodată"
       />
 
       <p className={cn("mb-4 max-w-3xl text-sm", mutedText)}>
         Un client fără nicio așteptare configurată apare mereu complet, pentru
         că nu i se cere nimic — iar „Documente lipsă" nu are ce raporta despre
-        el. Șablonul scrie lista o dată, pe câți clienți alegi.
+        el. Unul fără declarații nu apare deloc în „Termene". Profilul le scrie
+        pe amândouă o dată, pe câți clienți alegi.
       </p>
 
       <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
@@ -189,13 +194,18 @@ function TemplateEditor({
     const onError = (caught: unknown) => setProblem(describeError(caught));
     if (draft.id === null) {
       create.mutate(
-        { name: draft.name, expectations },
+        { name: draft.name, expectations, obligationTypeIds: draft.obligationTypeIds },
         { onSuccess: (saved) => onDraft(toDraft(saved)), onError },
       );
       return;
     }
     save.mutate(
-      { id: draft.id, name: draft.name, expectations },
+      {
+        id: draft.id,
+        name: draft.name,
+        expectations,
+        obligationTypeIds: draft.obligationTypeIds,
+      },
       { onSuccess: (saved) => onDraft(toDraft(saved)), onError },
     );
   }
@@ -273,6 +283,12 @@ function TemplateEditor({
           })}
         </ul>
 
+        <ObligationChecklist
+          selected={draft.obligationTypeIds}
+          disabled={!canManage || pending}
+          onChange={(ids) => onDraft({ ...draft, obligationTypeIds: ids })}
+        />
+
         {problem && (
           <p
             role="alert"
@@ -288,7 +304,12 @@ function TemplateEditor({
               type="button"
               onClick={submit}
               disabled={
-                pending || !draft.name.trim() || expectations.length === 0
+                pending ||
+                !draft.name.trim() ||
+                // Un profil gol de tot aplicat pe doisprezece clienți le-ar
+                // șterge și așteptările, și declarațiile. Unul care are doar
+                // declarații — un PFA fără documente lunare — este legitim.
+                (expectations.length === 0 && draft.obligationTypeIds.length === 0)
               }
               className={cn(buttonPrimary, "h-9")}
             >
@@ -339,6 +360,71 @@ function TemplateEditor({
  * **Înlocuiește, nu adaugă**, iar asta se scrie pe ecran: un contabil care crede
  * că adaugă un tip de document ar șterge, fără să vrea, tot ce configurase manual.
  */
+/**
+ * Declarațiile din profil.
+ *
+ * **De ce aici și nu pe un ecran separat.** Un profil de cabinet — „SRL plătitor
+ * de TVA lunar" — este un singur lucru: spune și ce se așteaptă de la client, și
+ * ce se depune pentru el. Ținute separat, jumătate din configurare s-ar face pe
+ * profil, dintr-un clic, iar cealaltă jumătate client cu client, de treizeci de
+ * ori la fiecare instalare.
+ */
+function ObligationChecklist({
+  selected,
+  disabled,
+  onChange,
+}: {
+  selected: string[];
+  disabled: boolean;
+  onChange: (ids: string[]) => void;
+}) {
+  const { data: catalogue } = useObligationTypes();
+  // Dezactivatele nu se pot bifa, dar una deja bifată rămâne vizibilă: altfel ar
+  // dispărea din profil fără ca nimeni să o fi scos.
+  const shown = (catalogue ?? []).filter(
+    (type) => type.isActive || selected.includes(type.id),
+  );
+
+  if (shown.length === 0) return null;
+
+  return (
+    <>
+      <p className="mt-4 mb-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+        Ce declarații depune
+      </p>
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {shown.map((type) => (
+          <li
+            key={type.id}
+            className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800"
+          >
+            <input
+              type="checkbox"
+              id={`tpl-obligation-${type.id}`}
+              checked={selected.includes(type.id)}
+              disabled={disabled || !type.isActive}
+              onChange={(event) =>
+                onChange(
+                  event.target.checked
+                    ? [...selected, type.id]
+                    : selected.filter((id) => id !== type.id),
+                )
+              }
+              className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
+            />
+            <label
+              htmlFor={`tpl-obligation-${type.id}`}
+              className="flex-1 text-sm text-slate-800 dark:text-slate-200"
+            >
+              {type.label}
+            </label>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 function ApplyPanel({
   templateId,
   templateName,

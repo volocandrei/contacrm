@@ -249,10 +249,23 @@ export type ExpectationInput = { documentTypeCode: string; expectedMinCount: num
 
 export const expectationTemplates = {
   list: () => api.get<ExpectationTemplate[]>("/expectation-templates"),
-  create: (name: string, expectations: ExpectationInput[]) =>
-    api.post<ExpectationTemplate>("/expectation-templates", { name, expectations }),
-  update: (id: string, name: string, expectations: ExpectationInput[]) =>
-    api.put<ExpectationTemplate>(`/expectation-templates/${id}`, { name, expectations }),
+  create: (name: string, expectations: ExpectationInput[], obligationTypeIds: string[] = []) =>
+    api.post<ExpectationTemplate>("/expectation-templates", {
+      name,
+      expectations,
+      obligationTypeIds,
+    }),
+  update: (
+    id: string,
+    name: string,
+    expectations: ExpectationInput[],
+    obligationTypeIds: string[] = [],
+  ) =>
+    api.put<ExpectationTemplate>(`/expectation-templates/${id}`, {
+      name,
+      expectations,
+      obligationTypeIds,
+    }),
   remove: (id: string) => api.delete<void>(`/expectation-templates/${id}`),
   /** Salvează ce s-a configurat deja pe un client, ca profil. */
   fromClient: (clientId: string, name: string) =>

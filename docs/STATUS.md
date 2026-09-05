@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  20.787 linii sursă +  3.347 linii teste  →   254 teste
-backend   26.735 linii sursă + 23.229 linii teste  → 1.498 teste
-end-to-end 2.072 linii                             →    77 teste (browser real)
+frontend  20.922 linii sursă +  3.391 linii teste  →   257 teste
+backend   26.853 linii sursă + 23.364 linii teste  → 1.502 teste
+end-to-end 2.093 linii                             →    78 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.829 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.837 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -139,7 +139,7 @@ niciodată. „Integrări" stă separat de „Administrare" — „cum adaug un 
 | Panou principal | KPI, inbox recent, „necesită atenție", perioade, cronologie |
 | CRM | listă clienți (filtre + paginare), detaliu client, **agendă de contacte căutabilă**, sarcini (kanban, cu adăugare) |
 | Documente | inbox, în procesare, verificare, **neatribuite**, arhivă, **ecranul de verificare** |
-| Contabilitate | **termene de depunere per client**, perioade cu checklist, documente lipsă, șabloane |
+| Contabilitate | **termene de depunere per client**, perioade cu checklist, documente lipsă, **profiluri de client** |
 | Comunicare | mesaje, șabloane, remindere |
 | Rapoarte | agregări calculate în backend, cu filtre pe lună și client |
 | Administrare | utilizatori, **matricea rol × permisiune**, setări, **surse documente (OneDrive + email)**, **e-Factura**, jurnal audit |
@@ -268,6 +268,32 @@ Ecranul spune **„Pregătit"**, nu „Trimis". Aplicația nu trimite (Faza 2): 
 se copiază și pleacă din clientul de email al contabilului, deci tot ce știe
 sigur este că cererea a fost compusă. „Trimis" ar fi o promisiune pe care nimic
 din spate nu o acoperă.
+
+### Profilul de client cuprinde și declarațiile
+
+**Costul pe care îl scoate.** Șablonul acoperea documentele așteptate lunar, dar
+nu și ce depune clientul. La instalare, asta însemna că jumătate din configurare
+se face pe profil, dintr-un clic, iar cealaltă jumătate client cu client — de
+treizeci de ori, exact la momentul în care un cabinet decide dacă adoptă
+aplicația sau o închide.
+
+Un profil de cabinet — „SRL plătitor de TVA lunar" — este un singur lucru: spune
+și ce se așteaptă de la client, și ce se depune pentru el. Ecranul se numește
+acum „Profiluri de client", fiindcă „Șabloane de așteptări" descria jumătate.
+
+Regulile rămân cele ale profilului: **înlocuiește, nu adaugă**, iar profilul se
+trimite întreg — lipsa declarațiilor înseamnă „niciuna", nu „lasă-le cum erau".
+Altfel, un client mutat de pe un profil cu declarații pe unul fără ar rămâne cu
+ele, iar ecranul de termene ar cere ceva ce nimeni n-a cerut.
+
+Două lucruri au ieșit la iveală făcând asta:
+
+- garda de la „salvează ca profil" cerea așteptări. Un client care are numai
+  declarații — un PFA fără documente așteptate lunar — este un profil legitim, iar
+  refuzul trebuie să fie doar pentru unul **gol de tot**;
+- `create` indexa direct rezultatul (`[template.id]`) în loc să folosească `.get`,
+  deci crăpa cu `KeyError` pe un profil fără nicio așteptare — un caz imposibil
+  până acum. `replace` folosea deja forma bună.
 
 ### Cererea către toți, dintr-o acțiune
 

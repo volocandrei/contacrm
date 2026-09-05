@@ -2468,7 +2468,7 @@ export function getSidebarCounts() {
   };
 }
 
-/* ─── Șabloane de așteptări ────────────────────────────────────────────────── */
+/* ─── Profiluri de client ─────────────────────────────────────────────────── */
 
 /**
  * Oglinda lui `services/expectation_templates.py`.
@@ -2526,13 +2526,19 @@ function toExpectations(
 export function createExpectationTemplate(
   name: string,
   wanted: Array<{ documentTypeCode: string; expectedMinCount: number }>,
+  obligationTypeIds: string[] = [],
 ): ExpectationTemplate {
   requirePermission("periods:manage");
   const clean = checkName(name, null);
   const expectations = toExpectations(wanted);
 
   templateCounter += 1;
-  const template: ExpectationTemplate = { id: `tpl-${templateCounter}`, name: clean, expectations };
+  const template: ExpectationTemplate = {
+    id: `tpl-${templateCounter}`,
+    name: clean,
+    expectations,
+    obligationTypeIds: [...new Set(obligationTypeIds)],
+  };
   templates.push(template);
   recordAudit("EXPECTATION_TEMPLATE_CREATED", "ExpectationTemplate", template.id, clean);
   return template;
@@ -2542,6 +2548,7 @@ export function saveExpectationTemplate(
   id: string,
   name: string,
   wanted: Array<{ documentTypeCode: string; expectedMinCount: number }>,
+  obligationTypeIds: string[] = [],
 ): ExpectationTemplate {
   requirePermission("periods:manage");
   const template = templates.find((row) => row.id === id);
@@ -2549,6 +2556,8 @@ export function saveExpectationTemplate(
 
   template.name = checkName(name, id);
   template.expectations = toExpectations(wanted);
+  // Profilul se trimite întreg: lipsă înseamnă „niciuna", nu „lasă-le cum erau".
+  template.obligationTypeIds = [...new Set(obligationTypeIds)];
   recordAudit("EXPECTATION_TEMPLATE_UPDATED", "ExpectationTemplate", id, template.name);
   return template;
 }
@@ -2576,7 +2585,13 @@ export function templateFromClient(clientId: string, name: string): ExpectationT
       { name: ["Configurează întâi ce se așteaptă de la client."] },
     );
   }
-  return createExpectationTemplate(name, current);
+  // Și declarațiile clientului: profilul salvat dintr-un client trebuie să
+  // conțină tot ce s-a configurat pentru el.
+  return createExpectationTemplate(
+    name,
+    current,
+    listClientObligations(clientId).map((type) => type.id),
+  );
 }
 
 export function applyExpectationTemplate(id: string, clientIds: string[]): { applied: number } {
@@ -2597,6 +2612,9 @@ export function applyExpectationTemplate(id: string, clientIds: string[]): { app
         expectedMinCount: item.expectedMinCount,
       })),
     );
+    // Și declarațiile, din același profil. Aplicate separat, jumătate din
+    // configurare ar rămâne de făcut client cu client.
+    setClientObligations(clientId, template.obligationTypeIds);
   }
   recordAudit(
     "EXPECTATION_TEMPLATE_APPLIED",

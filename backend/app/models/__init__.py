@@ -27,6 +27,7 @@ from app.models.period import (
     ClientExpectation,
     ExpectationTemplate,
     ExpectationTemplateItem,
+    ExpectationTemplateObligation,
 )
 from app.models.task import Task
 from app.models.upload_link import ClientUploadLink
@@ -50,6 +51,7 @@ ALL_MODELS = (
     ClientExpectation,
     ExpectationTemplate,
     ExpectationTemplateItem,
+    ExpectationTemplateObligation,
     ObligationType,
     ClientObligation,
     ObligationFiling,
@@ -90,6 +92,7 @@ __all__ = [
     "DriveFolder",
     "ExpectationTemplate",
     "ExpectationTemplateItem",
+    "ExpectationTemplateObligation",
     "MailFolder",
     "MicrosoftConnection",
     "ObligationFiling",

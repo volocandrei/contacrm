@@ -225,6 +225,15 @@ export type ExpectationTemplate = {
   name: string;
   /** Aceeași formă ca lista unui client: asta și este, lista care i se va scrie. */
   expectations: ClientExpectation[];
+  /**
+   * Declarațiile din profil.
+   *
+   * Un profil de cabinet — „SRL plătitor de TVA lunar" — este un singur lucru:
+   * spune și ce se așteaptă de la client, și ce se depune pentru el. Ținute
+   * separat, jumătate din configurare s-ar face pe profil, dintr-un clic, iar
+   * cealaltă jumătate client cu client.
+   */
+  obligationTypeIds: string[];
 };
 
 export type AssistantReply = {

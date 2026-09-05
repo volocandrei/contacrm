@@ -23,7 +23,10 @@ import {
   listClients,
   listExpectationTemplates,
   listExpectations,
+  listClientObligations,
+  listObligationTypes,
   mockLogin,
+  setClientObligations,
   saveExpectationTemplate,
   setExpectations,
   templateFromClient,
@@ -163,5 +166,46 @@ describe("cine are voie", () => {
     mockLogin(OPERATOR);
 
     expect(() => listExpectationTemplates()).not.toThrow();
+  });
+});
+
+describe("profilul poartă și declarațiile", () => {
+  it("aplicarea scrie declarațiile clientului", () => {
+    // Un profil de cabinet este un singur lucru: spune și ce se așteaptă de la
+    // client, și ce se depune pentru el.
+    mockLogin(ADMIN);
+    const clientId = aClient();
+    const vat = listObligationTypes()[0]!;
+    const template = createExpectationTemplate(uniqueName(), PROFILE, [vat.id]);
+
+    applyExpectationTemplate(template.id, [clientId]);
+
+    expect(listClientObligations(clientId).map((type) => type.id)).toEqual([vat.id]);
+  });
+
+  it("înlocuiește, nu adaugă", () => {
+    mockLogin(ADMIN);
+    const clientId = aClient();
+    const [first, second] = listObligationTypes();
+    const wide = createExpectationTemplate(uniqueName(), PROFILE, [first!.id, second!.id]);
+    const narrow = createExpectationTemplate(uniqueName(), PROFILE, [second!.id]);
+
+    applyExpectationTemplate(wide.id, [clientId]);
+    applyExpectationTemplate(narrow.id, [clientId]);
+
+    expect(listClientObligations(clientId).map((type) => type.id)).toEqual([second!.id]);
+  });
+
+  it("profilul salvat dintr-un client îi poartă declarațiile", () => {
+    // Altfel, aplicat pe alți doisprezece, le-ar șterge declarațiile.
+    mockLogin(ADMIN);
+    const clientId = aClient();
+    const vat = listObligationTypes()[0]!;
+    setClientObligations(clientId, [vat.id]);
+    setExpectations(clientId, PROFILE);
+
+    const saved = templateFromClient(clientId, uniqueName());
+
+    expect(saved.obligationTypeIds).toEqual([vat.id]);
   });
 });

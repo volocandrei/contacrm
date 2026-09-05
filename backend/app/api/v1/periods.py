@@ -40,6 +40,7 @@ from app.services.expectation_templates import (
     replace_expectations,
 )
 from app.services.mail import EmailError, EmailNotConfiguredError, build_email_sender
+from app.services.obligations import ObligationService
 from app.services.period_service import PeriodService, PeriodView
 from app.services.upload_links import RequestTrace, UploadLinkService
 
@@ -120,6 +121,13 @@ class ExpectationTemplateOut(ApiModel):
     id: uuid.UUID
     name: str
     expectations: list[ExpectationOut]
+    #: Declarațiile din profil.
+    #:
+    #: Un profil de cabinet — „SRL plătitor de TVA lunar" — este un singur lucru:
+    #: spune și ce se așteaptă de la client, și ce se depune pentru el. Ținute
+    #: separat, jumătate din configurare s-ar face pe profil, dintr-un clic, iar
+    #: cealaltă jumătate client cu client.
+    obligation_type_ids: list[uuid.UUID]
 
 
 #: Numele profilului, curățat înainte de validare. Fără `strip_whitespace`, un
@@ -132,6 +140,9 @@ TemplateName = Annotated[
 class ExpectationTemplateIn(ApiModel):
     name: TemplateName
     expectations: list[ExpectationIn]
+    #: Lipsă înseamnă „niciuna", nu „lasă-le cum erau": profilul se trimite
+    #: întreg, ca și lista de așteptări.
+    obligation_type_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class TemplateFromClientIn(ApiModel):
@@ -511,6 +522,7 @@ def _to_template(view: TemplateView) -> ExpectationTemplateOut:
             )
             for item in view.items
         ],
+        obligation_type_ids=view.obligation_type_ids,
     )
 
 
@@ -607,7 +619,9 @@ def create_expectation_template(
     _check_unique_name(service, user.organization_id, payload.name, None)
     wanted = _wanted_types(session, user.organization_id, payload.expectations)
 
-    template = service.create(user.organization_id, payload.name, wanted)
+    template = service.create(
+        user.organization_id, payload.name, wanted, payload.obligation_type_ids
+    )
     _audit_template(session, user, request, "EXPECTATION_TEMPLATE_CREATED", template)
     return _to_template(template)
 
@@ -644,15 +658,27 @@ def template_from_client(
             )
         )
     }
-    if not wanted:
-        # Un șablon gol aplicat pe doisprezece clienți le-ar șterge așteptările
-        # tuturor, iar lunile lor ar începe să pară complete.
-        raise ValidationError(
-            "Clientul nu are nicio așteptare configurată, deci nu are ce salva.",
-            {"name": ["Configurează întâi ce se așteaptă de la client."]},
-        )
+    # Și declarațiile clientului, din același drum: profilul salvat dintr-un
+    # client trebuie să conțină tot ce s-a configurat pentru el, altfel aplicat
+    # pe alți doisprezece le-ar șterge declarațiile.
+    obligations = [
+        row.id for row in ObligationService(session, user.organization_id).for_client(client_id)
+    ]
 
-    template = service.create(user.organization_id, payload.name, wanted)
+    if not wanted and not obligations:
+        # Un profil gol aplicat pe doisprezece clienți le-ar șterge și
+        # așteptările, și declarațiile: lunile lor ar începe să pară complete,
+        # iar termenele lor ar dispărea.
+        #
+        # Se refuză doar profilul **gol de tot**. Un client care are numai
+        # declarații configurate — un PFA fără documente așteptate lunar — este
+        # un profil legitim; garda cerea și așteptări dinainte ca profilul să
+        # poarte declarații.
+        raise ValidationError(
+            "Clientul nu are nimic configurat, deci nu are ce salva.",
+            {"name": ["Configurează întâi ce se așteaptă de la client sau ce depune."]},
+        )
+    template = service.create(user.organization_id, payload.name, wanted, obligations)
     _audit_template(session, user, request, "EXPECTATION_TEMPLATE_CREATED", template)
     return _to_template(template)
 
@@ -675,7 +701,9 @@ def update_expectation_template(
     _check_unique_name(service, user.organization_id, payload.name, template_id)
     wanted = _wanted_types(session, user.organization_id, payload.expectations)
 
-    template = service.replace(user.organization_id, template_id, payload.name, wanted)
+    template = service.replace(
+        user.organization_id, template_id, payload.name, wanted, payload.obligation_type_ids
+    )
     if template is None:
         raise NotFoundError("Șablon", template_id)
 

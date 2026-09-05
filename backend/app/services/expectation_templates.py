@@ -20,13 +20,19 @@ nimeni n-ar ști de ce raportul cere din nou un extras de cont care nu vine.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.document import DocumentType
-from app.models.period import ClientExpectation, ExpectationTemplate, ExpectationTemplateItem
+from app.models.period import (
+    ClientExpectation,
+    ExpectationTemplate,
+    ExpectationTemplateItem,
+    ExpectationTemplateObligation,
+)
+from app.services.obligations import ObligationService
 
 
 def replace_expectations(
@@ -88,6 +94,10 @@ class TemplateView:
     id: uuid.UUID
     name: str
     items: list[TemplateItemView]
+    #: Declarațiile din profil. Un profil de cabinet — „SRL plătitor de TVA
+    #: lunar" — este un singur lucru: spune și ce se așteaptă de la client, și
+    #: ce se depune pentru el.
+    obligation_type_ids: list[uuid.UUID] = field(default_factory=list)
 
 
 class ExpectationTemplateService:
@@ -159,14 +169,26 @@ class ExpectationTemplateService:
     # ── Scriere ─────────────────────────────────────────────────────────────
 
     def create(
-        self, organization_id: uuid.UUID, name: str, wanted: dict[uuid.UUID, int]
+        self,
+        organization_id: uuid.UUID,
+        name: str,
+        wanted: dict[uuid.UUID, int],
+        obligation_type_ids: list[uuid.UUID] | None = None,
     ) -> TemplateView:
         template = ExpectationTemplate(organization_id=organization_id, name=name)
         self.session.add(template)
         self.session.flush()
         self._set_items(organization_id, template.id, wanted)
+        self._set_obligations(organization_id, template.id, obligation_type_ids or [])
         return TemplateView(
-            id=template.id, name=template.name, items=self._items_of([template.id])[template.id]
+            id=template.id,
+            name=template.name,
+            # `.get`, nu indexare: un profil poate să nu aibă nicio așteptare —
+            # un PFA care depune declarații și de la care nu se așteaptă
+            # documente lunar este un profil legitim. Indexarea directă crăpa cu
+            # `KeyError` exact acolo, iar `replace` folosea deja forma bună.
+            items=self._items_of([template.id]).get(template.id, []),
+            obligation_type_ids=self._obligations_of([template.id]).get(template.id, []),
         )
 
     def replace(
@@ -175,16 +197,19 @@ class ExpectationTemplateService:
         template_id: uuid.UUID,
         name: str,
         wanted: dict[uuid.UUID, int],
+        obligation_type_ids: list[uuid.UUID] | None = None,
     ) -> TemplateView | None:
         template = self._row(organization_id, template_id)
         if template is None:
             return None
         template.name = name
         self._set_items(organization_id, template.id, wanted)
+        self._set_obligations(organization_id, template.id, obligation_type_ids or [])
         return TemplateView(
             id=template.id,
             name=template.name,
             items=self._items_of([template.id]).get(template.id, []),
+            obligation_type_ids=self._obligations_of([template.id]).get(template.id, []),
         )
 
     def _set_items(
@@ -214,6 +239,38 @@ class ExpectationTemplateService:
         for type_id, row in existing.items():
             if type_id not in wanted:
                 self.session.delete(row)
+        self.session.flush()
+
+    def _obligations_of(self, template_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[uuid.UUID]]:
+        """Declarațiile tuturor profilurilor, într-o singură interogare."""
+        if not template_ids:
+            return {}
+        found: dict[uuid.UUID, list[uuid.UUID]] = {}
+        for row in self.session.scalars(
+            select(ExpectationTemplateObligation).where(
+                ExpectationTemplateObligation.template_id.in_(template_ids)
+            )
+        ):
+            found.setdefault(row.template_id, []).append(row.obligation_type_id)
+        return found
+
+    def _set_obligations(
+        self, organization_id: uuid.UUID, template_id: uuid.UUID, wanted: list[uuid.UUID]
+    ) -> None:
+        """Înlocuiește declarațiile profilului cu cele primite."""
+        self.session.execute(
+            delete(ExpectationTemplateObligation).where(
+                ExpectationTemplateObligation.template_id == template_id
+            )
+        )
+        for obligation_type_id in dict.fromkeys(wanted):
+            self.session.add(
+                ExpectationTemplateObligation(
+                    organization_id=organization_id,
+                    template_id=template_id,
+                    obligation_type_id=obligation_type_id,
+                )
+            )
         self.session.flush()
 
     def delete(self, organization_id: uuid.UUID, template_id: uuid.UUID) -> bool:
@@ -253,6 +310,12 @@ class ExpectationTemplateService:
                 )
             )
         }
+        obligations = self._obligations_of([template_id]).get(template_id, [])
+        service = ObligationService(self.session, organization_id)
         for client_id in client_ids:
             replace_expectations(self.session, organization_id, client_id, wanted)
+            # Și declarațiile, din același profil. Aplicate separat, jumătate din
+            # configurare ar rămâne de făcut client cu client — exact costul pe
+            # care profilul există ca să-l scoată.
+            service.set_for_client(client_id, obligations)
         return len(client_ids)
