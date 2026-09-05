@@ -49,8 +49,20 @@ test("un PDF urcat ajunge citit, atribuit, corectat, aprobat și arhivat", async
 
   // 4. O corectură umană se salvează și rămâne.
   await field(page, "supplierName").fill("Tert Furnizor SRL");
+
+  // Se așteaptă **răspunsul**, nu butonul. „Salvează" este dezactivat și cât
+  // timp cererea este în zbor (`!isDirty || busy`), deci `toBeDisabled` trecea
+  // imediat după clic — iar `reload()` de mai jos întrerupea cererea. Pe o
+  // mașină rapidă salvarea apuca să ajungă; în CI, pe Linux, nu. Testul
+  // confirma salvarea printr-un semnal care înseamnă „se salvează".
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" &&
+      /\/api\/v1\/documents\/[0-9a-f-]+$/.test(new URL(response.url()).pathname) &&
+      response.ok(),
+  );
   await page.getByRole("button", { name: "Salvează" }).click();
-  await expect(page.getByRole("button", { name: "Salvează" })).toBeDisabled();
+  await saved;
 
   await page.reload();
   await expect(field(page, "supplierName")).toHaveValue("Tert Furnizor SRL");

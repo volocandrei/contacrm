@@ -1037,6 +1037,7 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 | Prima variantă a limitării număra **toate** încercările, nu doar eșecurile: al unsprezecelea login cu parola corectă dintr-un minut era refuzat | **două teste E2E căzute departe de cauză**, în mijlocul unui flux de documente |
 | Pe un ecran de 390px, fiecare pagină depășea cu 50px, iar titlul din antet se strângea la lățime zero | măsurând lățimea reală pe trei viewporturi |
 | Prima variantă a verificării de accesibilitate raporta opt câmpuri „fără etichetă”; erau toate corecte — verificarea nu cunoștea eticheta implicită | citind ce anume raportase |
+| Un test confirma salvarea prin butonul „Salvează" devenit inactiv — dar butonul este inactiv **și** cât timp cererea este în zbor (`!isDirty \|\| busy`). Aserțiunea trecea imediat după clic, iar `reload()` de sub ea întrerupea cererea. Pe o mașină rapidă salvarea apuca să ajungă; în CI, pe Linux, nu | **CI, după ce trei încărcări noi au încetinit suita** |
 
 ### Tranzacția se confirma după ce răspunsul plecase (5 septembrie 2026)
 

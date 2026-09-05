@@ -41,10 +41,17 @@ test("un document fără client stă la Neatribuite, nu la Verificare", async ({
   const results = page.getByRole("list", { name: /încărcărilor/i });
   await expect(results.getByRole("link", { name: "Deschide" })).toBeVisible({ timeout: 30_000 });
 
+  // Documentul apare la Neatribuite abia după ce **procesarea** îl mută acolo;
+  // până atunci este `RECEIVED`, deci în inbox. Se așteaptă condiția asta,
+  // explicit, în loc de treizeci de secunde oarbe pe un rând care nu are cum să
+  // existe încă: sub încărcare, coada rămâne uneori în urmă.
+  await results.getByRole("link", { name: "Deschide" }).click();
+  await expect(page.getByLabel("Număr")).toHaveValue(number, { timeout: 60_000 });
+
   const row = page.getByRole("row", { name: new RegExp(number) });
 
   await page.goto("/documente/neatribuite");
-  await expect(row).toBeVisible({ timeout: 30_000 });
+  await expect(row).toBeVisible();
 
   // Și **nu** în lista de verificare: acolo se corectează câmpuri, aici se caută
   // firma. Amestecate, contorul din meniu nu mai poate fi adevărat pentru niciuna.
