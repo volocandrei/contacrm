@@ -38,6 +38,7 @@ import type {
   AuditLogEntry,
   Client,
   ClientAlias,
+  IssuedUploadLink,
   ClientStatus,
   ClientExpectation,
   ClientNote,
@@ -68,6 +69,7 @@ import type {
   RoleInfo,
   SettingEntry,
   Task,
+  UploadLink,
   UserSummary,
 } from "@/types/domain";
 
@@ -2409,6 +2411,64 @@ export function getSidebarCounts() {
     unmatched: state.documents.filter((d) => d.status === "UNMATCHED").length,
     tasks: state.tasks.filter((t) => t.status !== "DONE").length,
   };
+}
+
+/* ─── Linkurile de trimitere (M14) ─────────────────────────────────────────── */
+
+/**
+ * Oglinda lui `services/upload_links.py`.
+ *
+ * Tokenul se vede o singură dată, ca pe server. Aici nu se face hash — este un
+ * backend simulat, în memoria browserului — dar forma răspunsului este identică:
+ * `url` doar la creare, niciodată la listare. Un ecran care ar putea reafișa
+ * linkul ar fi scris altfel decât cel real, iar diferența s-ar vedea abia în
+ * producție.
+ */
+const uploadLinks: Array<UploadLink & { clientId: string }> = [];
+let uploadLinkCounter = 0;
+
+/** Aceeași valabilitate implicită ca pe server: o lună plus marja de depunere. */
+const MOCK_LINK_VALIDITY_DAYS = 45;
+
+export function listUploadLinks(clientId: string): UploadLink[] {
+  requirePermission("clients:read");
+  return uploadLinks
+    .filter((link) => link.clientId === clientId)
+    .map(({ clientId: _clientId, ...link }) => link);
+}
+
+export function createUploadLink(clientId: string): IssuedUploadLink {
+  requirePermission("clients:write");
+  getClient(clientId);
+
+  uploadLinkCounter += 1;
+  const expires = new Date(Date.now() + MOCK_LINK_VALIDITY_DAYS * 86_400_000).toISOString();
+  const link: UploadLink & { clientId: string } = {
+    id: `link-${uploadLinkCounter}`,
+    clientId,
+    expiresAt: expires,
+    revokedAt: null,
+    uploadCount: 0,
+    lastUsedAt: null,
+    createdAt: MOCK_NOW,
+  };
+  uploadLinks.unshift(link);
+  recordAudit("UPLOAD_LINK_ISSUED", "ClientUploadLink", link.id, getClient(clientId).name);
+
+  const { clientId: _clientId, ...rest } = link;
+  return {
+    ...rest,
+    url: `${window.location.origin}/incarca/token-simulat-${uploadLinkCounter}`,
+  };
+}
+
+export function revokeUploadLink(linkId: string): void {
+  requirePermission("clients:write");
+  const link = uploadLinks.find((row) => row.id === linkId);
+  if (!link) notFound("Link", linkId);
+  // Nu se șterge rândul: urma că a existat rămâne, ca pe server.
+  link.revokedAt = MOCK_NOW;
+  recordAudit("UPLOAD_LINK_REVOKED", "ClientUploadLink", linkId, null);
 }
 
 /* ─── Ce a învățat sistemul (§8) ───────────────────────────────────────────── */

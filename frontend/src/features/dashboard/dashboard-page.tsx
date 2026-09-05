@@ -52,6 +52,8 @@ const SOURCE_LABEL: Record<DocumentSource, string> = {
   API: "API",
   ONEDRIVE: "OneDrive",
   EFACTURA: "e-Factura",
+  // Clientul l-a trimis singur, prin linkul primit de la cabinet.
+  PORTAL: "Trimis de client",
 };
 
 const ATTENTION_TONE: Record<AttentionReason, "danger" | "warning"> = {

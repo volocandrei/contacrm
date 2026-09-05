@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 14
     cors_allowed_origins: str = "http://localhost:5173"
+    #: Adresa la care ajunge un om din afară — clientul care primește un link de
+    #: trimitere. Nu se poate deduce din cererea curentă: linkul se compune pe
+    #: server, ajunge într-un email, și trebuie să funcționeze de oriunde.
+    #: Implicit adresa de development, ca linkul să meargă și fără configurare.
+    public_base_url: str = "http://localhost:5173"
     # Câte încercări de autentificare acceptă o adresă IP într-un minut.
     #
     # Se numea `rate_limit_per_minute` și nu o citea niciun modul: o promisiune
@@ -353,6 +358,14 @@ class Settings(BaseSettings):
             )
         if self.ocr_provider not in LOCAL_EXTRACTION_PROVIDERS and self.ai_provider == "mock":
             problems.append("OCR_PROVIDER real cu AI_PROVIDER=mock — configurare inconsistentă.")
+        if self.public_base_url.startswith("http://localhost"):
+            # Un link de trimitere compus cu `localhost` ajunge la client și nu
+            # duce nicăieri. Se descoperă abia când cineva îl deschide — adică
+            # exact la clientul pe care voiai să-l ajuți.
+            problems.append(
+                "PUBLIC_BASE_URL a rămas pe localhost: "
+                "linkurile trimise clienților nu ar funcționa."
+            )
         if self.storage_provider == "s3" and not self.s3_bucket:
             problems.append("STORAGE_PROVIDER=s3 fără S3_BUCKET.")
         if self.assistant_provider == "anthropic" and not self.assistant_api_key.strip():

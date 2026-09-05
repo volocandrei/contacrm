@@ -5,6 +5,7 @@ import {
   CalendarClock,
   Cloud,
   Landmark,
+  Link2,
   Mail,
   MessageCircle,
   MessageSquare,
@@ -116,6 +117,7 @@ const SOURCE_OPTIONS = [
   { value: "EMAIL", label: "Email" },
   { value: "ONEDRIVE", label: "OneDrive" },
   { value: "EFACTURA", label: "e-Factura" },
+  { value: "PORTAL", label: "Trimis de client" },
   { value: "WHATSAPP", label: "WhatsApp" },
 ];
 
@@ -132,6 +134,7 @@ const SOURCE_META: Record<string, { label: string; Icon: LucideIcon; tone: Tone 
   WHATSAPP: { label: "WhatsApp", Icon: MessageCircle, tone: "green" },
   UPLOAD: { label: "Încărcare", Icon: Upload, tone: "slate" },
   API: { label: "API", Icon: Plug, tone: "slate" },
+  PORTAL: { label: "Trimis de client", Icon: Link2, tone: "green" },
 };
 
 const UNKNOWN_SOURCE = { label: "Sursă necunoscută", Icon: Plug, tone: "slate" as Tone };

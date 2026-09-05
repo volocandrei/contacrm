@@ -84,6 +84,21 @@ const routes: Route[] = [
   },
   {
     method: "GET",
+    pattern: "/clients/:id/upload-links",
+    handler: ({ params }) => store.listUploadLinks(params.id!),
+  },
+  {
+    method: "POST",
+    pattern: "/clients/:id/upload-links",
+    handler: ({ params }) => store.createUploadLink(params.id!),
+  },
+  {
+    method: "DELETE",
+    pattern: "/clients/:id/upload-links/:linkId",
+    handler: ({ params }) => store.revokeUploadLink(params.linkId!),
+  },
+  {
+    method: "GET",
     pattern: "/clients/:id/aliases",
     handler: ({ params }) => store.listClientAliases(params.id!),
   },

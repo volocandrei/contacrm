@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  16.941 linii sursă +  2.478 linii teste  →   200 teste
-backend   22.090 linii sursă + 18.798 linii teste  → 1.286 teste
-end-to-end 1.606 linii                             →    62 teste (browser real)
+frontend  17.453 linii sursă +  2.478 linii teste  →   200 teste
+backend   22.664 linii sursă + 19.188 linii teste  → 1.308 teste
+end-to-end 1.675 linii                             →    64 teste (browser real)
 migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.548 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.572 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -207,6 +207,39 @@ email al contabilului. Aplicația știe ce lipsește și până când, dar nu po
 trimite — asta cere un provider și rămâne în Faza 2; butonul acoperă exact
 distanța rămasă, fără să pretindă că o depășește.
 
+### Clientul își trimite singur documentele (M14)
+
+**Partea cea mai grea a muncii unui cabinet nu este procesarea documentelor, ci
+adunarea lor.** Fiecare pas cerut clientului — să scaneze, să atașeze, să nu
+depășească limita de mărime, să nu uite jumătate — este o lună întârziată.
+
+Cabinetul deschide, din fișa clientului, un **link de trimitere**. Clientul îl
+primește pe email sau WhatsApp, îl deschide, trage fișierele. Fără cont, fără
+parolă, fără aplicație. Documentele ajung direct la dosarul lui: apartenența vine
+din link, deci nu trec niciodată prin „Neatribuite" — a doua sursă, după
+e-Factura, în care clientul nu se ghicește.
+
+Este **singura rută publică prin care se poate scrie**, iar tot ce ține de ea
+există din cauza asta:
+
+- **Nu se citește nimic prin link.** Nu listează, nu descarcă, nu spune ce s-a
+  trimis deja. Un link scurs este, în cel mai rău caz, un drum prin care sosesc
+  documente nedorite — supărător, dar nu o scurgere de date. Și se închide dintr-un
+  buton.
+- **Numele clientului nu apare pe pagină.** Un link ajuns din greșeală la altcineva
+  n-are voie să spună cine este clientul cabinetului. Se vede numele
+  **cabinetului**, ca omul să știe cui trimite.
+- **Tokenul stă ca hash**, ca refresh tokenurile: o bază citită de altcineva nu
+  trebuie să dea linkuri funcționale. Adresa se arată o singură dată, la creare.
+- **Expirarea este obligatorie** (45 de zile implicit, maximum 180). Un link
+  trimis pe email rămâne în inbox-ul acelui email ani de zile.
+- **Un link mort este mort**, fără să spună de ce: inexistent, expirat, revocat
+  sau al unui client șters întorc toate același 404.
+
+`PUBLIC_BASE_URL` oprește pornirea în producție dacă a rămas pe `localhost`: un
+link compus așa ajunge la client și nu duce nicăieri — se descoperă abia când
+cineva îl deschide.
+
 ### Sistemul învață de la cine vin documentele (§8)
 
 Un extras de cont nu are CUI, o poză de bon nu are text, iar OCR-ul citește
@@ -248,7 +281,7 @@ documentul aprobat și mai avea de făcut două lucruri pentru fiecare document
 următor. Scurtături: `Alt+S` salvează, `Alt+A` aprobă, `Alt+N` sare peste
 fără să atingă documentul.
 
-**Backendul simulat** (`src/api/mock/`, ~4.114 linii) implementează 70 de rute cu
+**Backendul simulat** (`src/api/mock/`, ~4.189 linii) implementează 73 de rute cu
 aceleași căi, paginare, filtrare, permisiuni și coduri de eroare ca API-ul real.
 Comutarea se face din `VITE_API_MODE` — restul aplicației nu știe cine răspunde.
 
@@ -474,7 +507,7 @@ Vechile și noile valori nu ies prin API: auditul răspunde la „cine, ce, cân
 „ce scria pe factură". Cine are nevoie de conținut deschide documentul, iar acea
 deschidere se auditează la rândul ei.
 
-Rute reale existente **azi**: **67 de căi** sub `/api/v1`, cu 81 de operații
+Rute reale existente **azi**: **70 de căi** sub `/api/v1`, cu 86 de operații
 HTTP — plus cele trei `/health/*` de la rădăcină și `/internal/run-queue`, care nu
 apare în OpenAPI pentru că nu face parte din contractul cu frontend-ul.
 
@@ -486,7 +519,7 @@ să afle ce poate face un operator *înainte* de a-i da rolul.
 
 ### Verificat pe date reale, nu doar în teste
 
-- Toate cele **14** migrări se aplică **și se dau înapoi** curat — verificat
+- Toate cele **15** migrări se aplică **și se dau înapoi** curat — verificat
   dus-întors la fiecare adăugare, nu presupus
 - Flux HTTP complet: parolă greșită → 401, login → `CurrentUser`, cookie-uri
   `HttpOnly`, `/me`, `/users` ca ADMIN, refresh, logout, `/me` după logout → 401

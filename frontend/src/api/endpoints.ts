@@ -11,6 +11,7 @@ import type {
   ChecklistItem,
   Client,
   ClientAlias,
+  IssuedUploadLink,
   ClientExpectation,
   ClientNote,
   ClientStatus,
@@ -35,6 +36,7 @@ import type {
   SettingEntry,
   Task,
   TaskPriority,
+  UploadLink,
   TaskStatus,
   UserSummary,
 } from "@/types/domain";
@@ -127,6 +129,11 @@ export const clients = {
   ) => api.put<ClientExpectation[]>(`/clients/${id}/expectations`, { expectations }),
   periods: (id: string) => api.get<AccountingPeriod[]>(`/clients/${id}/periods`),
   aliases: (id: string) => api.get<ClientAlias[]>(`/clients/${id}/aliases`),
+  uploadLinks: (id: string) => api.get<UploadLink[]>(`/clients/${id}/upload-links`),
+  createUploadLink: (id: string) =>
+    api.post<IssuedUploadLink>(`/clients/${id}/upload-links`),
+  revokeUploadLink: (clientId: string, linkId: string) =>
+    api.delete<void>(`/clients/${clientId}/upload-links/${linkId}`),
   forgetAlias: (clientId: string, aliasId: string) =>
     api.delete<void>(`/clients/${clientId}/aliases/${aliasId}`),
   /**

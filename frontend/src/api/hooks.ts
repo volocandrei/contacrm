@@ -37,6 +37,7 @@ export const queryKeys = {
   clientNotes: (id: string) => ["clients", id, "notes"] as const,
   clientExpectations: (id: string) => ["clients", id, "expectations"] as const,
   clientAliases: (id: string) => ["clients", id, "aliases"] as const,
+  clientUploadLinks: (id: string) => ["clients", id, "upload-links"] as const,
   intakes: (params: QueryParams) => ["intakes", params] as const,
   clientPeriods: (id: string) => ["clients", id, "periods"] as const,
   documents: (params: QueryParams) => ["documents", params] as const,
@@ -108,6 +109,32 @@ export function useForgetAlias(clientId: string) {
     mutationFn: (aliasId: string) => clients.forgetAlias(clientId, aliasId),
     onSuccess: () =>
       void queryClient.invalidateQueries({ queryKey: queryKeys.clientAliases(clientId) }),
+  });
+}
+
+/** Drumurile deschise prin care clientul își poate trimite documentele. */
+export function useUploadLinks(id: string) {
+  return useQuery({
+    queryKey: queryKeys.clientUploadLinks(id),
+    queryFn: () => clients.uploadLinks(id),
+  });
+}
+
+export function useCreateUploadLink(clientId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => clients.createUploadLink(clientId),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: queryKeys.clientUploadLinks(clientId) }),
+  });
+}
+
+export function useRevokeUploadLink(clientId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (linkId: string) => clients.revokeUploadLink(clientId, linkId),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: queryKeys.clientUploadLinks(clientId) }),
   });
 }
 

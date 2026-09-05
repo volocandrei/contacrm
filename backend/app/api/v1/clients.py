@@ -8,7 +8,7 @@ câmpuri.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, status
@@ -43,6 +43,7 @@ from app.services.client_aliases import ClientAliasService
 from app.services.client_service import ActorContext, ClientService
 from app.services.document_request import build_request_message
 from app.services.period_service import PeriodService
+from app.services.upload_links import UploadLinkService
 
 router = APIRouter(prefix="/clients", tags=["crm"])
 
@@ -96,6 +97,117 @@ def get_client(session: DbSession, user: ClientReader, client_id: uuid.UUID) -> 
         # răspunsul confirmă că id-ul există undeva.
         raise NotFoundError("Client", client_id)
     return _to_out(client, repository.accountant_names([client]))
+
+
+class UploadLinkOut(ApiModel):
+    """Un drum de trimitere deschis pentru client.
+
+    **Fără token.** Se arată o singură dată, la creare; după aceea în bază stă
+    doar hash-ul lui. Un ecran care ar putea reafișa linkul ar însemna că baza îl
+    păstrează, iar atunci o bază citită de altcineva ar da linkuri funcționale.
+    """
+
+    id: uuid.UUID
+    expires_at: datetime
+    revoked_at: datetime | None
+    upload_count: int
+    last_used_at: datetime | None
+    created_at: datetime
+
+
+class IssuedLinkOut(UploadLinkOut):
+    """Linkul nou. `url` se vede **o singură dată** — copiaz-o acum."""
+
+    url: str
+
+
+@router.get("/{client_id}/upload-links", response_model=list[UploadLinkOut])
+def list_upload_links(
+    session: DbSession, user: ClientReader, client_id: uuid.UUID
+) -> list[UploadLinkOut]:
+    """Drumurile deschise pentru clientul ăsta, fără tokenurile lor."""
+    links = UploadLinkService(session).for_client(user.organization_id, client_id)
+    return [
+        UploadLinkOut(
+            id=link.id,
+            expires_at=link.expires_at,
+            revoked_at=link.revoked_at,
+            upload_count=link.upload_count,
+            last_used_at=link.last_used_at,
+            created_at=link.created_at,
+        )
+        for link in links
+    ]
+
+
+@router.post(
+    "/{client_id}/upload-links",
+    response_model=IssuedLinkOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_upload_link(
+    session: DbSession,
+    user: ClientWriter,
+    request: Request,
+    client_id: uuid.UUID,
+) -> IssuedLinkOut:
+    """Deschide un drum prin care clientul își trimite singur documentele.
+
+    Cere `clients:write`: a deschide o cale publică de scriere către dosarul unui
+    client este o decizie a cabinetului, nu o consultare.
+    """
+    client = ClientRepository(session).get(user.organization_id, client_id)
+    if client is None:
+        raise NotFoundError("Client", client_id)
+
+    issued = UploadLinkService(session).issue(
+        user.organization_id, client_id, created_by_id=user.id
+    )
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="UPLOAD_LINK_ISSUED",
+        entity_type="ClientUploadLink",
+        entity_id=str(issued.id),
+        user_id=user.id,
+        user_name=user.full_name,
+        # Clientul, nu tokenul: jurnalul nu ține chei (§33).
+        detail=client.name,
+        ip=client_ip(request),
+    )
+    return IssuedLinkOut(
+        id=issued.id,
+        url=f"{settings.public_base_url}/incarca/{issued.token}",
+        expires_at=issued.expires_at,
+        revoked_at=None,
+        upload_count=0,
+        last_used_at=None,
+        created_at=datetime.now(UTC),
+    )
+
+
+@router.delete("/{client_id}/upload-links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_upload_link(
+    session: DbSession,
+    user: ClientWriter,
+    request: Request,
+    client_id: uuid.UUID,
+    link_id: uuid.UUID,
+) -> None:
+    """Închide drumul. Rândul rămâne: urma că a existat nu se șterge."""
+    del client_id
+    link = UploadLinkService(session).revoke(user.organization_id, link_id)
+    if link is None:
+        raise NotFoundError("Link", link_id)
+
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="UPLOAD_LINK_REVOKED",
+        entity_type="ClientUploadLink",
+        entity_id=str(link_id),
+        user_id=user.id,
+        user_name=user.full_name,
+        ip=client_ip(request),
+    )
 
 
 class ClientAliasOut(ApiModel):

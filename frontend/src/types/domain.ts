@@ -39,6 +39,7 @@ export const DOCUMENT_SOURCE = [
   "API",
   "ONEDRIVE",
   "EFACTURA",
+  "PORTAL",
 ] as const;
 export type DocumentSource = (typeof DOCUMENT_SOURCE)[number];
 
@@ -222,6 +223,27 @@ export type ClientAlias = {
   matchedCount: number;
   createdAt: string;
 };
+
+/**
+ * Un drum prin care clientul își trimite singur documentele.
+ *
+ * **Fără token.** Se vede o singură dată, la creare (`IssuedUploadLink`); după
+ * aceea în bază stă doar hash-ul lui. Un ecran care ar putea reafișa linkul ar
+ * însemna că baza îl păstrează — iar atunci o bază citită de altcineva ar da
+ * linkuri funcționale.
+ */
+export type UploadLink = {
+  id: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  /** Câte documente au intrat pe aici. Spune dacă drumul chiar e folosit. */
+  uploadCount: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+};
+
+/** Linkul nou. `url` se vede o singură dată — se copiază acum sau niciodată. */
+export type IssuedUploadLink = UploadLink & { url: string };
 
 /** Un contact văzut din agendă: poartă și numele firmei. */
 export type ContactListItem = Contact & { clientName: string };

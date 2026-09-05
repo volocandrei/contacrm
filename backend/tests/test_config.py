@@ -13,6 +13,25 @@ def _settings(**overrides: object) -> Settings:
     return Settings(_env_file=None, **overrides)  # type: ignore[arg-type]
 
 
+def _production(**overrides: object) -> Settings:
+    """O configurare de producție **completă**, peste care testul schimbă un lucru.
+
+    Fiecare cheie de aici este obligatorie în producție. Un test care le omite
+    verifică, fără să vrea, altceva decât crede: cade pe prima verificare
+    întâlnită, nu pe cea pe care o are în vedere.
+    """
+    base: dict[str, object] = {
+        "environment": Environment.PRODUCTION,
+        "secret_key": "x" * 64,
+        "ocr_provider": "pdf_text",
+        # Un link de trimitere compus cu `localhost` ajunge la client și nu duce
+        # nicăieri — se descoperă abia când cineva îl deschide.
+        "public_base_url": "https://cabinet.example.ro",
+    }
+    base.update(overrides)
+    return _settings(**base)
+
+
 def test_defaults_keep_documents_on_this_machine() -> None:
     """R2: în development niciun document nu pleacă la un provider extern."""
     settings = _settings()
@@ -57,10 +76,19 @@ def test_production_refuses_a_secret_key_too_short_to_sign_with(key: str) -> Non
 
 
 def test_production_accepts_a_real_secret_key() -> None:
-    settings = _settings(
-        environment=Environment.PRODUCTION, secret_key="x" * 64, ocr_provider="pdf_text"
-    )
-    settings.assert_production_ready()
+    _production().assert_production_ready()
+
+
+def test_production_refuses_a_link_that_would_not_work() -> None:
+    """Un link de trimitere cu `localhost` ajunge la client și nu duce nicăieri.
+
+    Se descoperă abia când cineva îl deschide — adică exact la clientul pe care
+    voiai să-l ajuți.
+    """
+    settings = _production(public_base_url="http://localhost:5173")
+
+    with pytest.raises(RuntimeError, match="PUBLIC_BASE_URL"):
+        settings.assert_production_ready()
 
 
 def test_production_refuses_the_provider_that_invents_data() -> None:
@@ -110,10 +138,7 @@ def test_an_unimplemented_extraction_provider_stops_startup() -> None:
 
 def test_reading_a_pdf_locally_is_not_an_inconsistent_configuration() -> None:
     """`pdf_text` nu este un model: nu are ce să fie inconsistent cu `AI_PROVIDER`."""
-    settings = _settings(
-        environment=Environment.PRODUCTION, secret_key="x" * 64, ocr_provider="pdf_text"
-    )
-    settings.assert_production_ready()
+    _production().assert_production_ready()
 
 
 def test_api_schema_is_hidden_in_production() -> None:
@@ -185,9 +210,7 @@ def test_production_refuses_a_declared_model_without_a_key() -> None:
 
 def test_production_accepts_the_local_engine_without_any_key() -> None:
     """Motorul implicit nu cere nimic: un cabinet poate porni fără niciun cont."""
-    settings = _settings(
-        environment=Environment.PRODUCTION, secret_key="x" * 64, ocr_provider="pdf_text"
-    )
+    settings = _production()
 
     assert settings.assistant_provider == "rules"
     settings.assert_production_ready()

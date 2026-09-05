@@ -1,6 +1,14 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, LoaderCircle, Pencil, Plus, StickyNote, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Link as LinkIcon,
+  LoaderCircle,
+  Pencil,
+  Plus,
+  StickyNote,
+  Trash2,
+} from "lucide-react";
 import {
   useClient,
   useClientAliases,
@@ -9,10 +17,13 @@ import {
   useClientNotes,
   useClientPeriods,
   useCreateNote,
+  useCreateUploadLink,
   useForgetAlias,
   useDocumentTypes,
   useDocuments,
+  useRevokeUploadLink,
   useSaveExpectations,
+  useUploadLinks,
 } from "@/api/hooks";
 import { ApiError } from "@/api/types";
 import { ErrorState, LoadingState, Panel } from "@/components/page";
@@ -26,6 +37,7 @@ import {
 } from "@/components/status-badge";
 import { formatDate, formatDateTime, formatMoney, formatReferenceMonth } from "@/lib/format";
 import { avatarTone, initials } from "@/lib/avatar";
+import { describeError } from "@/lib/errors";
 import { buttonPrimary, buttonSecondary, focusRing, iconChip, mutedText } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 
@@ -169,6 +181,8 @@ function GeneralTab({ clientId }: { clientId: string }) {
           <Row label="Client din" value={formatDate(client.createdAt)} />
         </dl>
       </Panel>
+
+      <UploadLinkPanel clientId={clientId} />
 
       <LearnedSendersPanel clientId={clientId} />
 
@@ -731,6 +745,133 @@ function LearnedSendersPanel({ clientId }: { clientId: string }) {
           </li>
         ))}
       </ul>
+    </Panel>
+  );
+}
+
+
+/**
+ * Linkul prin care clientul își trimite singur documentele.
+ *
+ * **De ce este panoul care contează cel mai mult pe ecranul ăsta.** Partea grea
+ * a muncii nu este procesarea, ci adunarea: fiecare pas cerut clientului — să
+ * scaneze, să atașeze, să nu depășească limita — este o lună întârziată. Linkul
+ * mută efortul de unde e scump la unde e ieftin.
+ *
+ * **Adresa se vede o singură dată.** În bază stă doar hash-ul ei; un ecran care
+ * ar putea-o reafișa ar însemna că baza o păstrează, iar atunci o bază citită de
+ * altcineva ar da linkuri funcționale. De aceea butonul de copiere apare imediat
+ * după creare și nu se mai întoarce.
+ */
+function UploadLinkPanel({ clientId }: { clientId: string }) {
+  const { data: links } = useUploadLinks(clientId);
+  const create = useCreateUploadLink(clientId);
+  const revoke = useRevokeUploadLink(clientId);
+  const has = usePermissionCheck();
+  const [fresh, setFresh] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const live = (links ?? []).filter(
+    (link) => !link.revokedAt && new Date(link.expiresAt) > new Date(),
+  );
+
+  async function copy(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      setProblem("Browserul nu a permis copierea. Selectează adresa și copiaz-o manual.");
+    }
+  }
+
+  return (
+    <Panel title="Trimitere de către client">
+      <p className={cn("mb-3 text-xs", mutedText)}>
+        Un link prin care clientul își trimite documentele fără cont și fără aplicație.
+        Trimite-i-l pe email sau WhatsApp.
+      </p>
+
+      {fresh && (
+        <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
+          <p className="mb-2 text-xs font-medium text-emerald-900 dark:text-emerald-200">
+            Copiază adresa acum — nu se mai poate afișa a doua oară.
+          </p>
+          <code className="block truncate rounded-lg bg-white px-2 py-1.5 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300">
+            {fresh}
+          </code>
+          <button
+            type="button"
+            onClick={() => void copy(fresh)}
+            className={cn(buttonPrimary, "mt-2 h-8 w-full text-xs")}
+          >
+            {copied ? "Copiat" : "Copiază adresa"}
+          </button>
+        </div>
+      )}
+
+      {live.length > 0 && (
+        <ul className="mb-3 space-y-2 text-sm">
+          {live.map((link) => (
+            <li key={link.id} className="flex items-center justify-between gap-2">
+              <span className="min-w-0">
+                <span className="block text-slate-700 dark:text-slate-300">
+                  Valabil până la {formatDate(link.expiresAt)}
+                </span>
+                <span className={cn("text-xs", mutedText)}>
+                  {link.uploadCount === 0
+                    ? "încă nefolosit"
+                    : `${link.uploadCount} ${
+                        link.uploadCount === 1 ? "document primit" : "documente primite"
+                      }`}
+                </span>
+              </span>
+              {has("clients:write") && (
+                <button
+                  type="button"
+                  onClick={() => revoke.mutate(link.id)}
+                  disabled={revoke.isPending}
+                  title="Închide linkul"
+                  className={cn(
+                    "shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20",
+                    focusRing,
+                  )}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  <span className="sr-only">Închide linkul</span>
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {has("clients:write") && (
+        <button
+          type="button"
+          onClick={() =>
+            create.mutate(undefined, {
+              onSuccess: (link) => {
+                setFresh(link.url);
+                setCopied(false);
+                setProblem(null);
+              },
+              onError: (caught) => setProblem(describeError(caught)),
+            })
+          }
+          disabled={create.isPending}
+          className={cn(buttonSecondary, "h-9 w-full")}
+        >
+          <LinkIcon className="h-4 w-4" aria-hidden="true" />
+          {live.length > 0 ? "Încă un link" : "Deschide un link"}
+        </button>
+      )}
+
+      {problem && (
+        <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">
+          {problem}
+        </p>
+      )}
     </Panel>
   );
 }

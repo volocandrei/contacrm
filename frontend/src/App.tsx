@@ -7,6 +7,7 @@ import { LoginPage } from "@/features/auth/login-page";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { ClientDetailPage } from "@/features/clients/client-detail-page";
 import { ContactsPage } from "@/features/clients/contacts-page";
+import { PortalPage } from "@/features/portal/portal-page";
 import { ClientsPage } from "@/features/clients/clients-page";
 import {
   MessagesPage,
@@ -24,6 +25,11 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+
+      {/* Portalul clientului: în afara `RequireAuth` și în afara shell-ului.
+          Cine ajunge aici nu este utilizatorul aplicației, ci clientul
+          cabinetului — nu are cont și nu trebuie să-și facă unul. */}
+      <Route path="/incarca/:token" element={<PortalPage />} />
 
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>

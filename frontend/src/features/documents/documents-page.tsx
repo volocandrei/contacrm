@@ -8,6 +8,7 @@ import {
   FileStack,
   FileText,
   Landmark,
+  Link2,
   Mail,
   MessageSquare,
   Play,
@@ -81,6 +82,8 @@ const SOURCE_LABEL: Record<DocumentSource, string> = {
   API: "API",
   ONEDRIVE: "OneDrive",
   EFACTURA: "e-Factura",
+  // Clientul l-a trimis singur, prin linkul primit de la cabinet.
+  PORTAL: "Trimis de client",
 };
 
 const CONFIDENCE_OPTIONS = [
@@ -478,6 +481,9 @@ const SOURCE_META: Record<DocumentSource, { Icon: LucideIcon; tone: Tone }> = {
   EFACTURA: { Icon: Landmark, tone: "green" },
   WHATSAPP: { Icon: MessageSquare, tone: "green" },
   UPLOAD: { Icon: Upload, tone: "slate" },
+  // Verde ca e-Factura: sunt cele două surse în care clientul este cunoscut din
+  // start, deci documentul nu trece niciodată prin „neatribuit".
+  PORTAL: { Icon: Link2, tone: "green" },
   API: { Icon: Plug, tone: "slate" },
 };
 

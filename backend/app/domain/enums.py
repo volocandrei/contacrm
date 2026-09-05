@@ -62,6 +62,10 @@ class DocumentSource(StrEnum):
     # se face pe CUI-ul lui, deci apartenența este dată de cerere, nu dedusă din
     # document.
     EFACTURA = "EFACTURA"
+    # Clientul si-a trimis singur documentul, printr-un link deschis de cabinet.
+    # Ca si la e-Factura, apartenenta vine din cerere, nu din ghicit: linkul stie
+    # al cui este. Documentele de aici nu trec niciodata prin UNMATCHED.
+    PORTAL = "PORTAL"
 
 
 class EFacturaMessageKind(StrEnum):
