@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  20.934 linii sursă +  3.391 linii teste  →   257 teste
+frontend  21.184 linii sursă +  3.391 linii teste  →   257 teste
 backend   27.186 linii sursă + 23.613 linii teste  → 1.513 teste
-end-to-end 2.135 linii                             →    79 teste (browser real)
+end-to-end 2.167 linii                             →    80 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.849 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.850 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -142,7 +142,7 @@ niciodată. „Integrări" stă separat de „Administrare" — „cum adaug un 
 | Contabilitate | **termene de depunere per client**, perioade cu checklist, documente lipsă, **profiluri de client** |
 | Comunicare | mesaje, șabloane, remindere |
 | Rapoarte | agregări calculate în backend, cu filtre pe lună și client |
-| Administrare | utilizatori, **matricea rol × permisiune**, setări, **surse documente (OneDrive + email)**, **e-Factura**, jurnal audit |
+| Administrare | utilizatori, **matricea rol × permisiune**, **catalogul de declarații**, setări, **surse documente (OneDrive + email)**, **e-Factura**, jurnal audit |
 
 **Asistentul stă jos-dreapta**, cu semnul aplicației pe buton; `Ctrl+J` îl deschide de oriunde (M13): un chat care răspunde din datele
 cabinetului — „cât e de lucru?", „ce lipsește la Alfa Conta?", „când e
@@ -447,6 +447,13 @@ schimbă fără deploy.
 inițial (`app/domain/obligations.py`) sunt puncte de plecare uzuale, nu o
 afirmație a aplicației despre ce spune legea. Fiecare rămâne de confirmat de un
 contabil.
+
+**Catalogul are ecran** (`Administrare → Declarații`), iar ecranul de termene are
+un link către el. Fără ecran, afirmația „termenele se administrează din catalog"
+era adevărată despre cod și falsă despre ce putea face omul: ruta exista, drumul
+către ea nu. O promisiune pe care interfața nu o poate onora este mai rea decât o
+funcție lipsă — găsit trecând în revistă fiecare rută adăugată în sesiune și
+întrebând de unde se ajunge la ea.
 
 **Nimic calculat nu se stochează.** Nu există tabel de „termene viitoare" pe care
 cineva să-l regenereze; se calculează la citire. Se stochează doar faptul uman:

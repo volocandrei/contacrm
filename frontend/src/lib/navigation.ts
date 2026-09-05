@@ -260,6 +260,14 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: "admin:users",
       },
       {
+        // Se deschide o dată, la instalare, și pe urmă doar când se schimbă un
+        // termen. Drumul de zi cu zi este din „Termene", care are un link aici.
+        label: "Declarații",
+        path: "/administrare/declaratii",
+        Icon: CalendarCheck,
+        permission: "periods:manage",
+      },
+      {
         label: "Setări",
         path: "/administrare/setari",
         Icon: Settings,

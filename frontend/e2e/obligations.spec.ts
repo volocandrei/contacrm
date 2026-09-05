@@ -111,3 +111,35 @@ test("un grup întreg se marchează dintr-o apăsare", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^Marchează depus/ })).not.toHaveCount(before);
   await expect(page.getByRole("button", { name: /^Anulează depunerea/ }).first()).toBeVisible();
 });
+
+test("termenul se schimbă din catalog și se vede imediat în listă", async ({ page }) => {
+  // Ecranul de termene spune că termenele sunt ale cabinetului. Fără ecranul de
+  // catalog, afirmația era adevărată despre cod și falsă despre ce putea face
+  // omul: ruta exista, drumul către ea nu.
+  await loginAs(page, ACCOUNTS.admin);
+  await page.goto("/contabilitate/termene");
+
+  await page.getByRole("link", { name: "Administrează termenele" }).click();
+  await expect(page).toHaveURL(/\/administrare\/declaratii$/);
+
+  const day = page.getByLabel("În ce zi cade termenul pentru D300", { exact: true });
+  await expect(day).toBeVisible();
+  const original = await day.inputValue();
+  await day.fill("15");
+  await page
+    .getByRole("row", { name: /D300/ })
+    .first()
+    .getByRole("button", { name: "Salvează" })
+    .click();
+  await expect(
+    page.getByRole("row", { name: /D300/ }).first().getByRole("button", { name: "Salvează" }),
+  ).toBeDisabled();
+
+  // Înapoi cum era, ca rulările următoare să pornească din aceeași stare.
+  await day.fill(original);
+  await page
+    .getByRole("row", { name: /D300/ })
+    .first()
+    .getByRole("button", { name: "Salvează" })
+    .click();
+});

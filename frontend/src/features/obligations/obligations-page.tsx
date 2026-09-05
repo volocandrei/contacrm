@@ -17,7 +17,15 @@
  * descoperă la un control.
  */
 import { useMemo, useState } from "react";
-import { CalendarCheck, Check, CircleAlert, LoaderCircle, Undo2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import {
+  CalendarCheck,
+  Check,
+  CircleAlert,
+  LoaderCircle,
+  SlidersHorizontal,
+  Undo2,
+} from "lucide-react";
 import {
   useClients,
   useMarkFiled,
@@ -28,6 +36,7 @@ import {
 import { ApiError } from "@/api/types";
 import { SelectFilter } from "@/components/form-controls";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
+import { usePermissionCheck } from "@/features/auth/use-auth";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { daysUntil, formatDate, formatReferenceMonth } from "@/lib/format";
 import { buttonSecondary, iconChip, mutedText } from "@/lib/ui";
@@ -55,6 +64,7 @@ function periodLabel(period: string, frequency: ObligationFrequency): string {
 
 export function ObligationsPage() {
   const { values, setValue } = useFilterParams({ clientId: "" });
+  const canManage = usePermissionCheck()("periods:manage");
   const { data: clientPage } = useClients({ pageSize: 200 });
   const { data, isLoading, error } = useObligations(
     values.clientId ? { clientId: values.clientId } : {},
@@ -78,7 +88,21 @@ export function ObligationsPage() {
     <div>
       <PageHeader
         title="Termene"
-        description="Ce are cabinetul de depus, pentru cine, până când. Termenele se administrează din catalog — aplicația nu pretinde că știe legea."
+        description="Ce are cabinetul de depus, pentru cine, până când. Aplicația știe aritmetica unui calendar, nu legea."
+        actions={
+          canManage ? (
+            /* Drumul către catalog stă aici, unde apare întrebarea „de ce
+               termenul ăsta?". Ascuns doar în meniul de administrare, ar fi fost
+               o promisiune pe care nimeni n-o găsește. */
+            <Link
+              to="/administrare/declaratii"
+              className={cn(buttonSecondary, "h-9 px-3 text-sm")}
+            >
+              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+              Administrează termenele
+            </Link>
+          ) : undefined
+        }
       />
 
       <div className="mb-4 flex flex-wrap gap-3">
