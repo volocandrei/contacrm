@@ -23,6 +23,7 @@ from app.api.v1 import (
     intakes,
     integrations,
     internal,
+    obligations,
     periods,
     portal,
     reports,
@@ -42,6 +43,7 @@ api_router.include_router(integrations.router)
 api_router.include_router(anaf.router)
 api_router.include_router(intakes.router)
 api_router.include_router(periods.router)
+api_router.include_router(obligations.router)
 api_router.include_router(reports.router)
 api_router.include_router(settings.router)
 api_router.include_router(tasks.router)

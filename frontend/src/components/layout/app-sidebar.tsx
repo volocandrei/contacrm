@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { ChevronDown, ChevronsRight } from "lucide-react";
 import { divider, pillClass, type Tone } from "@/lib/ui";
+import { Logo } from "@/components/brand";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS, NAV_ROOT, type BadgeKey, type NavItem } from "@/lib/navigation";
 import { usePermissionCheck } from "@/features/auth/use-auth";
@@ -234,24 +235,6 @@ function BrandSection({ open }: { open: boolean }) {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function Logo() {
-  return (
-    <div className="grid size-10 shrink-0 place-content-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 shadow-sm">
-      <svg
-        width="20"
-        viewBox="0 0 50 39"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        className="fill-white"
-        aria-hidden="true"
-      >
-        <path d="M16.4992 2H37.5808L22.0816 24.9729H1L16.4992 2Z" />
-        <path d="M17.4224 27.102L11.4192 36H33.5008L49 13.0271H32.7024L23.2064 27.102H17.4224Z" />
-      </svg>
     </div>
   );
 }

@@ -32,6 +32,9 @@ import type {
   DriveSyncResult,
   MailBrowseItem,
   MailFolder,
+  DueObligation,
+  ObligationFiling,
+  ObligationType,
   ReportSummary,
   RoleCode,
   RoleInfo,
@@ -238,6 +241,28 @@ export const periods = {
   list: (params: QueryParams) => api.get<AccountingPeriod[]>("/periods", params),
   missing: (referenceMonth: string) =>
     api.get<MissingDocumentsEntry[]>("/periods/missing", { referenceMonth }),
+};
+
+/**
+ * Termenele de depunere.
+ *
+ * Fereastra implicită o alege serverul și pornește **din urmă**: un termen ratat
+ * nu se rezolvă trecând timpul, iar o listă care ar începe de azi l-ar ascunde
+ * exact pe cel care contează cel mai mult.
+ */
+export const obligations = {
+  upcoming: (params: QueryParams = {}) => api.get<DueObligation[]>("/obligations", params),
+  types: () => api.get<ObligationType[]>("/obligations/types"),
+  updateType: (id: string, changes: Partial<Omit<ObligationType, "id" | "code">>) =>
+    api.patch<ObligationType>(`/obligations/types/${id}`, { ...changes }),
+  forClient: (clientId: string) =>
+    api.get<ObligationType[]>(`/obligations/clients/${clientId}`),
+  setForClient: (clientId: string, obligationTypeIds: string[]) =>
+    api.put<ObligationType[]>(`/obligations/clients/${clientId}`, { obligationTypeIds }),
+  markFiled: (input: { clientId: string; obligationTypeId: string; period: string }) =>
+    api.post<ObligationFiling>("/obligations/filings", { ...input }),
+  unmarkFiled: (input: { clientId: string; obligationTypeId: string; period: string }) =>
+    api.delete<void>("/obligations/filings", { ...input }),
 };
 
 export type TaskInput = {

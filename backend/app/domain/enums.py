@@ -111,6 +111,18 @@ class PeriodStatus(StrEnum):
     FINALIZED = "FINALIZED"
 
 
+class ObligationFrequency(StrEnum):
+    """Cât de des se încheie perioada unei obligații de depunere.
+
+    Nu este o clasificare fiscală, ci una de calendar: spune în ce luni se
+    încheie o perioadă, deci de câte ori pe an există un termen.
+    """
+
+    MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
+    ANNUAL = "ANNUAL"
+
+
 # Ordinea în care sarcinile apar în interfață: ce e de făcut, înaintea ce e gata.
 TASK_STATUS_ORDER: dict[TaskStatus, int] = {
     TaskStatus.TODO: 0,

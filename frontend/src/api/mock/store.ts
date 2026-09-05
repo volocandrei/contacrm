@@ -49,6 +49,10 @@ import type {
   Contact,
   ContactListItem,
   CurrentUser,
+  DueObligation,
+  ObligationFiling,
+  ObligationFrequency,
+  ObligationType,
   DashboardClosing,
   DashboardData,
   DayCount,
@@ -3367,4 +3371,302 @@ export function assistantAnswer(message: string): AssistantReply {
     used: [],
     engine: "rules",
   };
+}
+
+
+/* ── Termene de depunere ───────────────────────────────────────────────────
+ *
+ * Aritmetica de mai jos este a doua implementare a aceleiași reguli: prima stă
+ * în `backend/app/domain/obligations.py`. Nu este ideal, dar este ce înseamnă un
+ * backend simulat — la fel ca perioadele și rapoartele.
+ *
+ * Ce ține cele două împreună: cazurile de margine sunt testate în ambele părți
+ * cu aceleași așteptări scrise (`test_obligations_domain.py` și
+ * `obligations.test.ts`) — ziua care nu există în februarie, trimestrul numit
+ * după luna în care se încheie, termenul deja trecut care nu are voie să dispară.
+ */
+
+const OBLIGATION_CLOSING_MONTHS: Record<ObligationFrequency, number[]> = {
+  MONTHLY: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  QUARTERLY: [3, 6, 9, 12],
+  ANNUAL: [12],
+};
+
+const obligationTypes: ObligationType[] = [
+  { id: "obl-d300", code: "D300", label: "D300 — decont TVA", frequency: "MONTHLY", monthsAfter: 1, deadlineDay: 25, isActive: true },
+  { id: "obl-d300t", code: "D300_TRIM", label: "D300 — decont TVA (trimestrial)", frequency: "QUARTERLY", monthsAfter: 1, deadlineDay: 25, isActive: true },
+  { id: "obl-d394", code: "D394", label: "D394 — declarație informativă", frequency: "MONTHLY", monthsAfter: 1, deadlineDay: 30, isActive: true },
+  { id: "obl-d112", code: "D112", label: "D112 — salarii și contribuții", frequency: "MONTHLY", monthsAfter: 1, deadlineDay: 25, isActive: true },
+  { id: "obl-d100", code: "D100", label: "D100 — obligații de plată", frequency: "QUARTERLY", monthsAfter: 1, deadlineDay: 25, isActive: true },
+  { id: "obl-bilant", code: "BILANT", label: "Situații financiare anuale", frequency: "ANNUAL", monthsAfter: 5, deadlineDay: 30, isActive: true },
+];
+
+/**
+ * Cine ce depune, și **din ce zi**.
+ *
+ * Ziua contează: aplicația nu produce termene dinainte de momentul în care i s-a
+ * spus că un client depune o declarație. Un cabinet care instalează azi a depus,
+ * evident, și luna trecută — dar aplicația nu are de unde ști, fiindcă nu exista.
+ * Fără regula asta, prima deschidere a ecranului arăta 52 de rânduri roșii: nu
+ * informație, ci o afirmație despre ceva ce nu a văzut.
+ */
+const clientObligations: {
+  clientId: string;
+  obligationTypeId: string;
+  configuredOn: string;
+}[] = [];
+
+/** De cât timp „folosește" cabinetul simulat aplicația. */
+const MOCK_HISTORY_DAYS = 120;
+
+/** Ce este deja depus: tot ce avea termen cu mai mult de atât în urmă. */
+const MOCK_FILED_BEFORE_DAYS = 35;
+
+/** Cheia unei depuneri: client, declarație, perioadă. */
+const filings = new Map<string, { filedAt: string; filedByName: string; note: string | null }>();
+
+function filingKey(clientId: string, obligationTypeId: string, period: string): string {
+  return `${clientId}|${obligationTypeId}|${period}`;
+}
+
+function seedClientObligations() {
+  if (clientObligations.length > 0) return;
+  const configuredOn = addDays(new Date(MOCK_NOW), -MOCK_HISTORY_DAYS);
+  const sorted = [...state.clients].sort((a, b) => a.name.localeCompare(b.name, "ro"));
+  sorted.forEach((client, index) => {
+    const codes = index % 3 ? ["D300", "D394", "D112"] : ["D300_TRIM", "D100"];
+    for (const code of codes) {
+      const type = obligationTypes.find((entry) => entry.code === code);
+      if (type) {
+        clientObligations.push({ clientId: client.id, obligationTypeId: type.id, configuredOn });
+      }
+    }
+  });
+  seedFilings();
+}
+
+/**
+ * Ce a depus deja cabinetul simulat.
+ *
+ * Fără asta, ecranul arată tot ce a fost vreodată de depus ca restanță —
+ * patruzeci de rânduri roșii care nu spun nimic. Un cabinet care folosește
+ * aplicația de patru luni are declarațiile vechi bifate și câteva recente în
+ * lucru; aceea este starea care merită arătată.
+ */
+function seedFilings() {
+  const cutoff = addDays(new Date(MOCK_NOW), -MOCK_FILED_BEFORE_DAYS);
+  for (const link of clientObligations) {
+    const type = obligationTypes.find((entry) => entry.id === link.obligationTypeId);
+    if (!type) continue;
+    for (const period of dueBetween(type, link.configuredOn, cutoff)) {
+      filings.set(filingKey(link.clientId, type.id, period), {
+        filedAt: MOCK_NOW,
+        filedByName: "Ioana Marinescu",
+        note: null,
+      });
+    }
+  }
+}
+
+/** Ultima zi a lunii, ca un termen pe 30 să nu dispară din februarie. */
+function lastDayOf(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function shiftMonths(year: number, month: number, count: number): [number, number] {
+  const index = year * 12 + (month - 1) + count;
+  return [Math.floor(index / 12), (index % 12) + 1];
+}
+
+function isoDate(year: number, month: number, day: number): string {
+  const safe = Math.min(day, lastDayOf(year, month));
+  return `${year}-${String(month).padStart(2, "0")}-${String(safe).padStart(2, "0")}`;
+}
+
+function deadlineFor(type: ObligationType, period: string): string {
+  const [year, month] = shiftMonths(
+    Number(period.slice(0, 4)),
+    Number(period.slice(5, 7)),
+    type.monthsAfter,
+  );
+  return isoDate(year, month, type.deadlineDay);
+}
+
+function dueBetween(type: ObligationType, since: string, until: string): string[] {
+  if (since > until) return [];
+  const closing = OBLIGATION_CLOSING_MONTHS[type.frequency];
+  let [year, month] = shiftMonths(
+    Number(since.slice(0, 4)),
+    Number(since.slice(5, 7)),
+    -type.monthsAfter - 1,
+  );
+  const [lastYear, lastMonth] = shiftMonths(
+    Number(until.slice(0, 4)),
+    Number(until.slice(5, 7)),
+    -type.monthsAfter + 1,
+  );
+
+  const periods: string[] = [];
+  while (year < lastYear || (year === lastYear && month <= lastMonth)) {
+    if (closing.includes(month)) {
+      const period = `${year}-${String(month).padStart(2, "0")}`;
+      const deadline = deadlineFor(type, period);
+      if (deadline >= since && deadline <= until) periods.push(period);
+    }
+    [year, month] = shiftMonths(year, month, 1);
+  }
+  return periods;
+}
+
+function addDays(from: Date, days: number): string {
+  const moved = new Date(from.getTime() + days * 86_400_000);
+  return moved.toISOString().slice(0, 10);
+}
+
+export function listObligations(query: {
+  clientId?: string;
+  since?: string;
+  until?: string;
+}): DueObligation[] {
+  requirePermission("clients:read");
+  seedClientObligations();
+
+  const today = new Date(MOCK_NOW);
+  const since = query.since ?? addDays(today, -120);
+  const until = query.until ?? addDays(today, 45);
+  if (since > until) {
+    throw new ApiError("VALIDATION_ERROR", "Intervalul este întors.", 422, {
+      since: ["Trebuie să fie anterioară datei de sfârșit."],
+    });
+  }
+  const todayIso = today.toISOString().slice(0, 10);
+
+  const rows: DueObligation[] = [];
+  for (const link of clientObligations) {
+    if (query.clientId && link.clientId !== query.clientId) continue;
+    const type = obligationTypes.find((entry) => entry.id === link.obligationTypeId);
+    const client = state.clients.find((entry) => entry.id === link.clientId);
+    if (!type || !client || !type.isActive) continue;
+
+    for (const period of dueBetween(type, since, until)) {
+      const deadline = deadlineFor(type, period);
+      // Se compară cu **termenul**, nu cu perioada: configurat azi, decontul
+      // lunii trecute are termen peste trei săptămâni și este al cabinetului.
+      if (deadline < link.configuredOn) continue;
+      const filing = filings.get(filingKey(client.id, type.id, period));
+      rows.push({
+        clientId: client.id,
+        clientName: client.name,
+        obligationTypeId: type.id,
+        code: type.code,
+        label: type.label,
+        frequency: type.frequency,
+        period,
+        deadline,
+        filedAt: filing?.filedAt ?? null,
+        filedByName: filing?.filedByName ?? null,
+        note: filing?.note ?? null,
+        isOverdue: !filing && deadline < todayIso,
+      });
+    }
+  }
+
+  rows.sort(
+    (a, b) =>
+      a.deadline.localeCompare(b.deadline) ||
+      a.clientName.localeCompare(b.clientName, "ro") ||
+      a.code.localeCompare(b.code),
+  );
+  return rows;
+}
+
+export function listObligationTypes(): ObligationType[] {
+  requirePermission("clients:read");
+  return obligationTypes.map((type) => ({ ...type }));
+}
+
+export function updateObligationType(
+  id: string,
+  changes: Partial<ObligationType>,
+): ObligationType {
+  requirePermission("periods:manage");
+  const type = obligationTypes.find((entry) => entry.id === id);
+  if (!type) throw notFound("Obligație", id);
+  // Codul nu se schimbă: leagă depunerile deja existente.
+  const { code: _ignored, id: _alsoIgnored, ...allowed } = changes;
+  Object.assign(type, allowed);
+  return { ...type };
+}
+
+export function listClientObligations(clientId: string): ObligationType[] {
+  requirePermission("clients:read");
+  seedClientObligations();
+  return clientObligations
+    .filter((link) => link.clientId === clientId)
+    .map((link) => obligationTypes.find((type) => type.id === link.obligationTypeId))
+    .filter((type): type is ObligationType => type !== undefined)
+    .map((type) => ({ ...type }));
+}
+
+export function setClientObligations(
+  clientId: string,
+  obligationTypeIds: string[],
+): ObligationType[] {
+  requirePermission("periods:manage");
+  seedClientObligations();
+  if (!state.clients.some((client) => client.id === clientId)) throw notFound("Client", clientId);
+
+  for (let index = clientObligations.length - 1; index >= 0; index -= 1) {
+    if (clientObligations[index].clientId === clientId) clientObligations.splice(index, 1);
+  }
+  for (const id of new Set(obligationTypeIds)) {
+    if (obligationTypes.some((type) => type.id === id)) {
+      // Configurate **acum**, ca în backend: o declarație adăugată azi nu
+      // produce restanțe din luni în care nimeni nu i-a spus aplicației că
+      // există. Back-datat este doar setul de development, care simulează un
+      // cabinet care folosește aplicația de patru luni.
+      clientObligations.push({
+        clientId,
+        obligationTypeId: id,
+        configuredOn: MOCK_NOW.slice(0, 10),
+      });
+    }
+  }
+  return listClientObligations(clientId);
+}
+
+export function markObligationFiled(input: {
+  clientId: string;
+  obligationTypeId: string;
+  period: string;
+}): ObligationFiling {
+  requirePermission("periods:manage");
+  if (!state.clients.some((client) => client.id === input.clientId)) {
+    throw notFound("Client", input.clientId);
+  }
+  if (!obligationTypes.some((type) => type.id === input.obligationTypeId)) {
+    throw notFound("Obligație", input.obligationTypeId);
+  }
+
+  const key = filingKey(input.clientId, input.obligationTypeId, input.period);
+  // Idempotent: a doua apăsare nu rescrie cine a depus prima oară.
+  const existing = filings.get(key);
+  const filing = existing ?? {
+    filedAt: MOCK_NOW,
+    filedByName: currentUser.fullName,
+    note: null,
+  };
+  filings.set(key, filing);
+  return { ...input, ...filing };
+}
+
+export function unmarkObligationFiled(input: {
+  clientId: string;
+  obligationTypeId: string;
+  period: string;
+}): void {
+  requirePermission("periods:manage");
+  const key = filingKey(input.clientId, input.obligationTypeId, input.period);
+  if (!filings.has(key)) throw notFound("Depunere", key);
+  filings.delete(key);
 }

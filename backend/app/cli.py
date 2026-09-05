@@ -16,7 +16,7 @@ dar pornesc de la harta din cod.
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import make_url
@@ -29,14 +29,17 @@ from app.core.migrations import run_migrations
 from app.core.security import hash_password
 from app.domain.document_types import DEFAULT_DOCUMENT_TYPES
 from app.domain.enums import ClientStatus, TaskPriority, TaskStatus
+from app.domain.obligations import DEFAULT_OBLIGATIONS
 from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS
 from app.domain.permissions import Permission as PermissionCode
 from app.models.client import Client, ClientNote, Contact, Tag
 from app.models.document import DocumentType
+from app.models.obligation import ClientObligation, ObligationType
 from app.models.organization import Organization
 from app.models.period import ClientExpectation
 from app.models.task import Task
 from app.models.user import Permission, Role, User
+from app.services.obligations import ObligationService
 
 DEV_PASSWORD = "contacrm-dev"
 
@@ -129,16 +132,59 @@ def seed_dev() -> None:
 
         session.flush()
         types_created = sync_document_types(session, organization)
+        obligations_created = sync_obligation_types(session, organization)
         clients_created = _seed_crm(session, organization)
         # Separat de `_seed_crm`, care iese devreme dacă există deja clienți:
         # așteptările trebuie să ajungă și pe o bază populată înainte de M6.
         expectations = _seed_expectations(session, organization)
+        client_obligations = _seed_client_obligations(session, organization)
+        filings = _seed_obligation_filings(session, organization)
 
         print(f"organizație: {organization.name}")
         print(f"utilizatori creați: {created} (parolă: {DEV_PASSWORD})")
         print(f"tipuri de document: {types_created}")
+        print(f"obligații de depunere: {obligations_created}")
         print(f"clienți creați: {clients_created}")
         print(f"așteptări lunare adăugate: {expectations}")
+        print(f"declarații atribuite clienților: {client_obligations}")
+        print(f"depuneri marcate: {filings}")
+
+
+def sync_obligation_types(session: Session, organization: Organization) -> int:
+    """Încarcă catalogul de declarații pentru o organizație.
+
+    Idempotentă, ca `sync_document_types`, cu o diferență care contează:
+    **termenele nu se aduc la zi** la o rulare ulterioară. Ele se administrează
+    din aplicație, iar un cabinet care a corectat o zi pentru că știe altfel
+    decât noi nu are voie să o vadă revenind la valoarea din cod după un deploy.
+
+    Se actualizează doar eticheta și ordinea - text, nu regulă.
+    """
+    existing = {
+        row.code: row
+        for row in session.scalars(
+            select(ObligationType).where(ObligationType.organization_id == organization.id)
+        )
+    }
+
+    created = 0
+    for index, seed in enumerate(DEFAULT_OBLIGATIONS):
+        row = existing.get(seed.code)
+        if row is None:
+            row = ObligationType(
+                organization_id=organization.id,
+                code=seed.code,
+                label=seed.label,
+                frequency=seed.frequency,
+                months_after=seed.months_after,
+                deadline_day=seed.deadline_day,
+            )
+            session.add(row)
+            created += 1
+        row.label = seed.label
+        row.sort_order = index
+
+    return created
 
 
 def sync_document_types(session: Session, organization: Organization) -> int:
@@ -304,6 +350,109 @@ def _seed_expectations(session: Session, organization: Organization) -> int:
             created += 1
     session.flush()
     return created
+
+
+#: De cât timp „folosește" cabinetul de development aplicația.
+#:
+#: Nu o valoare de dragul realismului: aplicația nu produce termene dinainte de
+#: ziua configurării, deci fără o istorie ecranul ar fi gol.
+SEED_HISTORY_DAYS = 120
+
+#: Ce este deja depus: tot ce avea termen cu mai mult de atât în urmă.
+SEED_FILED_BEFORE_DAYS = 35
+
+
+def _seed_client_obligations(session: Session, organization: Organization) -> int:
+    """Ce depune fiecare client din setul de development.
+
+    Fără asta, ecranul „Termene" este gol pe o instalare proaspătă și arată
+    identic cu unul stricat. Setul este deliberat neuniform: doi clienți pe TVA
+    lunar, unul pe trimestrial, iar salariile doar la cei care au angajați — un
+    set în care toți depun aceleași declarații ar ascunde exact defectele de
+    grupare pe care ecranul le poate avea.
+    """
+    catalog = {
+        row.code: row
+        for row in session.scalars(
+            select(ObligationType).where(ObligationType.organization_id == organization.id)
+        ).all()
+    }
+    clients = list(
+        session.scalars(
+            select(Client)
+            .where(Client.organization_id == organization.id, Client.deleted_at.is_(None))
+            .order_by(Client.name)
+        ).all()
+    )
+    if not clients:
+        return 0
+
+    already = {
+        row.client_id
+        for row in session.scalars(
+            select(ClientObligation).where(ClientObligation.organization_id == organization.id)
+        ).all()
+    }
+
+    # Configurate „acum patru luni", nu azi. Aplicația nu produce termene
+    # dinainte de ziua în care i s-a spus că un client depune o declarație — deci
+    # cu totul configurat azi, ecranul ar fi gol și n-ar arăta nimic din ce face.
+    configured_on = datetime.now(UTC) - timedelta(days=SEED_HISTORY_DAYS)
+
+    created = 0
+    for index, client in enumerate(clients):
+        if client.id in already:
+            continue
+        codes = ["D300", "D394", "D112"] if index % 3 else ["D300_TRIM", "D100"]
+        for code in codes:
+            obligation = catalog.get(code)
+            if obligation is None:
+                continue
+            session.add(
+                ClientObligation(
+                    organization_id=organization.id,
+                    client_id=client.id,
+                    obligation_type_id=obligation.id,
+                    created_at=configured_on,
+                )
+            )
+            created += 1
+    session.flush()
+    return created
+
+
+def _seed_obligation_filings(session: Session, organization: Organization) -> int:
+    """Ce a depus deja cabinetul din setul de development.
+
+    Fără asta, ecranul „Termene" arată **tot** ce a fost vreodată de depus ca
+    restanță: patruzeci de rânduri roșii, care nu spun nimic. Un cabinet care
+    folosește aplicația de patru luni are declarațiile vechi bifate și câteva
+    recente în lucru — aceea este starea care merită arătată.
+
+    Se marchează tot ce avea termen cu mai mult de o lună în urmă. Ce a rămas
+    sunt exact termenele la care s-ar lucra azi.
+    """
+    service = ObligationService(session, organization.id)
+    user = session.scalars(
+        select(User).where(User.organization_id == organization.id).order_by(User.email)
+    ).first()
+    if user is None:
+        return 0
+
+    today = datetime.now(UTC).date()
+    cutoff = today - timedelta(days=SEED_FILED_BEFORE_DAYS)
+    marked = 0
+    for row in service.upcoming(since=today - timedelta(days=SEED_HISTORY_DAYS), until=today):
+        if row.deadline >= cutoff or row.filed_at is not None:
+            continue
+        service.mark_filed(
+            client_id=row.client_id,
+            obligation_type_id=row.obligation_type_id,
+            period=row.period,
+            user=user,
+        )
+        marked += 1
+    return marked
 
 
 def recover_processing() -> None:
@@ -534,10 +683,13 @@ def create_admin() -> None:
         session.flush()
         # Un cabinet fără tipuri de document nu poate primi niciun fișier.
         types_created = sync_document_types(session, organization)
+        # Și unul fără catalog de declarații nu are ce termene să urmărească.
+        obligations_created = sync_obligation_types(session, organization)
 
         print(f"organizație: {organization.name}")
         print(f"administrator: {email}")
         print(f"tipuri de document: {types_created}")
+        print(f"obligații de depunere: {obligations_created}")
 
 
 def reset_e2e() -> None:

@@ -360,7 +360,10 @@ export const api = {
   // `PUT` pentru înlocuirea unei liste întregi, unde `PATCH` ar minți: nu se
   // trimite o modificare, ci starea de după.
   put: <T>(path: string, body?: Record<string, unknown>) => request<T>("PUT", path, { body }),
-  delete: <T>(path: string) => request<T>("DELETE", path),
+  // `params` pentru ștergerile fără id propriu: o depunere se identifică prin
+  // client, declarație și perioadă, nu printr-un identificator pe care ecranul
+  // să-l aibă. Puse în cale, ar fi ajuns în jurnalele proxy-urilor.
+  delete: <T>(path: string, params?: QueryParams) => request<T>("DELETE", path, { params }),
   upload: <T>(path: string, file: File, fields?: Record<string, string>) =>
     uploadFile<T>(path, file, fields),
 };

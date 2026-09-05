@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  19.231 linii sursă +  2.966 linii teste  →   229 teste
-backend   24.849 linii sursă + 21.588 linii teste  → 1.414 teste
-end-to-end 1.891 linii                             →    70 teste (browser real)
+frontend  20.059 linii sursă +  3.285 linii teste  →   250 teste
+backend   25.976 linii sursă + 22.340 linii teste  → 1.462 teste
+end-to-end 1.955 linii                             →    73 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.713 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.785 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -139,12 +139,12 @@ niciodată. „Integrări" stă separat de „Administrare" — „cum adaug un 
 | Panou principal | KPI, inbox recent, „necesită atenție", perioade, cronologie |
 | CRM | listă clienți (filtre + paginare), detaliu client, **agendă de contacte căutabilă**, sarcini (kanban, cu adăugare) |
 | Documente | inbox, în procesare, verificare, **neatribuite**, arhivă, **ecranul de verificare** |
-| Contabilitate | perioade cu checklist, documente lipsă |
+| Contabilitate | **termene de depunere per client**, perioade cu checklist, documente lipsă, șabloane |
 | Comunicare | mesaje, șabloane, remindere |
 | Rapoarte | agregări calculate în backend, cu filtre pe lună și client |
 | Administrare | utilizatori, **matricea rol × permisiune**, setări, **surse documente (OneDrive + email)**, **e-Factura**, jurnal audit |
 
-**Ctrl+J deschide asistentul** (M13): un chat care răspunde din datele
+**Asistentul stă jos-dreapta**, cu semnul aplicației pe buton; `Ctrl+J` îl deschide de oriunde (M13): un chat care răspunde din datele
 cabinetului — „cât e de lucru?", „ce lipsește la Alfa Conta?", „când e
 termenul?" — și propune drumul către ecranul potrivit.
 
@@ -268,6 +268,78 @@ Ecranul spune **„Pregătit"**, nu „Trimis". Aplicația nu trimite (Faza 2): 
 se copiază și pleacă din clientul de email al contabilului, deci tot ce știe
 sigur este că cererea a fost compusă. „Trimis" ar fi o promisiune pe care nimic
 din spate nu o acoperă.
+
+### Termenele, per client (§18)
+
+**Ce lipsea.** Aplicația avea **un singur** termen: ziua 25, globală, folosită de
+numărătoarea inversă a lunii. Un cabinet nu trăiește așa. Un client pe TVA
+trimestrial depune altcând decât unul pe lunar; salariile au termenul lor;
+bilanțul, cu totul altul. Iar consecința unui termen ratat nu este o neplăcere de
+interfață — este o amendă la client, plătită de cabinet.
+
+`Contabilitate → Termene` răspunde la întrebarea pe care și-o pune un cabinet
+dimineața: **ce am de depus și pentru cine, până când.** Restanțele primele,
+singure; restul grupat pe zi.
+
+**Termenele nu stau în cod.** Trei tabele: catalogul cabinetului (`obligation_types`
+— cum se numește declarația, cât de des, la câte luni după perioadă, în ce zi),
+cine ce depune (`client_obligations`), și ce s-a depus (`obligation_filings`).
+Catalogul se administrează din aplicație, ca `document_types`. Aplicația știe
+aritmetica unui calendar, nu legea — iar cine constată că un termen este altul îl
+schimbă fără deploy.
+
+*TODO — BUSINESS RULE REQUIRES ACCOUNTING VALIDATION*: valorile din catalogul
+inițial (`app/domain/obligations.py`) sunt puncte de plecare uzuale, nu o
+afirmație a aplicației despre ce spune legea. Fiecare rămâne de confirmat de un
+contabil.
+
+**Nimic calculat nu se stochează.** Nu există tabel de „termene viitoare" pe care
+cineva să-l regenereze; se calculează la citire. Se stochează doar faptul uman:
+cineva a marcat o perioadă ca depusă, când, și cine. Un rând lipsă înseamnă
+„nedepus" — nu există stare „în lucru", fiindcă o declarație ori a plecat, ori nu.
+
+**Defectul găsit uitându-mă la ecran, nu la cod.** Prima variantă arăta **52 de
+rânduri roșii** pe o instalare proaspătă. Un cabinet care instalează azi a depus,
+evident, și luna trecută — dar aplicația nu are de unde ști, fiindcă nu exista.
+Nu era informație, era o afirmație despre ceva ce nu văzuse; iar după a treia zi
+nimeni nu s-ar mai fi uitat la culoarea aia, nici când ar fi însemnat ceva.
+
+Linia este acum ziua în care i s-a spus că **acest** client depune **această**
+declarație. Se compară cu termenul, nu cu perioada: configurat azi, decontul lunii
+trecute are termen peste trei săptămâni și este al cabinetului.
+
+Restul, pe scurt:
+
+- ziua termenului se **retează** la ultima zi a lunii, nu se sare: un termen pe 30
+  care ar dispărea din februarie dispare exact în luna în care este căutat;
+- perioada se numește după luna în care se **încheie** — trimestrul III 2026 este
+  `2026-09`. Cine se uită la un termen vrea să știe ce închide;
+- **depusele rămân în listă.** Una care le-ar ascunde ar arăta identic când munca
+  e gata și când clientul nu are nimic configurat — două situații care cer lucruri
+  opuse;
+- fereastra pornește **din urmă**: un termen ratat nu se rezolvă trecând timpul;
+- marcarea este idempotentă și nu rescrie cine a depus prima oară.
+
+Două lucruri prinse de teste, amândouă reale:
+
+- parametrii de query declarați unul câte unul rămân `snake_case`, deci ștergerea
+  unei depuneri era refuzată cu 422 pentru un motiv invizibil pe ecran. Aceeași
+  lecție ca la filtrele de rapoarte, unde un filtru ignorat tăcut răspundea la
+  altă întrebare;
+- eticheta accesibilă a butonului nu era unică: același client are aceeași
+  declarație în patru luni deodată, iar patru butoane diferite se auzeau identic.
+
+### Asistentul a coborât în colțul din dreapta jos
+
+Stătea ca o iconiță în antet, între notificări și temă — unde nimeni nu caută un
+chat. Poartă acum semnul aplicației, nu o iconiță de robot: „aici este un chatbot"
+nu mai este o promisiune în 2026, iar semnul spune al cui este asistentul și că
+răspunde din datele cabinetului.
+
+**Nu mai este modal.** Întunecase tot ecranul: ca să întrebi „ce lipsește la Alfa
+Conta?" trebuia să părăsești ecranul pe care lucrai, or exact atunci se pune
+întrebarea. Semnul a ieșit din `app-sidebar.tsx` într-un `components/brand.tsx`,
+fiindcă două copii ale aceluiași `<path>` s-ar fi despărțit la prima schimbare.
 
 ### Aceeași factură, alți octeți
 

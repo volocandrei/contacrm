@@ -18,6 +18,7 @@ import {
   anaf,
   drive,
   intakes,
+  obligations,
   periods,
   reports,
   tasks,
@@ -27,7 +28,13 @@ import {
   type ExpectationInput,
   type TaskInput,
 } from "@/api/endpoints";
-import type { DocumentDetail, DocumentFieldName, RoleCode, TaskStatus } from "@/types/domain";
+import type {
+  DocumentDetail,
+  DocumentFieldName,
+  ObligationType,
+  RoleCode,
+  TaskStatus,
+} from "@/types/domain";
 
 export const queryKeys = {
   dashboard: ["dashboard"] as const,
@@ -48,6 +55,9 @@ export const queryKeys = {
   nextReview: (after?: string) => ["documents", "next-review", after ?? null] as const,
   periods: (params: QueryParams) => ["periods", params] as const,
   expectationTemplates: ["expectation-templates"] as const,
+  obligations: (params: QueryParams) => ["obligations", params] as const,
+  obligationTypes: ["obligations", "types"] as const,
+  clientObligations: (id: string) => ["obligations", "clients", id] as const,
   missingDocuments: (referenceMonth: string) => ["periods", "missing", referenceMonth] as const,
   tasks: (params: QueryParams) => ["tasks", params] as const,
   reportSummary: (params: QueryParams) => ["reports", "summary", params] as const,
@@ -396,6 +406,70 @@ export function useNextReviewAfter() {
   return useCallback(
     (after: string) => documents.nextReview(after),
     [],
+  );
+}
+
+/**
+ * Ce are cabinetul de depus, pentru cine, până când.
+ *
+ * Fereastra o alege serverul dacă nu i se dă una: pornește din urmă, ca
+ * întârziatele să nu dispară din listă tocmai pentru că au întârziat.
+ */
+export function useObligations(params: QueryParams = {}) {
+  return useQuery({
+    queryKey: queryKeys.obligations(params),
+    queryFn: () => obligations.upcoming(params),
+  });
+}
+
+export function useObligationTypes() {
+  return useQuery({ queryKey: queryKeys.obligationTypes, queryFn: () => obligations.types() });
+}
+
+export function useClientObligations(clientId: string) {
+  return useQuery({
+    queryKey: queryKeys.clientObligations(clientId),
+    queryFn: () => obligations.forClient(clientId),
+  });
+}
+
+/**
+ * Toate mutațiile de aici invalidează **întreaga** familie „obligations".
+ *
+ * Cheia listei conține fereastra, iar ecranul poate avea mai multe ferestre
+ * deschise în cache. O invalidare țintită pe una singură ar lăsa restul să arate
+ * o depunere care tocmai s-a marcat — exact defectul de la cererea de documente,
+ * unde rândul continua să scrie „Necerut" după o copiere reușită.
+ */
+function useObligationMutation<TInput, TResult>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["obligations"] }),
+  });
+}
+
+export function useMarkFiled() {
+  return useObligationMutation(obligations.markFiled);
+}
+
+export function useUnmarkFiled() {
+  return useObligationMutation(obligations.unmarkFiled);
+}
+
+export function useUpdateObligationType() {
+  return useObligationMutation(
+    ({ id, changes }: { id: string; changes: Partial<ObligationType> }) =>
+      obligations.updateType(id, changes),
+  );
+}
+
+export function useSetClientObligations() {
+  return useObligationMutation(
+    ({ clientId, obligationTypeIds }: { clientId: string; obligationTypeIds: string[] }) =>
+      obligations.setForClient(clientId, obligationTypeIds),
   );
 }
 

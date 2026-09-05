@@ -32,6 +32,9 @@ export const PERIOD_STATUS = [
 ] as const;
 export type PeriodStatus = (typeof PERIOD_STATUS)[number];
 
+export const OBLIGATION_FREQUENCY = ["MONTHLY", "QUARTERLY", "ANNUAL"] as const;
+export type ObligationFrequency = (typeof OBLIGATION_FREQUENCY)[number];
+
 export const DOCUMENT_SOURCE = [
   "EMAIL",
   "WHATSAPP",
@@ -827,3 +830,49 @@ export type SettingEntry = {
   group: SettingGroup;
   value: string;
 };
+
+/**
+ * O declarație din catalogul cabinetului.
+ *
+ * Termenele sunt ale cabinetului, nu ale aplicației: `deadlineDay` și
+ * `monthsAfter` se administrează din ecran, fiindcă aplicația știe aritmetica
+ * unui calendar, nu legea.
+ */
+export interface ObligationType {
+  id: string;
+  code: string;
+  label: string;
+  frequency: ObligationFrequency;
+  monthsAfter: number;
+  deadlineDay: number;
+  isActive: boolean;
+}
+
+/** O declarație a unui client, pentru o perioadă, cu termenul ei. */
+export interface DueObligation {
+  clientId: string;
+  clientName: string;
+  obligationTypeId: string;
+  code: string;
+  label: string;
+  frequency: ObligationFrequency;
+  /** Luna în care se **încheie** perioada acoperită, `YYYY-MM`. */
+  period: string;
+  deadline: string;
+  /** `null` = nedepus. Nu există o a treia stare. */
+  filedAt: string | null;
+  filedByName: string | null;
+  note: string | null;
+  /** Calculat de server: ecranul nu compară date de unul singur. */
+  isOverdue: boolean;
+}
+
+/** Ce întoarce marcarea unei depuneri, și nimic altceva. */
+export interface ObligationFiling {
+  clientId: string;
+  obligationTypeId: string;
+  period: string;
+  filedAt: string;
+  filedByName: string | null;
+  note: string | null;
+}

@@ -22,6 +22,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Bot, Check, LoaderCircle, Send, TriangleAlert, User, X } from "lucide-react";
+import { Logo } from "@/components/brand";
 import {
   useAssignClient,
   useAssistant,
@@ -108,91 +109,93 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex justify-end bg-slate-900/20 backdrop-blur-[2px]"
-      onClick={onClose}
+    /* Fereastră ancorată jos-dreapta, deasupra butonului care o deschide — locul
+       în care o caută oricine a mai folosit un chat într-o aplicație.
+
+       **Nu este modală, deliberat.** A fost, cu fundal întunecat peste tot: ca să
+       întrebi „ce lipsește la Alfa Conta?" trebuia să părăsești ecranul pe care
+       lucrai. Or exact atunci se pune întrebarea. Acum ecranul rămâne vizibil și
+       utilizabil, iar răspunsul stă lângă el.
+
+       Pe telefon nu încape o fereastră lângă conținut, deci ocupă lățimea. */
+    <aside
+      role="dialog"
+      aria-label="Asistent"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}
+      className={cn(
+        "fixed right-4 bottom-24 left-4 z-40 flex flex-col overflow-hidden rounded-2xl border shadow-2xl",
+        "sm:left-auto sm:w-[24rem]",
+        "max-h-[min(34rem,calc(100vh-9rem))]",
+        "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
+      )}
     >
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-label="Asistent"
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
-        }}
-        className={cn(
-          "flex h-full w-full max-w-md flex-col border-l shadow-2xl",
-          "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
-        )}
-      >
-        <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-          <span className={cn("grid h-9 w-9 place-content-center rounded-xl", iconChip.blue)}>
-            <Bot className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Asistent</p>
-            <p className={cn("text-xs", mutedText)}>Răspunde din datele tale. Nu apasă butoane.</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Închide asistentul"
-            className={cn("rounded-lg p-1.5 text-slate-400 hover:text-slate-700", focusRing)}
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </header>
-
-        <div className="flex-1 space-y-4 overflow-y-auto p-4">
-          {turns.map((turn) => (
-            <Bubble
-              key={turn.id}
-              turn={turn}
-              onFollowUp={send}
-              onOpen={(path) => {
-                onClose();
-                navigate(path);
-              }}
-            />
-          ))}
-          {ask.isPending && (
-            <p className={cn("flex items-center gap-2 text-sm", mutedText)}>
-              <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Caut în date…
-            </p>
-          )}
-          <div ref={endRef} />
+      <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+        <Logo className="size-9 rounded-xl" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Asistent</p>
+          <p className={cn("text-xs", mutedText)}>Răspunde din datele tale. Nu apasă butoane.</p>
         </div>
-
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            send(draft);
-          }}
-          className="flex items-center gap-2 border-t border-slate-200 p-3 dark:border-slate-800"
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Închide asistentul"
+          className={cn("rounded-lg p-1.5 text-slate-400 hover:text-slate-700", focusRing)}
         >
-          <label htmlFor="assistant-input" className="sr-only">
-            Întrebarea ta
-          </label>
-          <input
-            id="assistant-input"
-            ref={inputRef}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Întreabă ceva…"
-            className={cn(inputField, "h-10 flex-1")}
+          <X className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </header>
+
+      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        {turns.map((turn) => (
+          <Bubble
+            key={turn.id}
+            turn={turn}
+            onFollowUp={send}
+            onOpen={(path) => {
+              onClose();
+              navigate(path);
+            }}
           />
-          <button
-            type="submit"
-            disabled={!draft.trim() || ask.isPending}
-            className={cn(buttonPrimary, "h-10 px-3")}
-            aria-label="Trimite întrebarea"
-          >
-            <Send className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </form>
-      </aside>
-    </div>
+        ))}
+        {ask.isPending && (
+          <p className={cn("flex items-center gap-2 text-sm", mutedText)}>
+            <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+            Caut în date…
+          </p>
+        )}
+        <div ref={endRef} />
+      </div>
+
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          send(draft);
+        }}
+        className="flex items-center gap-2 border-t border-slate-200 p-3 dark:border-slate-800"
+      >
+        <label htmlFor="assistant-input" className="sr-only">
+          Întrebarea ta
+        </label>
+        <input
+          id="assistant-input"
+          ref={inputRef}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="Întreabă ceva…"
+          className={cn(inputField, "h-10 flex-1")}
+        />
+        <button
+          type="submit"
+          disabled={!draft.trim() || ask.isPending}
+          className={cn(buttonPrimary, "h-10 px-3")}
+          aria-label="Trimite întrebarea"
+        >
+          <Send className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </form>
+    </aside>
   );
 }
 

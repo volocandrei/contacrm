@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Bell, Bot, LogOut, Moon, Search, Sun, User } from "lucide-react";
+import { Bell, LogOut, Moon, Search, Sun, User } from "lucide-react";
 import { CommandPalette } from "@/components/command-palette";
-import { AssistantPanel } from "@/features/assistant/assistant-panel";
+import { AssistantDock } from "@/features/assistant/assistant-dock";
 import { useSidebarCounts } from "@/api/hooks";
 import { apiMode } from "@/api/client";
 import { AppSidebar } from "@/components/layout/app-sidebar";
@@ -132,18 +132,6 @@ export function AppShell() {
               </kbd>
             </button>
 
-            {/* Asistentul stă lângă căutare: amândouă răspund la „unde e X?",
-                unul cu o listă, celălalt cu o propoziție. */}
-            <button
-              type="button"
-              onClick={() => setAssistantOpen(true)}
-              aria-label="Deschide asistentul (Ctrl J)"
-              title="Asistent — Ctrl J"
-              className={iconButton}
-            >
-              <Bot className="h-4 w-4" aria-hidden="true" />
-            </button>
-
             <button
               type="button"
               aria-label={`Notificări${counts ? `: ${counts.review} de verificat` : ""}`}
@@ -185,7 +173,7 @@ export function AppShell() {
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <AssistantPanel open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+      <AssistantDock open={assistantOpen} onOpenChange={setAssistantOpen} />
     </div>
   );
 }

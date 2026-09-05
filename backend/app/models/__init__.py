@@ -20,8 +20,14 @@ from app.models.document import (
     DocumentVersion,
 )
 from app.models.microsoft import DriveFolder, MailFolder, MicrosoftConnection
+from app.models.obligation import ClientObligation, ObligationFiling, ObligationType
 from app.models.organization import Organization
-from app.models.period import AccountingPeriod, ClientExpectation
+from app.models.period import (
+    AccountingPeriod,
+    ClientExpectation,
+    ExpectationTemplate,
+    ExpectationTemplateItem,
+)
 from app.models.task import Task
 from app.models.upload_link import ClientUploadLink
 from app.models.user import Permission, RefreshToken, Role, User, role_permissions, user_roles
@@ -42,6 +48,11 @@ ALL_MODELS = (
     Task,
     AccountingPeriod,
     ClientExpectation,
+    ExpectationTemplate,
+    ExpectationTemplateItem,
+    ObligationType,
+    ClientObligation,
+    ObligationFiling,
     DocumentType,
     DocumentIntake,
     Document,
@@ -67,6 +78,7 @@ __all__ = [
     "ClientAlias",
     "ClientExpectation",
     "ClientNote",
+    "ClientObligation",
     "ClientUploadLink",
     "Contact",
     "Document",
@@ -76,8 +88,12 @@ __all__ = [
     "DocumentType",
     "DocumentVersion",
     "DriveFolder",
+    "ExpectationTemplate",
+    "ExpectationTemplateItem",
     "MailFolder",
     "MicrosoftConnection",
+    "ObligationFiling",
+    "ObligationType",
     "Organization",
     "Permission",
     "RefreshToken",

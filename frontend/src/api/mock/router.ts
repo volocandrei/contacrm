@@ -378,6 +378,51 @@ const routes: Route[] = [
     handler: ({ query }) => store.listMissingDocuments(query.referenceMonth ?? "2026-08"),
   },
 
+  /* Termene de depunere. Ordinea contează: `/obligations/types` trebuie să vină
+     înaintea oricărui tipar dinamic, altfel „types" ar fi citit ca un id. */
+  {
+    method: "GET",
+    pattern: "/obligations/types",
+    handler: () => store.listObligationTypes(),
+  },
+  {
+    method: "PATCH",
+    pattern: "/obligations/types/:id",
+    handler: ({ params, body }) => store.updateObligationType(params.id!, body ?? {}),
+  },
+  {
+    method: "GET",
+    pattern: "/obligations/clients/:id",
+    handler: ({ params }) => store.listClientObligations(params.id!),
+  },
+  {
+    method: "PUT",
+    pattern: "/obligations/clients/:id",
+    handler: ({ params, body }) =>
+      store.setClientObligations(params.id!, (body?.obligationTypeIds as string[]) ?? []),
+  },
+  {
+    method: "POST",
+    pattern: "/obligations/filings",
+    handler: ({ body }) =>
+      store.markObligationFiled({
+        clientId: String(body?.clientId ?? ""),
+        obligationTypeId: String(body?.obligationTypeId ?? ""),
+        period: String(body?.period ?? ""),
+      }),
+  },
+  {
+    method: "DELETE",
+    pattern: "/obligations/filings",
+    handler: ({ query }) =>
+      store.unmarkObligationFiled({
+        clientId: query.clientId ?? "",
+        obligationTypeId: query.obligationTypeId ?? "",
+        period: query.period ?? "",
+      }),
+  },
+  { method: "GET", pattern: "/obligations", handler: ({ query }) => store.listObligations(query) },
+
   {
     method: "GET",
     pattern: "/reports/summary",

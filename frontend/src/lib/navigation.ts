@@ -2,6 +2,7 @@ import {
   Archive,
   Bell,
   Building2,
+  CalendarCheck,
   CalendarRange,
   ChartColumn,
   Cloud,
@@ -140,6 +141,15 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Contabilitate",
     Icon: CalendarRange,
     items: [
+      {
+        // Primul din grup, înaintea perioadelor: un termen ratat costă bani, o
+        // lună neînchisă costă timp. Meniul urmează frecvența, dar aici ordinea
+        // o dă consecința.
+        label: "Termene",
+        path: "/contabilitate/termene",
+        Icon: CalendarCheck,
+        permission: "clients:read",
+      },
       {
         label: "Perioade",
         path: "/contabilitate/perioade",
