@@ -36,10 +36,16 @@ from app.domain.document_actions import reprocess_check
 from app.domain.document_state import can_transition
 from app.domain.enums import DocumentErrorCode, DocumentStatus, FieldSource
 from app.domain.periods import ReferencePeriodStrategy, derive_reference_month
-from app.models.document import Document, DocumentProcessingJob, DocumentType
+from app.models.document import (
+    Document,
+    DocumentIntake,
+    DocumentProcessingJob,
+    DocumentType,
+)
 from app.repositories.document import DocumentRepository
 from app.services import processing_queue as queue
 from app.services.audit import AuditService
+from app.services.client_aliases import ClientAliasService
 from app.services.client_matching import TYPE_BY_ROLE, ClientMatcher, MatchRole
 from app.services.document_archive import DocumentArchiveService
 from app.services.document_fields import SPEC_BY_NAME, DocumentFieldWriter, FieldUpdate
@@ -280,6 +286,10 @@ class DocumentProcessingService:
             customer_tax_id=document.customer_tax_id,
         )
         if match is None:
+            # Codurile fiscale nu au spus nimic — un extras de cont nu are CUI,
+            # iar OCR-ul citește uneori greșit. Rămâne ce a învățat sistemul de la
+            # oameni: de la ce adresă vin documentele cărui client.
+            self._match_by_alias(document)
             return
 
         document.client_id = match.client_id
@@ -303,6 +313,49 @@ class DocumentProcessingService:
             client_id=str(match.client_id),
             role=match.role.value,
         )
+
+    def _match_by_alias(self, document: Document) -> None:
+        """Clientul învățat pentru expeditorul documentului.
+
+        **Nu stabilește tipul documentului.** Rolul — furnizor sau cumpărător —
+        vine din codul fiscal care a produs potrivirea; un alias spune doar al cui
+        este documentul, nu în ce calitate. Documentul merge la verificare cu
+        clientul completat și tipul necompletat, ceea ce este adevărat.
+        """
+        aliases = ClientAliasService(self.session)
+        match = aliases.match(document.organization_id, self._sender_of(document))
+        if match is None:
+            return
+
+        document.client_id = match.client_id
+        aliases.count_match(document.organization_id, match.sender)
+
+        # Urma spune **de ce**: fără adresa care a produs potrivirea, un operator
+        # care nu e de acord nu are ce verifica și nu știe ce alias să șteargă.
+        self.audit.record(
+            organization_id=document.organization_id,
+            action="DOCUMENT_CLIENT_MATCHED",
+            entity_type="Document",
+            entity_id=str(document.id),
+            user_id=None,
+            user_name="sistem",
+            detail=f"{match.client_name} · expeditor {match.sender}",
+            new_value={"clientId": str(match.client_id), "sender": match.sender},
+        )
+        logger.info(
+            "document_client_matched_by_alias",
+            document_id=str(document.id),
+            client_id=str(match.client_id),
+        )
+
+    def _sender_of(self, document: Document) -> str | None:
+        intake = self.session.scalars(
+            select(DocumentIntake).where(
+                DocumentIntake.organization_id == document.organization_id,
+                DocumentIntake.document_id == document.id,
+            )
+        ).first()
+        return intake.sender if intake else None
 
     def _resolve_document_type(
         self,

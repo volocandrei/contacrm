@@ -206,6 +206,23 @@ export type AssistantReply = {
   engine: string;
 };
 
+/**
+ * Ce a învățat sistemul despre cine trimite documentele unui client.
+ *
+ * Se scrie doar din atribuirile făcute de oameni — o potrivire automată nu
+ * produce niciodată un alias, altfel prima greșeală s-ar transforma în regulă.
+ * Se vede pe fișa clientului tocmai ca să poată fi șters: unul greșit ar
+ * misruta tăcut, lună de lună.
+ */
+export type ClientAlias = {
+  id: string;
+  kind: "SENDER";
+  value: string;
+  /** Câte documente a potrivit. Distinge un alias care lucrează de unul uitat. */
+  matchedCount: number;
+  createdAt: string;
+};
+
 /** Un contact văzut din agendă: poartă și numele firmei. */
 export type ContactListItem = Contact & { clientName: string };
 

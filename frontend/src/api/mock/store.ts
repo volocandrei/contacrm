@@ -37,6 +37,7 @@ import type {
   AssistantReply,
   AuditLogEntry,
   Client,
+  ClientAlias,
   ClientStatus,
   ClientExpectation,
   ClientNote,
@@ -1030,7 +1031,15 @@ export function assignClient(id: string, clientId: string): StoredDocument {
     action: "DOCUMENT_REASSIGNED",
     detail: `Atribuit clientului ${client.name}`,
   });
-  recordAudit("DOCUMENT_REASSIGNED", "Document", doc.id, client.name);
+  // Aici învață sistemul. Doar aici: o potrivire automată nu produce niciodată
+  // un alias, altfel prima greșeală s-ar transforma în regulă.
+  const learned = learnFromAssignment(doc.id, client.id);
+  recordAudit(
+    "DOCUMENT_REASSIGNED",
+    "Document",
+    doc.id,
+    learned ? `${client.name} · învățat expeditorul ${learned}` : client.name,
+  );
   refreshPeriods();
   return doc;
 }
@@ -2400,6 +2409,78 @@ export function getSidebarCounts() {
     unmatched: state.documents.filter((d) => d.status === "UNMATCHED").length,
     tasks: state.tasks.filter((t) => t.status !== "DONE").length,
   };
+}
+
+/* ─── Ce a învățat sistemul (§8) ───────────────────────────────────────────── */
+
+/**
+ * Oglinda lui `services/client_aliases.py`.
+ *
+ * Se scrie **doar** din atribuiri făcute de oameni: o potrivire automată nu
+ * produce niciodată un alias, altfel prima greșeală s-ar transforma în regulă.
+ * Ultima decizie a unui om câștigă — atribuirea nouă mută rândul, nu adaugă unul.
+ */
+const aliases: ClientAlias[] = [];
+const aliasClient = new Map<string, string>();
+let aliasCounter = 0;
+
+function normalizeSender(raw: string | null | undefined): string {
+  return (raw ?? "").trim().toLowerCase();
+}
+
+/**
+ * Adresa de la care a sosit documentul, dacă a sosit de undeva.
+ *
+ * Aceeași sursă ca pentru cronologia de recepții: două păreri despre „de la
+ * cine" ar face ca ecranul „Mesaje" și învățarea să nu fie de acord.
+ */
+function senderOfDocument(documentId: string): string {
+  const doc = state.documents.find((row) => row.id === documentId);
+  // Un document urcat manual nu are expeditor extern: nu e nimic de învățat.
+  if (!doc || doc.source === "UPLOAD") return "";
+  return normalizeSender(senderFor(doc));
+}
+
+function learnFromAssignment(documentId: string, clientId: string): string | null {
+  const sender = senderOfDocument(documentId);
+  if (!sender) return null;
+
+  const existing = aliases.find((alias) => alias.value === sender);
+  if (existing) {
+    if (aliasClient.get(existing.id) === clientId) return null;
+    // Contorul repornește: potrivirile de până acum au fost pentru alt client.
+    aliasClient.set(existing.id, clientId);
+    existing.matchedCount = 0;
+    return sender;
+  }
+
+  aliasCounter += 1;
+  const alias: ClientAlias = {
+    id: `alias-${aliasCounter}`,
+    kind: "SENDER",
+    value: sender,
+    matchedCount: 0,
+    createdAt: MOCK_NOW,
+  };
+  aliases.push(alias);
+  aliasClient.set(alias.id, clientId);
+  return sender;
+}
+
+export function listClientAliases(clientId: string): ClientAlias[] {
+  requirePermission("clients:read");
+  return aliases
+    .filter((alias) => aliasClient.get(alias.id) === clientId)
+    .sort((a, b) => b.matchedCount - a.matchedCount || a.value.localeCompare(b.value));
+}
+
+export function forgetAlias(aliasId: string): void {
+  requirePermission("clients:write");
+  const index = aliases.findIndex((alias) => alias.id === aliasId);
+  if (index < 0) notFound("Alias", aliasId);
+  recordAudit("CLIENT_ALIAS_FORGOTTEN", "ClientAlias", aliasId, aliases[index]!.value);
+  aliases.splice(index, 1);
+  aliasClient.delete(aliasId);
 }
 
 /* ─── Solicitarea de documente ─────────────────────────────────────────────── */

@@ -30,6 +30,7 @@ from app.models.document import Document, DocumentType
 from app.models.user import User
 from app.repositories.document import DocumentRepository
 from app.services.audit import AuditService
+from app.services.client_aliases import ClientAliasService
 from app.services.document_archive import DocumentArchiveService
 from app.services.document_fields import (
     DocumentFieldWriter,
@@ -217,11 +218,23 @@ class DocumentService:
             self._transition(document, DocumentStatus.REVIEW_REQUIRED)
             document.review_required = True
 
+        # Aici învață sistemul. Doar aici: o potrivire automată nu produce
+        # niciodată un alias, altfel prima greșeală s-ar transforma în regulă.
+        learned = ClientAliasService(self.session).learn_from_assignment(
+            organization_id,
+            document_id=document.id,
+            client_id=client.id,
+            actor_id=actor.user.id,
+        )
+
         self._record(
             actor,
             document,
             "DOCUMENT_CLIENT_ASSIGNED",
-            detail=client.name,
+            # Învățarea schimbă comportamentul viitor, deci nu are voie să fie
+            # tăcută: cine citește jurnalul trebuie să afle că de acum documentele
+            # de la adresa aceea merg singure la clientul ăsta.
+            detail=f"{client.name} · învățat expeditorul {learned}" if learned else client.name,
             old_value={"clientId": str(previous) if previous else None},
             new_value={"clientId": str(client.id)},
         )

@@ -10,6 +10,7 @@ import type {
   AuditLogEntry,
   ChecklistItem,
   Client,
+  ClientAlias,
   ClientExpectation,
   ClientNote,
   ClientStatus,
@@ -125,6 +126,9 @@ export const clients = {
     expectations: Array<{ documentTypeCode: string; expectedMinCount: number }>,
   ) => api.put<ClientExpectation[]>(`/clients/${id}/expectations`, { expectations }),
   periods: (id: string) => api.get<AccountingPeriod[]>(`/clients/${id}/periods`),
+  aliases: (id: string) => api.get<ClientAlias[]>(`/clients/${id}/aliases`),
+  forgetAlias: (clientId: string, aliasId: string) =>
+    api.delete<void>(`/clients/${clientId}/aliases/${aliasId}`),
   /**
    * Textul prin care i se cer clientului documentele lipsă.
    *

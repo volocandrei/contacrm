@@ -84,6 +84,16 @@ const routes: Route[] = [
   },
   {
     method: "GET",
+    pattern: "/clients/:id/aliases",
+    handler: ({ params }) => store.listClientAliases(params.id!),
+  },
+  {
+    method: "DELETE",
+    pattern: "/clients/:id/aliases/:aliasId",
+    handler: ({ params }) => store.forgetAlias(params.aliasId!),
+  },
+  {
+    method: "GET",
     pattern: "/clients/:id/document-request",
     handler: ({ params, query }) => ({
       message: store.buildDocumentRequest(params.id!, query.referenceMonth ?? ""),

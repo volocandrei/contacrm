@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, LoaderCircle, Pencil, Plus, StickyNote } from "lucide-react";
+import { ArrowLeft, LoaderCircle, Pencil, Plus, StickyNote, Trash2 } from "lucide-react";
 import {
   useClient,
+  useClientAliases,
   useClientContacts,
   useClientExpectations,
   useClientNotes,
   useClientPeriods,
   useCreateNote,
+  useForgetAlias,
   useDocumentTypes,
   useDocuments,
   useSaveExpectations,
@@ -167,6 +169,8 @@ function GeneralTab({ clientId }: { clientId: string }) {
           <Row label="Client din" value={formatDate(client.createdAt)} />
         </dl>
       </Panel>
+
+      <LearnedSendersPanel clientId={clientId} />
 
       <Panel title="Contact principal">
         {primary ? (
@@ -665,5 +669,68 @@ function Row({ label, value }: { label: string; value: string }) {
       <dt className="shrink-0 text-slate-500 dark:text-slate-400">{label}</dt>
       <dd className="text-right font-medium text-slate-900 dark:text-slate-100">{value}</dd>
     </div>
+  );
+}
+
+
+/**
+ * De la ce adrese ajung documentele singure la clientul ăsta.
+ *
+ * **De ce se vede.** Sistemul învață din atribuirile făcute de oameni: după ce
+ * cineva atribuie un document venit de la o adresă, următoarele merg singure
+ * acolo. Un alias pus din greșeală ar misruta **tăcut**, lună de lună — un
+ * mecanism care învață și nu poate fi corectat este mai rău decât unul care nu
+ * învață deloc. De aceea lista este vizibilă și fiecare rând se poate șterge.
+ *
+ * Panoul nu apare cât timp nu s-a învățat nimic: un cabinet nou nu are de ce să
+ * vadă o listă goală și o explicație despre ceva ce nu s-a întâmplat încă.
+ */
+function LearnedSendersPanel({ clientId }: { clientId: string }) {
+  const { data: aliases } = useClientAliases(clientId);
+  const forget = useForgetAlias(clientId);
+  const has = usePermissionCheck();
+
+  if (!aliases || aliases.length === 0) return null;
+
+  return (
+    <Panel title="Expeditori recunoscuți">
+      <p className={cn("mb-3 text-xs", mutedText)}>
+        Documentele venite de la adresele astea ajung singure la client. Sistemul le-a
+        învățat din atribuirile voastre.
+      </p>
+      <ul className="space-y-2 text-sm">
+        {aliases.map((alias) => (
+          <li key={alias.id} className="flex items-center justify-between gap-2">
+            <span className="min-w-0">
+              <span className="block truncate text-slate-700 dark:text-slate-300">
+                {alias.value}
+              </span>
+              <span className={cn("text-xs", mutedText)}>
+                {alias.matchedCount === 0
+                  ? "încă nefolosit"
+                  : `a potrivit ${alias.matchedCount} ${
+                      alias.matchedCount === 1 ? "document" : "documente"
+                    }`}
+              </span>
+            </span>
+            {has("clients:write") && (
+              <button
+                type="button"
+                onClick={() => forget.mutate(alias.id)}
+                disabled={forget.isPending}
+                title={`Uită adresa ${alias.value}`}
+                className={cn(
+                  "shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20",
+                  focusRing,
+                )}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                <span className="sr-only">Uită adresa {alias.value}</span>
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Panel>
   );
 }

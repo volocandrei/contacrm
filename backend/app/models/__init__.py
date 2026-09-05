@@ -6,6 +6,7 @@ se adaugă aici, altfel autogenerarea nu îl vede și migrarea iese goală.
 
 from __future__ import annotations
 
+from app.models.alias import AliasKind, ClientAlias
 from app.models.anaf import AnafConnection, AnafMandate
 from app.models.audit import AuditLog
 from app.models.base import Base
@@ -32,6 +33,7 @@ ALL_MODELS = (
     RefreshToken,
     AuditLog,
     Client,
+    ClientAlias,
     Contact,
     ClientNote,
     Tag,
@@ -54,11 +56,13 @@ ALL_MODELS = (
 __all__ = [
     "ALL_MODELS",
     "AccountingPeriod",
+    "AliasKind",
     "AnafConnection",
     "AnafMandate",
     "AuditLog",
     "Base",
     "Client",
+    "ClientAlias",
     "ClientExpectation",
     "ClientNote",
     "Contact",

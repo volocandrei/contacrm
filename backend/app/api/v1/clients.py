@@ -8,6 +8,7 @@ câmpuri.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, status
@@ -37,6 +38,8 @@ from app.schemas.client import (
 )
 from app.schemas.common import ApiModel, PageParams, Paginated
 from app.schemas.document import DocumentFilters, DocumentListItemOut
+from app.services.audit import AuditService
+from app.services.client_aliases import ClientAliasService
 from app.services.client_service import ActorContext, ClientService
 from app.services.document_request import build_request_message
 from app.services.period_service import PeriodService
@@ -93,6 +96,70 @@ def get_client(session: DbSession, user: ClientReader, client_id: uuid.UUID) -> 
         # răspunsul confirmă că id-ul există undeva.
         raise NotFoundError("Client", client_id)
     return _to_out(client, repository.accountant_names([client]))
+
+
+class ClientAliasOut(ApiModel):
+    """Ce a învățat sistemul despre cine trimite documentele acestui client."""
+
+    id: uuid.UUID
+    kind: str
+    value: str
+    matched_count: int
+    created_at: datetime
+
+
+@router.get("/{client_id}/aliases", response_model=list[ClientAliasOut])
+def list_aliases(
+    session: DbSession, user: ClientReader, client_id: uuid.UUID
+) -> list[ClientAliasOut]:
+    """Adresele de la care documentele ajung singure la clientul ăsta.
+
+    **De ce se văd.** Sistemul învață din atribuirile făcute de oameni: după ce
+    cineva atribuie un document venit de la o adresă, următoarele merg singure
+    acolo. Un alias pus din greșeală ar misruta tăcut, lună de lună — de aceea
+    lista este vizibilă și fiecare rând se poate șterge.
+    """
+    aliases = ClientAliasService(session).for_client(user.organization_id, client_id)
+    return [
+        ClientAliasOut(
+            id=alias.id,
+            kind=alias.kind.value,
+            value=alias.value,
+            matched_count=alias.matched_count,
+            created_at=alias.created_at,
+        )
+        for alias in aliases
+    ]
+
+
+@router.delete("/{client_id}/aliases/{alias_id}", status_code=status.HTTP_204_NO_CONTENT)
+def forget_alias(
+    session: DbSession,
+    user: ClientWriter,
+    request: Request,
+    client_id: uuid.UUID,
+    alias_id: uuid.UUID,
+) -> None:
+    """Uită ce a învățat de la o adresă.
+
+    Cere `clients:write`, nu doar citire: ștergerea schimbă unde ajung
+    documentele viitoare.
+    """
+    del client_id  # aliasul se identifică singur; clientul stă în adresă pentru citit
+    alias = ClientAliasService(session).forget(user.organization_id, alias_id)
+    if alias is None:
+        raise NotFoundError("Alias", alias_id)
+
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="CLIENT_ALIAS_FORGOTTEN",
+        entity_type="ClientAlias",
+        entity_id=str(alias_id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=alias.value,
+        ip=client_ip(request),
+    )
 
 
 class DocumentRequestOut(ApiModel):

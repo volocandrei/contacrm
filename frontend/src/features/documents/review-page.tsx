@@ -419,6 +419,7 @@ function ReviewScreen({
                 Expeditorul nu a putut fi mapat automat. Alege clientul căruia îi aparține documentul.
               </p>
               <select
+                aria-label="Alege clientul documentului"
                 defaultValue=""
                 disabled={busy}
                 onChange={(event) => {

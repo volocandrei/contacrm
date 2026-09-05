@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  16.743 linii sursă +  2.478 linii teste  →   200 teste
-backend   21.675 linii sursă + 18.486 linii teste  → 1.271 teste
-end-to-end 1.541 linii                             →    60 teste (browser real)
+frontend  16.941 linii sursă +  2.478 linii teste  →   200 teste
+backend   22.090 linii sursă + 18.798 linii teste  → 1.286 teste
+end-to-end 1.606 linii                             →    62 teste (browser real)
 migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.531 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.548 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -207,6 +207,35 @@ email al contabilului. Aplicația știe ce lipsește și până când, dar nu po
 trimite — asta cere un provider și rămâne în Faza 2; butonul acoperă exact
 distanța rămasă, fără să pretindă că o depășește.
 
+### Sistemul învață de la cine vin documentele (§8)
+
+Un extras de cont nu are CUI, o poză de bon nu are text, iar OCR-ul citește
+uneori greșit — documentele astea ajungeau `UNMATCHED`, un om alegea clientul, și
+luna următoare se repeta exact la fel. Nimic nu reținea decizia.
+
+Acum, fiecare atribuire făcută de un om leagă **adresa de la care a sosit**
+documentul de clientul ales. Data viitoare, un document de la aceeași adresă se
+atribuie singur.
+
+Ce **nu** învață, deliberat:
+
+- **Nu învață din propriile potriviri.** Doar o decizie umană scrie un alias;
+  altfel prima potrivire greșită s-ar transforma în regulă, iar sistemul ar
+  părea din ce în ce mai sigur pe el exact unde greșește. Testul care apără asta
+  este verificat prin mutație.
+- **Nu învață din codurile fiscale de pe document.** Pe o factură de intrare
+  apar două: al furnizorului — un terț care vinde la zeci de firme — și al
+  clientului nostru. Care e care nu se știe cât timp tipul documentului nu este
+  stabilit, ceea ce la `UNMATCHED` este exact cazul.
+- **Nu învață de la un document urcat manual.** Acolo nu există expeditor extern,
+  iar a lega adresa colegului de un client ar trimite acolo tot ce urcă el.
+
+**Se poate desface.** Un alias greșit ar misruta tăcut, lună de lună — un
+mecanism care învață și nu poate fi corectat este mai rău decât unul care nu
+învață deloc. Lista se vede pe fișa clientului, cu de câte ori a potrivit
+fiecare, și se șterge de acolo. O atribuire nouă de la aceeași adresă îl mută:
+ultima decizie a unui om câștigă.
+
 Piesa centrală este **ecranul de verificare**: facsimilul documentului lângă
 câmpurile extrase, fiecare câmp cu proveniența lui (`AI 81%`, „corectat manual",
 „lipsă") și bordură colorată pe praguri de încredere.
@@ -219,7 +248,7 @@ documentul aprobat și mai avea de făcut două lucruri pentru fiecare document
 următor. Scurtături: `Alt+S` salvează, `Alt+A` aprobă, `Alt+N` sare peste
 fără să atingă documentul.
 
-**Backendul simulat** (`src/api/mock/`, ~4.023 linii) implementează 68 de rute cu
+**Backendul simulat** (`src/api/mock/`, ~4.114 linii) implementează 70 de rute cu
 aceleași căi, paginare, filtrare, permisiuni și coduri de eroare ca API-ul real.
 Comutarea se face din `VITE_API_MODE` — restul aplicației nu știe cine răspunde.
 
@@ -445,7 +474,7 @@ Vechile și noile valori nu ies prin API: auditul răspunde la „cine, ce, cân
 „ce scria pe factură". Cine are nevoie de conținut deschide documentul, iar acea
 deschidere se auditează la rândul ei.
 
-Rute reale existente **azi**: **65 de căi** sub `/api/v1`, cu 79 de operații
+Rute reale existente **azi**: **67 de căi** sub `/api/v1`, cu 81 de operații
 HTTP — plus cele trei `/health/*` de la rădăcină și `/internal/run-queue`, care nu
 apare în OpenAPI pentru că nu face parte din contractul cu frontend-ul.
 
@@ -457,7 +486,7 @@ să afle ce poate face un operator *înainte* de a-i da rolul.
 
 ### Verificat pe date reale, nu doar în teste
 
-- Toate cele **13** migrări se aplică **și se dau înapoi** curat — verificat
+- Toate cele **14** migrări se aplică **și se dau înapoi** curat — verificat
   dus-întors la fiecare adăugare, nu presupus
 - Flux HTTP complet: parolă greșită → 401, login → `CurrentUser`, cookie-uri
   `HttpOnly`, `/me`, `/users` ca ADMIN, refresh, logout, `/me` după logout → 401

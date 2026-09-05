@@ -36,6 +36,7 @@ export const queryKeys = {
   contacts: (params: QueryParams) => ["contacts", params] as const,
   clientNotes: (id: string) => ["clients", id, "notes"] as const,
   clientExpectations: (id: string) => ["clients", id, "expectations"] as const,
+  clientAliases: (id: string) => ["clients", id, "aliases"] as const,
   intakes: (params: QueryParams) => ["intakes", params] as const,
   clientPeriods: (id: string) => ["clients", id, "periods"] as const,
   documents: (params: QueryParams) => ["documents", params] as const,
@@ -90,6 +91,23 @@ export function useContacts(params: QueryParams) {
   return useQuery({
     queryKey: queryKeys.contacts(params),
     queryFn: () => contacts.list(params),
+  });
+}
+
+/** Ce a învățat sistemul despre expeditorii acestui client. */
+export function useClientAliases(id: string) {
+  return useQuery({
+    queryKey: queryKeys.clientAliases(id),
+    queryFn: () => clients.aliases(id),
+  });
+}
+
+export function useForgetAlias(clientId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (aliasId: string) => clients.forgetAlias(clientId, aliasId),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: queryKeys.clientAliases(clientId) }),
   });
 }
 
