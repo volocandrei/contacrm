@@ -61,19 +61,13 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint("kind IN ('SENDER')", name="kind"),
-        sa.ForeignKeyConstraint(
-            ["organization_id"], ["organizations.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["organization_id"], ["organizations.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["client_id"], ["clients.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["created_by_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "organization_id", "kind", "value", name="uq_client_aliases_value"
-        ),
+        sa.UniqueConstraint("organization_id", "kind", "value", name="uq_client_aliases_value"),
     )
-    op.create_index(
-        "ix_client_aliases_organization_id", "client_aliases", ["organization_id"]
-    )
+    op.create_index("ix_client_aliases_organization_id", "client_aliases", ["organization_id"])
     op.create_index("ix_client_aliases_client_id", "client_aliases", ["client_id"])
 
 
