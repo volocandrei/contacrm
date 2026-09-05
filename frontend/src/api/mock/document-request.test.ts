@@ -23,6 +23,7 @@ import { clients } from "@/api/endpoints";
 import {
   assistantAnswer,
   composeDocumentRequest,
+  createUploadLink,
   listMissingDocuments,
   listUploadLinks,
   mockLogin,
@@ -112,6 +113,41 @@ describe("drumul întreg, prin clientul de API", () => {
 
     expect(request.uploadUrl).toContain("/incarca/");
     expect(request.message).toContain(request.uploadUrl);
+  });
+});
+
+describe("urma cererii", () => {
+  /** Un client cu goluri pe care nu l-a întrebat încă nimeni, în luna dată. */
+  function untouched(referenceMonth: string) {
+    const entry = listMissingDocuments(referenceMonth).find((row) => row.requestedAt === null);
+    expect(entry, "setul sintetic nu mai are niciun client neîntrebat").toBeDefined();
+    return entry!.period.clientId;
+  }
+
+  function traceOf(clientId: string, referenceMonth: string) {
+    return listMissingDocuments(referenceMonth).find((row) => row.period.clientId === clientId)!;
+  }
+
+  it("spune cui nu i s-a cerut încă, și își amintește după aceea", () => {
+    // Fără urmă pe ecran, un cabinet cu treizeci de clienți cere de două ori
+    // unuia și îl uită complet pe altul. Uitatul nu costă timp, costă o lună.
+    const month = "2026-08";
+    const clientId = untouched(month);
+
+    composeDocumentRequest(clientId, month);
+
+    expect(traceOf(clientId, month).requestedAt).not.toBeNull();
+  });
+
+  it("un link deschis din fișă nu este o cerere", () => {
+    // Dacă ar conta, ecranul ar spune „i s-a cerut" despre un client pe care
+    // nu l-a întrebat nimeni — exact clientul care așteaptă degeaba.
+    const month = "2026-08";
+    const clientId = untouched(month);
+
+    createUploadLink(clientId);
+
+    expect(traceOf(clientId, month).requestedAt).toBeNull();
   });
 });
 

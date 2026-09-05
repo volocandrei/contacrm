@@ -32,6 +32,7 @@ from app.repositories.client import ClientRepository
 from app.schemas.common import ApiModel
 from app.services.audit import AuditService
 from app.services.period_service import PeriodService, PeriodView
+from app.services.upload_links import RequestTrace, UploadLinkService
 
 router = APIRouter(tags=["contabilitate"])
 
@@ -114,6 +115,22 @@ class MissingDocumentsEntryOut(ApiModel):
     #: Termenul de depunere al lunii, aceeași dată pentru toate rândurile. Se
     #: repetă pe fiecare intrare ca forma răspunsului să rămână o listă simplă.
     deadline: date
+    #: Când s-a pregătit ultima cerere pentru clientul ăsta, pe luna asta.
+    #:
+    #: **Nul înseamnă „nu i s-a cerut niciodată"** — și este cel mai util lucru
+    #: de pe rând: dintr-o listă de treizeci de clienți, aceia sunt cei la care
+    #: mai e ceva de făcut; restul așteaptă răspuns.
+    #:
+    #: Spune că textul a fost **compus și copiat**, nu că a plecat: aplicația nu
+    #: trimite (Faza 2), deci nu are de unde ști dacă omul l-a și lipit în email.
+    #: Interfața nu are voie să promită mai mult decât atât.
+    requested_at: datetime | None
+    #: Câte documente au intrat prin linkul acelei cereri.
+    #:
+    #: Zero, la o cerere veche, este semnalul de urmărire: clientul n-a atins
+    #: drumul. Documentele venite altfel închid golul singure, iar atunci rândul
+    #: dispare cu totul din raport.
+    received_through_link: int
 
 
 class ClosePeriodIn(ApiModel):
@@ -216,6 +233,21 @@ def list_periods(
     return [to_period(view) for view in views]
 
 
+def _to_missing_entry(
+    view: PeriodView,
+    gaps: list[ChecklistEntry],
+    deadline: date,
+    trace: RequestTrace | None,
+) -> MissingDocumentsEntryOut:
+    return MissingDocumentsEntryOut(
+        period=to_period(view),
+        missing=[_to_item(item) for item in gaps],
+        deadline=deadline,
+        requested_at=trace.requested_at if trace else None,
+        received_through_link=trace.received_through_link if trace else 0,
+    )
+
+
 @router.get("/periods/missing", response_model=list[MissingDocumentsEntryOut])
 def missing_documents(
     session: DbSession,
@@ -228,12 +260,11 @@ def missing_documents(
     în regulă ajunge să nu mai fie citit, iar atunci nu mai raportează nimic.
     """
     deadline = filing_deadline(filters.reference_month, day=settings.filing_deadline_day)
+    # O singură interogare pentru tot raportul, nu una pe rând: treizeci de
+    # clienți ar fi însemnat treizeci de dus-întors pentru o coloană.
+    traces = UploadLinkService(session).requests_for(user.organization_id, filters.reference_month)
     return [
-        MissingDocumentsEntryOut(
-            period=to_period(view),
-            missing=[_to_item(m) for m in gaps],
-            deadline=deadline,
-        )
+        _to_missing_entry(view, gaps, deadline, traces.get(view.client_id))
         for view, gaps in PeriodService(session).missing(
             user.organization_id, filters.reference_month
         )

@@ -816,6 +816,16 @@ function UploadLinkPanel({ clientId }: { clientId: string }) {
             <li key={link.id} className="flex items-center justify-between gap-2">
               <span className="min-w-0">
                 <span className="block text-slate-700 dark:text-slate-300">
+                  {/*
+                    Pentru ce a fost deschis, nu doar când expiră. O listă de
+                    patru linkuri arată altfel la fel, iar atunci nu se poate
+                    închide niciunul fără teamă.
+                  */}
+                  {link.referenceMonth
+                    ? `Cerere pentru ${formatReferenceMonth(link.referenceMonth)}`
+                    : "Deschis din fișă"}
+                </span>
+                <span className={cn("block text-xs", mutedText)}>
                   Valabil până la {formatDate(link.expiresAt)}
                 </span>
                 <span className={cn("text-xs", mutedText)}>

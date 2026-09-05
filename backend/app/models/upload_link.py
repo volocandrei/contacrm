@@ -41,6 +41,9 @@ class ClientUploadLink(Base, OrganizationMixin, TimestampMixin):
     __tablename__ = "client_upload_links"
     __table_args__ = (
         Index("ix_client_upload_links_client_id", "client_id"),
+        # „Cererile cabinetului pentru luna X": filtrul pe lună nu vine niciodată
+        # singur, deci indexul începe cu organizația.
+        Index("ix_client_upload_links_org_month", "organization_id", "reference_month"),
         # Căutarea se face **numai** după hash: tokenul brut nu este stocat nicăieri.
         Index("ix_client_upload_links_token_hash", "token_hash", unique=True),
     )
@@ -59,6 +62,13 @@ class ClientUploadLink(Base, OrganizationMixin, TimestampMixin):
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), default=None
     )
+    #: Luna pentru care s-a cerut, când linkul s-a deschis dintr-o solicitare.
+    #:
+    #: **Nulă pentru linkurile deschise din fișa clientului.** Acelea nu sunt
+    #: cereri, ci un drum lăsat deschis; diferența se vede exact aici. Cu ea,
+    #: rândul devine urma întrebării: cui i s-a cerut, pentru ce lună, când, și
+    #: dacă a trimis ceva pe drumul acela.
+    reference_month: Mapped[str | None] = mapped_column(String(7), default=None)
     #: Câte documente au intrat pe aici. Spune dacă drumul chiar este folosit.
     upload_count: Mapped[int] = mapped_column(default=0, nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(default=None)

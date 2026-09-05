@@ -64,6 +64,17 @@ export function dayLabel(iso: string): string {
   return day;
 }
 
+/**
+ * Câte zile întregi au trecut de la un moment încoace.
+ *
+ * Stă aici, nu în componentă, din același motiv ca `dayLabel`: `Date.now()`
+ * chemat direct în corpul unei componente face randarea impură — două randări
+ * consecutive pot da numere diferite fără ca ceva să se fi schimbat.
+ */
+export function daysSince(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
 /** `reference_month` vine ca "YYYY-MM". */
 export function formatReferenceMonth(referenceMonth: string): string {
   const [year, month] = referenceMonth.split("-");

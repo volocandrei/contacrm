@@ -349,3 +349,104 @@ class TestTheAssistantProposes:
         ).json()
 
         assert reply["actions"] == []
+
+
+# ── Urmărirea ────────────────────────────────────────────────────────────────
+
+
+def report(api: TestClient, month: str = MONTH) -> list[dict[str, object]]:
+    response = api.get(f"/api/v1/periods/missing?referenceMonth={month}")
+    assert response.status_code == 200, response.text
+    return list(response.json())
+
+
+class TestFollowUp:
+    """Cine a fost întrebat, când, și dacă a răspuns.
+
+    **De ce contează mai mult decât pare.** Un cabinet cere documentele a
+    treizeci de clienți în aceeași săptămână. Fără urmă pe ecran, peste trei zile
+    cere de două ori unuia și îl uită complet pe altul — iar uitatul nu costă
+    timp, costă o lună întârziată. Raportul de documente lipsă este singurul loc
+    unde întrebarea „pe cine mai am de sunat" are un răspuns.
+    """
+
+    def test_before_anything_nobody_has_been_asked(
+        self, api_storage: TestClient, admin: User, client_row: Client, gaps: None
+    ) -> None:
+        login(api_storage, admin.email)
+
+        entry = report(api_storage)[0]
+
+        assert entry["requestedAt"] is None
+        assert entry["receivedThroughLink"] == 0
+
+    def test_the_report_remembers_the_request(
+        self, api_storage: TestClient, admin: User, client_row: Client, gaps: None
+    ) -> None:
+        login(api_storage, admin.email)
+        compose(api_storage, client_row)
+
+        entry = report(api_storage)[0]
+
+        assert entry["requestedAt"] is not None
+
+    def test_it_counts_what_came_through_that_link(
+        self, api_storage: TestClient, db: Session, admin: User, client_row: Client, gaps: None
+    ) -> None:
+        """Semnalul de urmărire: i-am cerut, a făcut ceva?"""
+        login(api_storage, admin.email)
+        message = compose(api_storage, client_row).json()["message"]
+        api_storage.post(
+            f"/api/v1/portal/{token_from(message)}",
+            files={"file": ("raspuns.pdf", PDF, "application/pdf")},
+        )
+
+        entry = report(api_storage)[0]
+
+        assert entry["receivedThroughLink"] == 1
+
+    def test_a_link_opened_from_the_client_file_is_not_a_request(
+        self, api_storage: TestClient, admin: User, client_row: Client, gaps: None
+    ) -> None:
+        """Un drum lăsat deschis nu este o întrebare pusă.
+
+        Dacă ar conta ca cerere, ecranul ar spune „i s-a cerut" despre un client
+        pe care nu l-a întrebat nimeni — exact clientul care așteaptă degeaba.
+        """
+        login(api_storage, admin.email)
+        opened = api_storage.post(f"/api/v1/clients/{client_row.id}/upload-links")
+        assert opened.status_code == 201, opened.text
+
+        entry = report(api_storage)[0]
+
+        assert entry["requestedAt"] is None
+
+    def test_asking_again_does_not_erase_what_already_arrived(
+        self, api_storage: TestClient, admin: User, client_row: Client, gaps: None
+    ) -> None:
+        """A doua cerere nu șterge de pe ecran ce trimisese omul după prima.
+
+        Dacă am fi numărat doar ultimul link, contorul ar fi sărit înapoi la zero
+        și l-am fi sunat pe un client care își făcuse treaba.
+        """
+        login(api_storage, admin.email)
+        message = compose(api_storage, client_row).json()["message"]
+        api_storage.post(
+            f"/api/v1/portal/{token_from(message)}",
+            files={"file": ("primul.pdf", PDF, "application/pdf")},
+        )
+
+        compose(api_storage, client_row)
+
+        assert report(api_storage)[0]["receivedThroughLink"] == 1
+
+    def test_the_month_is_the_one_asked_about(
+        self, api_storage: TestClient, admin: User, client_row: Client, gaps: None
+    ) -> None:
+        """O cerere pe august nu apare ca răspuns la întrebarea despre iulie."""
+        login(api_storage, admin.email)
+        compose(api_storage, client_row)
+
+        other = [row for row in report(api_storage, "2026-07")]
+
+        assert all(row["requestedAt"] is None for row in other)

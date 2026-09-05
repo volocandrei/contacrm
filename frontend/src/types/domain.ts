@@ -253,6 +253,14 @@ export type UploadLink = {
   uploadCount: number;
   lastUsedAt: string | null;
   createdAt: string;
+  /**
+   * Luna pentru care s-a cerut, dacă linkul s-a deschis dintr-o solicitare.
+   *
+   * Nulă pentru cele deschise din fișă: acelea nu sunt cereri, ci un drum lăsat
+   * deschis. Fără ea, o listă de patru linkuri arată la fel indiferent de ce a
+   * stat în spatele fiecăruia.
+   */
+  referenceMonth: string | null;
 };
 
 /** Linkul nou. `url` se vede o singură dată — se copiază acum sau niciodată. */

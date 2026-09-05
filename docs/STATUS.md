@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  17.605 linii sursă +  2.607 linii teste  →   207 teste
-backend   22.777 linii sursă + 19.566 linii teste  → 1.322 teste
-end-to-end 1.701 linii                             →    65 teste (browser real)
+frontend  17.774 linii sursă +  2.643 linii teste  →   209 teste
+backend   22.890 linii sursă + 19.667 linii teste  → 1.328 teste
+end-to-end 1.707 linii                             →    65 teste (browser real)
 migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.594 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.602 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -217,6 +217,36 @@ butonul acoperă exact distanța rămasă, fără să pretindă că o depășeș
 Lista și linkul pleacă **împreună**, dintr-un singur buton, fiindcă separate a
 doua parte se pierde: clientul află *ce* îi lipsește și rămâne singur cu *cum*
 trimite — scanat, atașat, limita de mărime a emailului, amânat.
+
+**Și rămâne o urmă.** Un cabinet cere documentele a treizeci de clienți în
+aceeași săptămână. Fără urmă pe ecran, peste trei zile cere de două ori unuia și
+îl uită complet pe altul — iar uitatul nu costă timp, costă o lună întârziată.
+Fiecare rând din „Documente lipsă" spune acum una din trei stări:
+
+| pe ecran | ce înseamnă |
+|---|---|
+| **Necerut** | nu l-a întrebat nimeni — aici mai e de lucru |
+| **Pregătit ieri** · *fără răspuns de 4 zile* | i s-a cerut, n-a atins linkul |
+| **A trimis 3 documente** | a răspuns; nu-l mai suna |
+
+Filtrul **Cerere** (Toate / Necerute / Fără răspuns) este ordinea de lucru a
+dimineții: întâi cui nu i-am cerut, apoi cine tace.
+
+Urma nu este un tabel nou. Este chiar linkul deschis când s-a compus cererea —
+avea deja ora, autorul și contorul de documente sosite prin el; îi lipsea doar
+**pentru ce lună**. Un link deschis din fișa clientului rămâne cu luna nulă,
+fiindcă acela nu este o întrebare pusă, ci un drum lăsat deschis — iar dacă ar
+conta drept cerere, ecranul ar spune „i s-a cerut" exact despre clientul care
+așteaptă degeaba.
+
+Contorul **adună** peste toate cererile lunii: o a doua cerere nu șterge de pe
+ecran ce trimisese omul după prima, altfel l-am suna pe un client care își făcuse
+treaba.
+
+Ecranul spune **„Pregătit"**, nu „Trimis". Aplicația nu trimite (Faza 2): textul
+se copiază și pleacă din clientul de email al contabilului, deci tot ce știe
+sigur este că cererea a fost compusă. „Trimis" ar fi o promisiune pe care nimic
+din spate nu o acoperă.
 
 ### Clientul își trimite singur documentele (M14)
 
@@ -547,7 +577,7 @@ să afle ce poate face un operator *înainte* de a-i da rolul.
 
 ### Verificat pe date reale, nu doar în teste
 
-- Toate cele **15** migrări se aplică **și se dau înapoi** curat — verificat
+- Toate cele **16** migrări se aplică **și se dau înapoi** curat — verificat
   dus-întors la fiecare adăugare, nu presupus
 - Flux HTTP complet: parolă greșită → 401, login → `CurrentUser`, cookie-uri
   `HttpOnly`, `/me`, `/users` ca ADMIN, refresh, logout, `/me` după logout → 401

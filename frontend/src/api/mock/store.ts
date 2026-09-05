@@ -1251,11 +1251,25 @@ export function filingDeadline(referenceMonth: string): string {
 export function listMissingDocuments(referenceMonth: string) {
   const deadline = filingDeadline(referenceMonth);
   return listPeriods({ referenceMonth })
-    .map((period) => ({
-      period,
-      missing: period.checklist.filter((item) => !item.isSatisfied),
-      deadline,
-    }))
+    .map((period) => {
+      // Ultima cerere pentru clientul ăsta, pe luna asta. Linkurile revocate
+      // rămân în calcul: o cerere trimisă s-a trimis, iar faptul că i-am închis
+      // între timp drumul nu înseamnă că n-am întrebat.
+      const requests = uploadLinks
+        .filter(
+          (link) => link.clientId === period.clientId && link.referenceMonth === referenceMonth,
+        )
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return {
+        period,
+        missing: period.checklist.filter((item) => !item.isSatisfied),
+        deadline,
+        requestedAt: requests[0]?.createdAt ?? null,
+        // Documentele se adună peste toate cererile lunii: o a doua cerere nu
+        // șterge de pe ecran ce trimisese omul după prima.
+        receivedThroughLink: requests.reduce((total, link) => total + link.uploadCount, 0),
+      };
+    })
     .filter((entry) => entry.missing.length > 0);
 }
 
@@ -2449,7 +2463,7 @@ export function listUploadLinks(clientId: string): UploadLink[] {
     .map(({ clientId: _clientId, ...link }) => link);
 }
 
-export function createUploadLink(clientId: string): IssuedUploadLink {
+export function createUploadLink(clientId: string, referenceMonth?: string): IssuedUploadLink {
   requirePermission("documents:write");
   getClient(clientId);
 
@@ -2462,7 +2476,10 @@ export function createUploadLink(clientId: string): IssuedUploadLink {
     revokedAt: null,
     uploadCount: 0,
     lastUsedAt: null,
-    createdAt: MOCK_NOW,
+    createdAt: new Date().toISOString(),
+    // Luna leagă linkul de cerere. Fără ea, rândul spune doar că s-a deschis un
+    // drum; cu ea, spune că **i s-a cerut**.
+    referenceMonth: referenceMonth ?? null,
   };
   uploadLinks.unshift(link);
   recordAudit("UPLOAD_LINK_ISSUED", "ClientUploadLink", link.id, getClient(clientId).name);
@@ -2479,7 +2496,9 @@ export function revokeUploadLink(linkId: string): void {
   const link = uploadLinks.find((row) => row.id === linkId);
   if (!link) notFound("Link", linkId);
   // Nu se șterge rândul: urma că a existat rămâne, ca pe server.
-  link.revokedAt = MOCK_NOW;
+  // Ora reală, ca la creare: un link deschis acum și „revocat" la o dată din
+  // trecut este o cronologie pe care nimeni nu o poate citi.
+  link.revokedAt = new Date().toISOString();
   recordAudit("UPLOAD_LINK_REVOKED", "ClientUploadLink", linkId, null);
 }
 
@@ -2652,7 +2671,7 @@ export function composeDocumentRequest(
   // Aruncă înainte de a deschide ceva, dacă nu lipsește nimic.
   buildDocumentRequest(clientId, referenceMonth);
 
-  const link = createUploadLink(clientId);
+  const link = createUploadLink(clientId, referenceMonth);
   return {
     message: buildDocumentRequest(clientId, referenceMonth, {
       url: link.url,

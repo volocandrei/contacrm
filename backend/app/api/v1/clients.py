@@ -128,6 +128,10 @@ class UploadLinkOut(ApiModel):
     upload_count: int
     last_used_at: datetime | None
     created_at: datetime
+    #: Luna pentru care s-a cerut, dacă linkul s-a deschis dintr-o solicitare.
+    #: Nulă pentru cele deschise din fișă — fără ea, o listă de patru linkuri
+    #: arată la fel indiferent de ce a stat în spatele fiecăruia.
+    reference_month: str | None
 
 
 class IssuedLinkOut(UploadLinkOut):
@@ -150,6 +154,7 @@ def list_upload_links(
             upload_count=link.upload_count,
             last_used_at=link.last_used_at,
             created_at=link.created_at,
+            reference_month=link.reference_month,
         )
         for link in links
     ]
@@ -197,6 +202,8 @@ def create_upload_link(
         upload_count=0,
         last_used_at=None,
         created_at=datetime.now(UTC),
+        # Deschis din fișa clientului: un drum lăsat deschis, nu o cerere.
+        reference_month=None,
     )
 
 
@@ -351,7 +358,13 @@ def document_request(
         )
 
     issued = UploadLinkService(session).issue(
-        user.organization_id, client_id, created_by_id=user.id
+        user.organization_id,
+        client_id,
+        created_by_id=user.id,
+        # Luna leagă linkul de cerere. Fără ea, rândul spune doar că s-a deschis
+        # un drum; cu ea, spune că **i s-a cerut**, pentru ce lună și când — iar
+        # raportul de documente lipsă poate arăta cine încă n-a fost întrebat.
+        reference_month=filters.reference_month,
     )
     AuditService(session).record(
         organization_id=user.organization_id,

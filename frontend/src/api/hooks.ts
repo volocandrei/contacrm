@@ -129,6 +129,31 @@ export function useCreateUploadLink(clientId: string) {
   });
 }
 
+/**
+ * Compune solicitarea de documente și deschide drumul pe care sosește răspunsul.
+ *
+ * **De ce este mutație și nu un simplu apel.** Deschide un link, deci schimbă
+ * două lucruri pe care ecranele le au deja în mână: lista de linkuri a
+ * clientului și urma cererii din raportul de documente lipsă. Prima variantă
+ * chema ruta direct din buton — textul ajungea corect în clipboard, dar rândul
+ * continua să scrie „Necerut" până la o reîncărcare de pagină. Un ecran care
+ * arată contrariul a ceea ce tocmai ai făcut este mai rău decât unul care nu
+ * arată nimic: te face să o faci a doua oară.
+ */
+export function useDocumentRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clientId, referenceMonth }: { clientId: string; referenceMonth: string }) =>
+      clients.documentRequest(clientId, referenceMonth),
+    onSuccess: (_data, { clientId, referenceMonth }) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.missingDocuments(referenceMonth),
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.clientUploadLinks(clientId) });
+    },
+  });
+}
+
 export function useRevokeUploadLink(clientId: string) {
   const queryClient = useQueryClient();
   return useMutation({

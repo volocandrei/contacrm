@@ -65,6 +65,23 @@ class IssuedLink:
 
 
 @dataclass(frozen=True)
+class RequestTrace:
+    """Urma ultimei cereri pregătite pentru un client, într-o lună.
+
+    **De ce contează.** Un cabinet cere documentele a treizeci de clienți în
+    aceeași săptămână. Fără urmă, peste trei zile îi cere de două ori unuia și îl
+    uită complet pe altul — iar uitatul nu costă timp, costă o lună.
+
+    `received_through_link` numără **prin linkul acela**, nu în general. Este exact
+    întrebarea de urmărire: i-am cerut, a făcut ceva? Documentele venite altfel
+    închid golul singure, iar atunci rândul dispare din raport.
+    """
+
+    requested_at: datetime
+    received_through_link: int
+
+
+@dataclass(frozen=True)
 class LinkTarget:
     """Unde duce un link valid. Fără nimic care ar identifica clientul public."""
 
@@ -85,6 +102,7 @@ class UploadLinkService:
         *,
         created_by_id: uuid.UUID | None,
         validity: timedelta = DEFAULT_VALIDITY,
+        reference_month: str | None = None,
     ) -> IssuedLink:
         """Deschide un drum de trimitere pentru un client.
 
@@ -101,6 +119,7 @@ class UploadLinkService:
             token_hash=hash_token(token),
             expires_at=expires_at,
             created_by_id=created_by_id,
+            reference_month=reference_month,
         )
         self.session.add(link)
         self.session.flush()
@@ -156,6 +175,46 @@ class UploadLinkService:
             return
         link.upload_count += 1
         link.last_used_at = datetime.now(UTC)
+
+    def requests_for(
+        self, organization_id: uuid.UUID, reference_month: str
+    ) -> dict[uuid.UUID, RequestTrace]:
+        """Cui i s-a cerut pentru luna asta, și dacă a trimis ceva pe acolo.
+
+        **Ora** este a ultimei cereri: dacă i s-a cerut de trei ori, întrebarea
+        rămâne „de cât timp aștept răspunsul la ultima". **Documentele** se adună
+        peste toate cererile lunii — o a doua cerere nu șterge de pe ecran ce
+        trimisese omul după prima.
+
+        Linkurile revocate rămân în calcul. O cerere trimisă s-a trimis; faptul
+        că i-am închis între timp drumul nu înseamnă că n-am întrebat.
+        """
+        rows = self.session.execute(
+            select(
+                ClientUploadLink.client_id,
+                ClientUploadLink.created_at,
+                ClientUploadLink.upload_count,
+            )
+            .where(
+                ClientUploadLink.organization_id == organization_id,
+                ClientUploadLink.reference_month == reference_month,
+            )
+            .order_by(ClientUploadLink.created_at.desc())
+        ).all()
+
+        traces: dict[uuid.UUID, RequestTrace] = {}
+        for client_id, created_at, upload_count in rows:
+            previous = traces.get(client_id)
+            traces[client_id] = RequestTrace(
+                # Prima apariție este cea mai recentă — lista vine deja sortată.
+                requested_at=previous.requested_at if previous else created_at,
+                # Documentele se **adună** peste toate cererile lunii. Dacă am
+                # numărat doar ultimul link, o a doua cerere ar fi șters de pe
+                # ecran ce trimisese omul după prima — și l-am fi sunat degeaba.
+                received_through_link=(previous.received_through_link if previous else 0)
+                + upload_count,
+            )
+        return traces
 
     def for_client(
         self, organization_id: uuid.UUID, client_id: uuid.UUID

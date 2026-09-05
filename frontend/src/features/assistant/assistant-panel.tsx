@@ -22,8 +22,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Bot, Check, LoaderCircle, Send, TriangleAlert, User, X } from "lucide-react";
-import { useAssignClient, useAssistant, useCreateTask } from "@/api/hooks";
-import { clients } from "@/api/endpoints";
+import {
+  useAssignClient,
+  useAssistant,
+  useCreateTask,
+  useDocumentRequest,
+} from "@/api/hooks";
 import { describeError } from "@/lib/errors";
 import { buttonPrimary, focusRing, iconChip, inputField, mutedText, surface } from "@/lib/ui";
 import { cn } from "@/lib/utils";
@@ -289,6 +293,7 @@ function Bubble({
 function ActionCard({ action }: { action: AssistantAction }) {
   const createTask = useCreateTask();
   const assignClient = useAssignClient();
+  const requestDocumentsFor = useDocumentRequest();
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -306,10 +311,10 @@ function ActionCard({ action }: { action: AssistantAction }) {
   async function requestDocuments() {
     setBusy(true);
     try {
-      const { message } = await clients.documentRequest(
-        action.payload.clientId ?? "",
-        action.payload.referenceMonth ?? "",
-      );
+      const { message } = await requestDocumentsFor.mutateAsync({
+        clientId: action.payload.clientId ?? "",
+        referenceMonth: action.payload.referenceMonth ?? "",
+      });
       await navigator.clipboard.writeText(message);
       setDone(true);
     } catch (caught) {

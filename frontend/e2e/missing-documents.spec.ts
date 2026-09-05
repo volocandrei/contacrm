@@ -44,6 +44,12 @@ test("solicitarea ajunge în clipboard, cu lista lipsurilor completată", async 
   // clientului *ce* să caute și îl lasă singur cu *cum* trimite.
   expect(copied).toContain("/incarca/");
   expect(copied).toMatch(/valabil până la \d{2}\.\d{2}\.\d{4}/);
+
+  // Și rămâne o urmă pe ecran. Fără ea, peste trei zile cabinetul cere de două
+  // ori aceluiași client și îl uită complet pe altul.
+  await expect(page.getByText("Pregătit Astăzi").first()).toBeVisible();
+  await page.getByLabel("Cerere").selectOption("never");
+  await expect(page.getByText("Pregătit Astăzi")).toHaveCount(0);
 });
 
 test("linkul din mesajul copiat chiar duce undeva", async ({ page, context }) => {

@@ -202,6 +202,19 @@ export type MissingDocumentsEntry = {
   missing: ChecklistItem[];
   /** Termenul de depunere al lunii, „YYYY-MM-DD". Același pentru toate rândurile. */
   deadline: string;
+  /**
+   * Când s-a pregătit ultima cerere pentru clientul ăsta, pe luna asta.
+   *
+   * `null` înseamnă **nu i s-a cerut niciodată** — cel mai util lucru de pe rând:
+   * dintr-o listă de treizeci de clienți, aceia sunt cei la care mai e ceva de
+   * făcut; restul așteaptă răspuns.
+   *
+   * Spune că textul a fost compus și copiat, nu că a plecat: aplicația nu trimite
+   * (Faza 2), deci interfața nu are voie să promită mai mult.
+   */
+  requestedAt: string | null;
+  /** Câte documente au intrat prin linkul acelei cereri. Zero = n-a atins drumul. */
+  receivedThroughLink: number;
 };
 
 export const periods = {

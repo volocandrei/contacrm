@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Check, CircleCheck, Copy, TriangleAlert } from "lucide-react";
-import { useMissingDocuments, usePeriods } from "@/api/hooks";
-import { clients } from "@/api/endpoints";
+import { useDocumentRequest, useMissingDocuments, usePeriods } from "@/api/hooks";
 import { MonthFilter, SelectFilter } from "@/components/form-controls";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { ProgressRing } from "@/components/charts";
@@ -11,7 +10,7 @@ import { PERIOD_STATUS_LABEL } from "@/lib/labels";
 import { buttonSecondary, divider, mutedText, pillClass } from "@/lib/ui";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { currentMonth } from "@/lib/current-month";
-import { formatDate, formatReferenceMonth } from "@/lib/format";
+import { dayLabel, daysSince, formatDate, formatReferenceMonth } from "@/lib/format";
 import { usePermissionCheck } from "@/features/auth/use-auth";
 import { cn } from "@/lib/utils";
 import { PERIOD_STATUS, type AccountingPeriod } from "@/types/domain";
@@ -66,11 +65,21 @@ export function PeriodsPage() {
 }
 
 export function MissingDocumentsPage() {
-  const { values, setValue } = useFilterParams({ referenceMonth: currentMonth() });
+  const { values, setValue } = useFilterParams({ referenceMonth: currentMonth(), request: "" });
   const { data, isLoading, error } = useMissingDocuments(values.referenceMonth);
   // Solicitarea deschide un link de trimitere, deci scrie. Cine nu poate scrie
   // vede tot ecranul, fără butonul care i-ar da 403.
   const canRequest = usePermissionCheck()("documents:write");
+
+  // Filtrarea este locală: raportul vine oricum întreg, iar o rută în plus
+  // pentru trei stări derivate din câmpuri deja aduse ar fi cost fără câștig.
+  const rows = (data ?? []).filter((entry) => {
+    if (values.request === "never") return entry.requestedAt === null;
+    if (values.request === "silent") {
+      return entry.requestedAt !== null && entry.receivedThroughLink === 0;
+    }
+    return true;
+  });
 
   return (
     <div>
@@ -79,22 +88,45 @@ export function MissingDocumentsPage() {
         description="Clienți la care checklist-ul perioadei nu este acoperit"
       />
 
-      {/* Ecranul cere o lună anume: „documente lipsă" nu înseamnă nimic fără ea. */}
-      <MonthFilter
-        label="Lună"
-        value={values.referenceMonth}
-        onChange={(value) => setValue("referenceMonth", value)}
-        className="mb-4 w-48"
-      />
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        {/* Ecranul cere o lună anume: „documente lipsă" nu înseamnă nimic fără ea. */}
+        <MonthFilter
+          label="Lună"
+          value={values.referenceMonth}
+          onChange={(value) => setValue("referenceMonth", value)}
+          className="w-48"
+        />
+        {/*
+          Ordinea de lucru a unui cabinet care are treizeci de clienți și o
+          săptămână: mai întâi cui nu i-am cerut, apoi cine n-a răspuns. Fără
+          filtrul ăsta, lista se citește de la capăt de fiecare dată.
+        */}
+        <SelectFilter
+          label="Cerere"
+          showLabel
+          value={values.request}
+          onChange={(value) => setValue("request", value)}
+          allLabel="Toate"
+          options={[
+            { value: "never", label: "Necerute" },
+            { value: "silent", label: "Fără răspuns" },
+          ]}
+          className="w-48"
+        />
+      </div>
 
       {isLoading ? (
         <LoadingState />
       ) : error ? (
         <ErrorState error={error} />
-      ) : (data?.length ?? 0) === 0 ? (
+      ) : rows.length === 0 ? (
         <Panel>
           <p className="py-6 text-center text-sm text-slate-600 dark:text-slate-400">
-            Toți clienții au documentele complete pentru luna selectată.
+            {(data?.length ?? 0) === 0
+              ? "Toți clienții au documentele complete pentru luna selectată."
+              : values.request === "never"
+                ? "Tuturor clienților cu documente lipsă li s-a cerut deja."
+                : "Toți clienții cărora li s-a cerut au trimis ceva."}
           </p>
         </Panel>
       ) : (
@@ -107,11 +139,12 @@ export function MissingDocumentsPage() {
                   <th scope="col" className="px-4 py-3 font-medium">Status</th>
                   <th scope="col" className="px-4 py-3 font-medium">Documente lipsă</th>
                   <th scope="col" className="px-4 py-3 font-medium">Progres</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Cerere</th>
                   <th scope="col" className="px-4 py-3 font-medium sr-only">Solicitare</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {data?.map(({ period, missing }) => (
+                {rows.map(({ period, missing, requestedAt, receivedThroughLink }) => (
                   <tr key={period.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                     <td className="px-4 py-3">
                       <Link
@@ -147,6 +180,9 @@ export function MissingDocumentsPage() {
                           {period.satisfiedCount}/{period.expectedCount}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <RequestState requestedAt={requestedAt} received={receivedThroughLink} />
                     </td>
                     <td className="px-4 py-3 text-right">
                       {canRequest && (
@@ -305,13 +341,16 @@ function CopyRequestButton({
 }) {
   const [copied, setCopied] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  // Prin mutație, nu direct: deschiderea linkului schimbă chiar rândul de sub
+  // buton, iar ecranul trebuie să afle. Vezi `useDocumentRequest`.
+  const request = useDocumentRequest();
 
   async function copy() {
     try {
-      const { message, uploadExpiresAt } = await clients.documentRequest(
+      const { message, uploadExpiresAt } = await request.mutateAsync({
         clientId,
         referenceMonth,
-      );
+      });
       await navigator.clipboard.writeText(message);
       setCopied(uploadExpiresAt);
       setFailed(false);
@@ -350,5 +389,46 @@ function CopyRequestButton({
         </span>
       )}
     </div>
+  );
+}
+
+
+/** De la câte zile fără răspuns o cerere devine ceva de urmărit. */
+const SILENT_AFTER_DAYS = 3;
+
+/**
+ * Ce s-a întâmplat cu cererea pentru rândul ăsta.
+ *
+ * **De ce este o coloană și nu o insignă discretă.** Un cabinet cere documentele
+ * a treizeci de clienți în aceeași săptămână. Fără urmă pe ecran, peste trei zile
+ * cere de două ori unuia și îl uită complet pe altul — iar uitatul nu costă timp,
+ * costă o lună întârziată.
+ *
+ * **Ce nu spune.** Nu spune „trimis". Aplicația nu trimite (Faza 2): textul se
+ * copiază și pleacă din clientul de email al contabilului, deci tot ce știe
+ * sigur este că cererea a fost **pregătită**. „Cerut" ar fi o promisiune pe care
+ * nimic din spate nu o acoperă.
+ */
+function RequestState({ requestedAt, received }: { requestedAt: string | null; received: number }) {
+  if (requestedAt === null) {
+    return <span className={cn("text-xs", mutedText)}>Necerut</span>;
+  }
+
+  if (received > 0) {
+    return (
+      <span className="text-xs text-emerald-700 dark:text-emerald-400">
+        A trimis {received} {received === 1 ? "document" : "documente"}
+      </span>
+    );
+  }
+
+  const days = daysSince(requestedAt);
+  return (
+    <span className="flex flex-col text-xs">
+      <span className="text-slate-700 dark:text-slate-300">Pregătit {dayLabel(requestedAt)}</span>
+      {days >= SILENT_AFTER_DAYS && (
+        <span className="text-amber-700 dark:text-amber-500">fără răspuns de {days} zile</span>
+      )}
+    </span>
   );
 }
