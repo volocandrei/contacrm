@@ -1436,11 +1436,14 @@ Necesită input uman, nu sunt de rezolvat în cod:
    decizie de business, ci un defect care aștepta o instalare. Pentru
    demonstrații rămâne `ENVIRONMENT=staging`; `pdf_text` este, din punctul de
    vedere al GDPR, identic cu `mock` — local, fără rețea — doar că adevărat.
-5. **Software-ul contabil țintă** pentru export — determină formatul. Nu mai
-   blochează nimic: registrul lunii (`GET /reports/register.csv`) scoate datele
-   într-un CSV care se deschide în Excel oriunde, iar un format anume — Saga,
-   WinMentor, altul — se adaugă peste el când se știe care este. *Întrebarea
-   rămâne pusă: ce program folosește cabinetul.*
+5. ~~**Software-ul contabil țintă**~~ — **răspuns: Saga.** „Majoritatea
+   folosesc Saga" (5 septembrie 2026). Registrul lunii
+   (`GET /reports/register.csv`) rămâne exportul universal — se deschide în Excel
+   oriunde. Peste el se poate pune un format pe care Saga să-l importe direct,
+   **dar acela nu se poate scrie din presupuneri**: un fișier cu coloanele
+   inventate ori nu se importă, ori se importă strâmb, și în al doilea caz nimeni
+   nu observă. Ce lipsește este forma exactă pe care o așteaptă importul din
+   Saga, luată dintr-un exemplu real, nu dedusă. *Vezi `docs/SAGA.md`.*
 6. **Tenant unic vs. multi-firmă** de la lansare. Schema suportă ambele;
    `organization_id` există peste tot de la început.
 
