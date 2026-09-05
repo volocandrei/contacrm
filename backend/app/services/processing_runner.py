@@ -29,12 +29,22 @@ from app.models.document import DocumentType
 from app.services.document_processing import DocumentProcessingService
 from app.services.extraction.base import DocumentExtractionProvider
 from app.services.extraction.efactura import EFacturaExtractionProvider
+from app.services.extraction.hybrid import HybridExtractionProvider
 from app.services.extraction.local import LocalExtractionProvider
 from app.services.extraction.mock import MockDocumentExtractionProvider
 from app.services.extraction.pdf_text import PdfTextExtractionProvider
+from app.services.extraction.vision import VisionExtractionProvider
 from app.services.storage import StorageProvider
 
 logger = get_logger(__name__)
+
+
+def _vision(known_type_codes: frozenset[str]) -> DocumentExtractionProvider:
+    return VisionExtractionProvider(
+        api_key=settings.ai_api_key,
+        model=settings.ai_model,
+        known_type_codes=known_type_codes,
+    )
 
 
 def build_extractor(known_type_codes: frozenset[str] = frozenset()) -> DocumentExtractionProvider:
@@ -46,6 +56,16 @@ def build_extractor(known_type_codes: frozenset[str] = frozenset()) -> DocumentE
     nu are voie să propună un cod pe care cabinetul nu îl are definit: scrierea l-ar
     respinge cu `ValidationError` și ar opri procesarea unui document altfel valid.
     """
+    if settings.ocr_provider == "hybrid":
+        # Local întâi, model doar pentru ce nu are strat de text — adică pozele.
+        # Ordinea nu este o optimizare: un document care se poate citi aici nu
+        # are de ce să părăsească sediul cabinetului (R2).
+        return HybridExtractionProvider(
+            local=LocalExtractionProvider(known_type_codes=known_type_codes),
+            vision=_vision(known_type_codes),
+        )
+    if settings.ocr_provider == "vision":
+        return _vision(known_type_codes)
     if settings.ocr_provider == "local":
         return LocalExtractionProvider(known_type_codes=known_type_codes)
     if settings.ocr_provider == "efactura":

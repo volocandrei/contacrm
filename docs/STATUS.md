@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  17.774 linii sursă +  2.643 linii teste  →   209 teste
-backend   22.890 linii sursă + 19.667 linii teste  → 1.328 teste
-end-to-end 1.707 linii                             →    65 teste (browser real)
-migrări    1.916 linii
+frontend  18.718 linii sursă +  2.810 linii teste  →   220 teste
+backend   24.043 linii sursă + 20.447 linii teste  → 1.364 teste
+end-to-end 1.793 linii                             →    67 teste (browser real)
+migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.602 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.651 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -247,6 +247,104 @@ Ecranul spune **„Pregătit"**, nu „Trimis". Aplicația nu trimite (Faza 2): 
 se copiază și pleacă din clientul de email al contabilului, deci tot ce știe
 sigur este că cererea a fost compusă. „Trimis" ar fi o promisiune pe care nimic
 din spate nu o acoperă.
+
+### Pozele se citesc singure (M16)
+
+**Ce nu mergea.** `pdf_text` scoate stratul de text pe care un PDF îl poartă deja
+— și acoperă cazul covârșitor: facturi emise de un ERP, extrase de cont, chitanțe
+tipărite. Dar un document **fotografiat** nu are strat de text. Acolo providerul
+local întorcea, corect, un rezultat gol, iar documentul ajungea la verificare cu
+**toate câmpurile libere**: dată, număr, furnizor, sumă, tot. Cineva le tasta de
+mână, de fiecare dată.
+
+Iar poza este exact ce trimit clienții. Un bon de benzină, o chitanță, o factură
+primită pe hârtie: omul o fotografiază cu telefonul și o trimite prin linkul de
+încărcare. **Cu cât am făcut trimiterea mai ușoară, cu atât vin mai multe poze** —
+adică fix documentele pe care mașina nu le putea citi deloc.
+
+`OCR_PROVIDER=hybrid` citește local întâi și cheamă modelul doar pentru ce nu are
+strat de text. Ordinea nu este o optimizare, este o politică: un document care se
+poate citi în cabinet nu are de ce să plece nicăieri (R2).
+
+**Ce nu face modelul, deliberat:**
+
+- **Nu decide tipul documentului.** Tipul îl scoate `romanian_documents` din
+  textul citit, cu aceleași reguli ca la PDF-urile digitale. O factură nu-și
+  spune direcția: dacă e de intrare sau de ieșire depinde de care CUI de pe ea
+  aparține cabinetului, iar asta o știe sistemul, nu documentul. Un model
+  întrebat ar fi ghicit, și ar fi ghicit convingător.
+- **Nu se crede mai mult decât poate.** Încrederea raportată de un model este o
+  afirmație, nu o măsurătoare: el spune „95%" fiindcă așa sună, nu fiindcă a
+  numărat ceva. Plafonul de **0.85** stă sub `CONFIDENCE_AUTO_THRESHOLD` (0.90),
+  deci o cifră spusă de model nu poate împinge singură un document peste ochiul
+  unui om, nici într-un cabinet cu aprobarea automată pornită.
+- **Nu se preface că n-a avut ce citi.** Un model căzut sau o cheie greșită
+  marchează documentul `OCR_FAILED` — vizibil și reprocesabil. O degradare tăcută
+  ar fi arătat identic cu o poză ilizibilă, iar o configurare greșită ar fi trecut
+  luni întregi neobservată.
+- **Nu trimite ce e prea mare.** Peste 3,5 MB întoarce gol, ca providerul local:
+  documentul este valid, doar că nu l-am citit.
+
+**Ce iese din cabinet, și cine decide.** Cu `vision` sau `hybrid`, documentul
+pleacă la furnizorul modelului. Pentru un cabinet de contabilitate asta este o
+decizie cu implicații GDPR, nu un implicit tehnic: valoarea implicită rămâne
+`mock`, recomandarea fără model rămâne `local`, iar pornirea în producție se
+oprește dacă providerul cere o cheie și nu o găsește. `AI_API_KEY` este separată
+de `ASSISTANT_API_KEY` tocmai pentru asta — un cabinet poate vrea un asistent care
+răspunde la întrebări fără să trimită nicăieri documentele clienților.
+
+**NEVERIFICAT CU UN MODEL REAL — CERE O CREDENȚIALĂ EXTERNĂ.** Ca la ANAF,
+Microsoft Graph și asistent: ce i se trimite modelului, ce se face cu ce răspunde
+și ce se întâmplă când nu răspunde sunt exercitate în teste cu un transport fals.
+Prima cerere adevărată rămâne de făcut o dată, manual, la instalare.
+
+### Profilurile de client, în loc de bifă cu bifă (M15)
+
+**Fără așteptări configurate, nimic din ce urmează nu pornește.** Checklistul
+lunii este gol, „Documente lipsă" nu are ce raporta, iar fiecare lună apare
+completă pentru că nu i se cere nimic — deci nu se compune nicio cerere, nu se
+deschide niciun link, nu se urmărește nimeni. Configurarea se făcea client cu
+client, bifă cu bifă.
+
+Un cabinet cu treizeci de clienți are, în realitate, trei-patru profiluri: SRL
+plătitor de TVA lunar, SRL neplătitor, PFA în sistem real. **Șablonul este numele
+pe care cabinetul îl dă profilului**, iar aplicarea lui pe doisprezece clienți
+deodată este diferența dintre o după-amiază și un minut.
+
+Primul profil se face din capătul celălalt: potrivești un client cu mâna, vezi că
+e bun, și apeși **Salvează lista ca profil** din fișa lui. Un formular gol ar fi
+însemnat să reintroduci aceleași bife — și să greșești exact ce tocmai nimeriseși.
+
+**Șablonul nu este o legătură.** Se aplică o dată, iar rezultatul rămâne al
+clientului: cine schimbă pe urmă profilul nu rescrie tăcut ce s-a configurat
+manual după aceea. Un client care ar „moșteni" la distanță ar face ca o bifă
+scoasă azi să reapară peste o lună pe doisprezece clienți, fără ca cineva să le fi
+atins ecranul — iar nimeni n-ar ști de ce raportul cere din nou un extras de cont
+care nu vine. Ecranul o spune, nu doar codul.
+
+Aplicarea **înlocuiește**, nu adaugă, și scrie asta pe buton: un contabil care
+crede că adaugă un tip ar șterge, fără să vrea, tot ce configurase. Un client
+necunoscut în listă oprește totul înainte de orice scriere — aplicată pe
+jumătate, operația ar lăsa pe cineva fără să știe care jumătate.
+
+### Clientul care n-a trimis nimic era invizibil
+
+Găsit de un test scris pentru altceva. `list_periods` nu inventează o lună fără
+documente și fără rând — și are dreptate, acolo întrebarea este „ce perioade
+există". În „Documente lipsă" întrebarea este alta: **„cui îi lipsește ceva"**,
+iar clientul care n-a trimis nimic este exact cel căruia îi lipsește tot. El
+lipsea din raportul făcut ca să-l găsească, și reapărea abia după ce trimitea
+primul document.
+
+Sunt lăsați deoparte doar cei fără nicio așteptare configurată (nu li se cere
+nimic) și cei care nu sunt activi (un prospect nu e încă client, unul suspendat nu
+se mai aleargă).
+
+Prima variantă avea și un filtru după data la care fusese creat clientul —
+„n-avea cum să trimită pentru o lună în care nu era client". L-am scos: `created_at`
+spune când a fost adăugat rândul în aplicație, nu de când i se ține contabilitatea.
+Un cabinet care își mută evidența aici creează toți clienții în aceeași zi, iar
+filtrul acela ar fi golit raportul exact pentru luna la care lucrează.
 
 ### Clientul își trimite singur documentele (M14)
 
@@ -577,7 +675,7 @@ să afle ce poate face un operator *înainte* de a-i da rolul.
 
 ### Verificat pe date reale, nu doar în teste
 
-- Toate cele **16** migrări se aplică **și se dau înapoi** curat — verificat
+- Toate cele **17** migrări se aplică **și se dau înapoi** curat — verificat
   dus-întors la fiecare adăugare, nu presupus
 - Flux HTTP complet: parolă greșită → 401, login → `CurrentUser`, cookie-uri
   `HttpOnly`, `/me`, `/users` ca ADMIN, refresh, logout, `/me` după logout → 401

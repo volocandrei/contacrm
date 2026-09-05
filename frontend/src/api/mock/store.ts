@@ -39,6 +39,7 @@ import type {
   Client,
   ClientAlias,
   DocumentRequest,
+  ExpectationTemplate,
   IssuedUploadLink,
   ClientStatus,
   ClientExpectation,
@@ -2092,6 +2093,7 @@ export function listSettings(): SettingEntry[] {
     { key: "ARCHIVE_PATTERN", group: "STORAGE", value: "/ARHIVA/{an}/{luna}/{client}/" },
     { key: "OCR_PROVIDER", group: "EXTRACTION", value: "mock" },
     { key: "AI_PROVIDER", group: "EXTRACTION", value: "mock" },
+    { key: "AI_MODEL", group: "EXTRACTION", value: "claude-sonnet-5" },
     { key: "PROMPT_VERSION", group: "EXTRACTION", value: "v1" },
     { key: "REFERENCE_PERIOD_STRATEGY", group: "PERIODS", value: "document_date" },
     { key: "DEFAULT_TIMEZONE", group: "PERIODS", value: "Europe/Bucharest" },
@@ -2426,6 +2428,145 @@ export function getSidebarCounts() {
     unmatched: state.documents.filter((d) => d.status === "UNMATCHED").length,
     tasks: state.tasks.filter((t) => t.status !== "DONE").length,
   };
+}
+
+/* ─── Șabloane de așteptări ────────────────────────────────────────────────── */
+
+/**
+ * Oglinda lui `services/expectation_templates.py`.
+ *
+ * **Șablonul nu este o legătură.** Se aplică o dată, iar rezultatul rămâne al
+ * clientului: se scrie în listele lui și acolo rămâne. Dacă ar moșteni la
+ * distanță, o bifă scoasă azi ar dispărea de pe doisprezece clienți fără ca
+ * cineva să le fi atins ecranul.
+ */
+const templates: ExpectationTemplate[] = [];
+let templateCounter = 0;
+
+export function listExpectationTemplates(): ExpectationTemplate[] {
+  requirePermission("documents:read");
+  return [...templates].sort((a, b) => a.name.localeCompare(b.name, "ro"));
+}
+
+/** Numele curățat, refuzat dacă e gol sau deja folosit. */
+function checkName(name: string, keeping: string | null): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new ApiError("VALIDATION_ERROR", "Șablonul are nevoie de un nume.", 422, {
+      name: ["Scrie un nume."],
+    });
+  }
+  const clash = templates.find(
+    (row) => row.name.toLocaleLowerCase("ro") === trimmed.toLocaleLowerCase("ro") && row.id !== keeping,
+  );
+  if (clash) {
+    // Două rânduri pe care nimeni nu le poate deosebi, iar unul rescrie clienți.
+    throw new ApiError("VALIDATION_ERROR", `Există deja un șablon numit „${clash.name}”.`, 422, {
+      name: ["Alege alt nume."],
+    });
+  }
+  return trimmed;
+}
+
+function toExpectations(
+  wanted: Array<{ documentTypeCode: string; expectedMinCount: number }>,
+): ClientExpectation[] {
+  return wanted.map((entry) => {
+    const label = DOCUMENT_TYPE_LABEL.get(entry.documentTypeCode as DocumentTypeCode);
+    if (!label) {
+      // Ignorat în tăcere, ar lipsi din raport abia peste o lună.
+      throw new ApiError("NOT_FOUND", `Tip de document inexistent: ${entry.documentTypeCode}`, 404);
+    }
+    return {
+      documentTypeCode: entry.documentTypeCode,
+      documentTypeLabel: label,
+      expectedMinCount: entry.expectedMinCount,
+    };
+  });
+}
+
+export function createExpectationTemplate(
+  name: string,
+  wanted: Array<{ documentTypeCode: string; expectedMinCount: number }>,
+): ExpectationTemplate {
+  requirePermission("periods:manage");
+  const clean = checkName(name, null);
+  const expectations = toExpectations(wanted);
+
+  templateCounter += 1;
+  const template: ExpectationTemplate = { id: `tpl-${templateCounter}`, name: clean, expectations };
+  templates.push(template);
+  recordAudit("EXPECTATION_TEMPLATE_CREATED", "ExpectationTemplate", template.id, clean);
+  return template;
+}
+
+export function saveExpectationTemplate(
+  id: string,
+  name: string,
+  wanted: Array<{ documentTypeCode: string; expectedMinCount: number }>,
+): ExpectationTemplate {
+  requirePermission("periods:manage");
+  const template = templates.find((row) => row.id === id);
+  if (!template) notFound("Șablon", id);
+
+  template.name = checkName(name, id);
+  template.expectations = toExpectations(wanted);
+  recordAudit("EXPECTATION_TEMPLATE_UPDATED", "ExpectationTemplate", id, template.name);
+  return template;
+}
+
+export function deleteExpectationTemplate(id: string): void {
+  requirePermission("periods:manage");
+  const index = templates.findIndex((row) => row.id === id);
+  if (index < 0) notFound("Șablon", id);
+  // Clienții configurați cu el rămân configurați: ce s-a aplicat este al lor.
+  const [removed] = templates.splice(index, 1);
+  recordAudit("EXPECTATION_TEMPLATE_DELETED", "ExpectationTemplate", id, removed!.name);
+}
+
+/** Salvează ce s-a configurat deja pe un client, ca profil. */
+export function templateFromClient(clientId: string, name: string): ExpectationTemplate {
+  requirePermission("periods:manage");
+  getClient(clientId);
+  const current = listExpectations(clientId);
+  if (current.length === 0) {
+    // Un șablon gol aplicat pe doisprezece clienți le-ar goli checklistul.
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      "Clientul nu are nicio așteptare configurată, deci nu are ce salva.",
+      422,
+      { name: ["Configurează întâi ce se așteaptă de la client."] },
+    );
+  }
+  return createExpectationTemplate(name, current);
+}
+
+export function applyExpectationTemplate(id: string, clientIds: string[]): { applied: number } {
+  requirePermission("periods:manage");
+  const template = templates.find((row) => row.id === id);
+  if (!template) notFound("Șablon", id);
+
+  // Toți clienții, înainte de orice scriere: aplicată pe jumătate, operația ar
+  // lăsa pe cineva fără să știe care jumătate.
+  const unique = [...new Set(clientIds)];
+  for (const clientId of unique) getClient(clientId);
+
+  for (const clientId of unique) {
+    setExpectations(
+      clientId,
+      template.expectations.map((item) => ({
+        documentTypeCode: item.documentTypeCode,
+        expectedMinCount: item.expectedMinCount,
+      })),
+    );
+  }
+  recordAudit(
+    "EXPECTATION_TEMPLATE_APPLIED",
+    "ExpectationTemplate",
+    id,
+    `${template.name} · ${unique.length} clienți`,
+  );
+  return { applied: unique.length };
 }
 
 /* ─── Linkurile de trimitere (M14) ─────────────────────────────────────────── */

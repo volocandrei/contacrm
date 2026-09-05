@@ -102,6 +102,14 @@ EXPOSED: Final[tuple[tuple[str, SettingGroup, Callable[[Settings], str]], ...]] 
     ("ARCHIVE_PATTERN", SettingGroup.STORAGE, lambda _: ARCHIVE_PATTERN),
     ("OCR_PROVIDER", SettingGroup.EXTRACTION, lambda s: s.ocr_provider),
     ("AI_PROVIDER", SettingGroup.EXTRACTION, lambda s: s.ai_provider),
+    # Modelul care citește pozele — util administratorului când compară costuri
+    # sau explică de ce un document a fost citit altfel decât altul.
+    ("AI_MODEL", SettingGroup.EXTRACTION, lambda s: s.ai_model),
+    # `AI_API_KEY` nu apare aici și nici nu va apărea, nici măcar ca
+    # „configurată/lipsește": lista nu poartă nume de secrete (§73), iar
+    # regula nu depinde de ce valoare pune azi cineva acolo. Că există o
+    # cheie se vede din faptul că aplicația a pornit: fără ea, verificarea
+    # de producție oprește pornirea.
     ("PROMPT_VERSION", SettingGroup.EXTRACTION, lambda s: s.prompt_version),
     (
         "REFERENCE_PERIOD_STRATEGY",

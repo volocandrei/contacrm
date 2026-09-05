@@ -18,6 +18,7 @@ import { DashboardPage } from "@/features/dashboard/dashboard-page";
 import { DocumentsPage } from "@/features/documents/documents-page";
 import { ReviewPage, ReviewQueuePage } from "@/features/documents/review-page";
 import { MissingDocumentsPage, PeriodsPage } from "@/features/periods/periods-page";
+import { ExpectationTemplatesPage } from "@/features/periods/templates-page";
 import { ReportsPage } from "@/features/reports/reports-page";
 import { TasksPage } from "@/features/tasks/tasks-page";
 
@@ -98,6 +99,7 @@ function App() {
           {/* Contabilitate */}
           <Route path="/contabilitate/perioade" element={<PeriodsPage />} />
           <Route path="/contabilitate/lipsa" element={<MissingDocumentsPage />} />
+          <Route path="/contabilitate/sabloane" element={<ExpectationTemplatesPage />} />
 
           {/* Comunicare */}
           <Route path="/comunicare/mesaje" element={<MessagesPage />} />

@@ -209,6 +209,21 @@ export type DocumentRequest = {
   uploadExpiresAt: string;
 };
 
+/**
+ * Un profil de client: ce se așteaptă lunar de la o categorie întreagă.
+ *
+ * **Nu este o legătură.** Se aplică o dată, iar rezultatul rămâne al clientului.
+ * Un șablon schimbat pe urmă nu rescrie tăcut ce s-a configurat manual după
+ * aceea — altfel o bifă scoasă azi ar reapărea peste o lună pe doisprezece
+ * clienți, fără ca cineva să le fi atins ecranul.
+ */
+export type ExpectationTemplate = {
+  id: string;
+  name: string;
+  /** Aceeași formă ca lista unui client: asta și este, lista care i se va scrie. */
+  expectations: ClientExpectation[];
+};
+
 export type AssistantReply = {
   text: string;
   links: AssistantLink[];

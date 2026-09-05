@@ -27,6 +27,7 @@ import {
   focusRing,
   iconChip,
   mutedText,
+  scrollX,
   surface,
   surfaceInteractive,
   type Tone,
@@ -170,7 +171,7 @@ export function DashboardPage() {
             }
             bodyClassName="p-0"
           >
-            <div className="overflow-x-auto">
+            <div className={scrollX}>
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
                   <tr>

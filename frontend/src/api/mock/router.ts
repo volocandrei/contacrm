@@ -108,6 +108,46 @@ const routes: Route[] = [
     handler: ({ params }) => store.forgetAlias(params.aliasId!),
   },
   {
+    method: "GET",
+    pattern: "/expectation-templates",
+    handler: () => store.listExpectationTemplates(),
+  },
+  {
+    method: "POST",
+    pattern: "/expectation-templates",
+    handler: ({ body }) =>
+      store.createExpectationTemplate(
+        str(body, "name"),
+        body.expectations as Array<{ documentTypeCode: string; expectedMinCount: number }>,
+      ),
+  },
+  {
+    method: "POST",
+    pattern: "/expectation-templates/from-client/:clientId",
+    handler: ({ params, body }) => store.templateFromClient(params.clientId!, str(body, "name")),
+  },
+  {
+    method: "PUT",
+    pattern: "/expectation-templates/:id",
+    handler: ({ params, body }) =>
+      store.saveExpectationTemplate(
+        params.id!,
+        str(body, "name"),
+        body.expectations as Array<{ documentTypeCode: string; expectedMinCount: number }>,
+      ),
+  },
+  {
+    method: "DELETE",
+    pattern: "/expectation-templates/:id",
+    handler: ({ params }) => store.deleteExpectationTemplate(params.id!),
+  },
+  {
+    method: "POST",
+    pattern: "/expectation-templates/:id/apply",
+    handler: ({ params, body }) =>
+      store.applyExpectationTemplate(params.id!, body.clientIds as string[]),
+  },
+  {
     method: "POST",
     pattern: "/clients/:id/document-request",
     handler: ({ params, query }) =>

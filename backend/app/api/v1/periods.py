@@ -15,13 +15,13 @@ import uuid
 from datetime import date, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, Request
-from pydantic import Field
+from fastapi import APIRouter, Path, Query, Request, status
+from pydantic import Field, StringConstraints
 from sqlalchemy import select
 
 from app.api.deps import DbSession, client_ip, require_permission
 from app.core.config import settings
-from app.core.errors import NotFoundError
+from app.core.errors import NotFoundError, ValidationError
 from app.domain.enums import PeriodStatus
 from app.domain.periods import ChecklistEntry, filing_deadline
 from app.domain.permissions import Permission
@@ -31,6 +31,11 @@ from app.models.user import User
 from app.repositories.client import ClientRepository
 from app.schemas.common import ApiModel
 from app.services.audit import AuditService
+from app.services.expectation_templates import (
+    ExpectationTemplateService,
+    TemplateView,
+    replace_expectations,
+)
 from app.services.period_service import PeriodService, PeriodView
 from app.services.upload_links import RequestTrace, UploadLinkService
 
@@ -52,6 +57,14 @@ class ChecklistItemOut(ApiModel):
     expected_min_count: int
     received_count: int
     is_satisfied: bool
+
+
+#: Câți clienți poate atinge o singură aplicare de șablon.
+#:
+#: Nu este o limită de performanță, ci una de reversibilitate: aplicarea
+#: **înlocuiește** listele, iar o greșeală pe toți clienții cabinetului deodată
+#: se repară client cu client. Un cabinet mare selectează în două rânduri.
+MAX_CLIENTS_PER_APPLY = 200
 
 
 class ExpectationOut(ApiModel):
@@ -85,6 +98,48 @@ class ExpectationsIn(ApiModel):
     """
 
     expectations: list[ExpectationIn]
+
+
+class ExpectationTemplateOut(ApiModel):
+    """Un profil de client, cu numele pe care i-l dă cabinetul.
+
+    `expectations` are exact forma listei unui client — același `ExpectationOut`
+    — fiindcă asta și este: lista care i se va scrie. Două forme apropiate, dar
+    nu identice, ar fi cerut interfeței să le traducă una în alta.
+    """
+
+    id: uuid.UUID
+    name: str
+    expectations: list[ExpectationOut]
+
+
+#: Numele profilului, curățat înainte de validare. Fără `strip_whitespace`, un
+#: nume din spații ar trece de `min_length` și ar ajunge în listă fără text.
+TemplateName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
+]
+
+
+class ExpectationTemplateIn(ApiModel):
+    name: TemplateName
+    expectations: list[ExpectationIn]
+
+
+class TemplateFromClientIn(ApiModel):
+    """Salvează ce s-a configurat deja pe un client, ca profil.
+
+    Este drumul pe care se face primul șablon: cineva potrivește un client cu
+    mâna, vede că e bun, și îi dă un nume — în loc să reintroducă aceleași bife
+    într-un formular gol.
+    """
+
+    name: TemplateName
+
+
+class ApplyTemplateIn(ApiModel):
+    #: Cel puțin un client: o aplicare fără destinatar este o greșeală de
+    #: interfață, nu o operație validă care nu face nimic.
+    client_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_CLIENTS_PER_APPLY)
 
 
 class AccountingPeriodOut(ApiModel):
@@ -333,36 +388,10 @@ def set_client_expectations(
         wanted[document_type.id] = entry.expected_min_count
 
     before = _expectations_of(session, user.organization_id, client_id)
-    existing = {
-        row.document_type_id: row
-        for row in session.scalars(
-            select(ClientExpectation).where(
-                ClientExpectation.organization_id == user.organization_id,
-                ClientExpectation.client_id == client_id,
-            )
-        )
-    }
-
-    for type_id, minimum in wanted.items():
-        row = existing.get(type_id)
-        if row is None:
-            session.add(
-                ClientExpectation(
-                    organization_id=user.organization_id,
-                    client_id=client_id,
-                    document_type_id=type_id,
-                    expected_min_count=minimum,
-                )
-            )
-        else:
-            row.expected_min_count = minimum
-    for type_id, row in existing.items():
-        if type_id not in wanted:
-            # Ce nu mai apare în listă nu se mai așteaptă. Documentele deja
-            # primite rămân — se schimbă așteptarea, nu istoria.
-            session.delete(row)
-    session.flush()
-
+    # Aceeași funcție pe care o cheamă și aplicarea unui șablon: a doua
+    # implementare ar fi divergat exact în partea tăcută — ce se întâmplă cu
+    # tipurile scoase din listă.
+    replace_expectations(session, user.organization_id, client_id, wanted)
     after = _expectations_of(session, user.organization_id, client_id)
     AuditService(session).record(
         organization_id=user.organization_id,
@@ -448,3 +477,264 @@ def _audit(
         user_agent=request.headers.get("User-Agent"),
     )
     session.flush()
+
+
+# ── Șabloane de așteptări ────────────────────────────────────────────────────
+
+
+def _to_template(view: TemplateView) -> ExpectationTemplateOut:
+    return ExpectationTemplateOut(
+        id=view.id,
+        name=view.name,
+        expectations=[
+            ExpectationOut(
+                document_type_code=item.document_type_code,
+                document_type_label=item.document_type_label,
+                expected_min_count=item.expected_min_count,
+            )
+            for item in view.items
+        ],
+    )
+
+
+def _audit_template(
+    session: DbSession,
+    user: User,
+    request: Request,
+    action: str,
+    template: TemplateView,
+) -> None:
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action=action,
+        entity_type="ExpectationTemplate",
+        entity_id=str(template.id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=f"{template.name} · {len(template.items)} tipuri",
+        ip=client_ip(request),
+    )
+
+
+def _check_unique_name(
+    service: ExpectationTemplateService,
+    organization_id: uuid.UUID,
+    name: str,
+    keeping: uuid.UUID | None,
+) -> None:
+    """Refuză un nume deja folosit, cu un mesaj, nu cu 500 din bază.
+
+    Constrângerea din bază există și ea — este ultima linie —, dar o violare de
+    unicitate ajunsă la om ca eroare de server nu-i spune ce să schimbe.
+
+    Comparația ignoră diferența de literă mare: „SRL cu TVA" și „srl cu tva" sunt
+    două rânduri pe care nimeni nu le poate deosebi pe ecran.
+    """
+    for existing in service.list_templates(organization_id):
+        if existing.name.casefold() == name.casefold() and existing.id != keeping:
+            raise ValidationError(
+                f"Există deja un șablon numit „{existing.name}”.",
+                {"name": ["Alege alt nume."]},
+            )
+
+
+def _wanted_types(
+    session: DbSession, organization_id: uuid.UUID, entries: list[ExpectationIn]
+) -> dict[uuid.UUID, int]:
+    """Codurile cerute, traduse în tipurile organizației.
+
+    Un cod necunoscut oprește totul cu 404. Ignorat în tăcere, ar fi însemnat un
+    șablon care pare salvat dar căruia îi lipsește un rând — iar lipsa s-ar fi
+    văzut peste o lună, în raportul care nu cere ce trebuia.
+    """
+    known = _known_types(session, organization_id)
+    wanted: dict[uuid.UUID, int] = {}
+    for entry in entries:
+        document_type = known.get(entry.document_type_code)
+        if document_type is None:
+            raise NotFoundError("Tip de document", entry.document_type_code)
+        # Ultima valoare câștigă, ca la ruta clientului: același tip trimis de
+        # două ori este o greșeală de interfață, nu un motiv de 500.
+        wanted[document_type.id] = entry.expected_min_count
+    return wanted
+
+
+@router.get("/expectation-templates", response_model=list[ExpectationTemplateOut])
+def list_expectation_templates(
+    session: DbSession, user: PeriodReader
+) -> list[ExpectationTemplateOut]:
+    """Profilurile de client ale cabinetului.
+
+    Citirea cere doar `documents:read`: cine vede checklistul unui client are
+    voie să vadă și după ce model a fost construit.
+    """
+    views = ExpectationTemplateService(session).list_templates(user.organization_id)
+    return [_to_template(view) for view in views]
+
+
+@router.post(
+    "/expectation-templates",
+    response_model=ExpectationTemplateOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_expectation_template(
+    session: DbSession, user: PeriodManager, request: Request, payload: ExpectationTemplateIn
+) -> ExpectationTemplateOut:
+    """Un profil nou.
+
+    Cere `periods:manage`, ca și așteptările unui client: a hotărî ce datorează
+    lunar o categorie întreagă de clienți este cu atât mai mult o decizie
+    contabilă.
+    """
+    service = ExpectationTemplateService(session)
+    _check_unique_name(service, user.organization_id, payload.name, None)
+    wanted = _wanted_types(session, user.organization_id, payload.expectations)
+
+    template = service.create(user.organization_id, payload.name, wanted)
+    _audit_template(session, user, request, "EXPECTATION_TEMPLATE_CREATED", template)
+    return _to_template(template)
+
+
+@router.post(
+    "/expectation-templates/from-client/{client_id}",
+    response_model=ExpectationTemplateOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def template_from_client(
+    session: DbSession,
+    user: PeriodManager,
+    request: Request,
+    client_id: uuid.UUID,
+    payload: TemplateFromClientIn,
+) -> ExpectationTemplateOut:
+    """Salvează ce s-a configurat deja pe un client, ca profil.
+
+    Este drumul pe care se face primul șablon: cineva potrivește un client cu
+    mâna, vede că e bun, și îi dă un nume — în loc să reintroducă aceleași bife
+    într-un formular gol, unde ar greși exact ce tocmai nimerise.
+    """
+    if ClientRepository(session).get(user.organization_id, client_id) is None:
+        raise NotFoundError("Client", client_id)
+
+    service = ExpectationTemplateService(session)
+    _check_unique_name(service, user.organization_id, payload.name, None)
+    wanted = {
+        row.document_type_id: row.expected_min_count
+        for row in session.scalars(
+            select(ClientExpectation).where(
+                ClientExpectation.organization_id == user.organization_id,
+                ClientExpectation.client_id == client_id,
+            )
+        )
+    }
+    if not wanted:
+        # Un șablon gol aplicat pe doisprezece clienți le-ar șterge așteptările
+        # tuturor, iar lunile lor ar începe să pară complete.
+        raise ValidationError(
+            "Clientul nu are nicio așteptare configurată, deci nu are ce salva.",
+            {"name": ["Configurează întâi ce se așteaptă de la client."]},
+        )
+
+    template = service.create(user.organization_id, payload.name, wanted)
+    _audit_template(session, user, request, "EXPECTATION_TEMPLATE_CREATED", template)
+    return _to_template(template)
+
+
+@router.put("/expectation-templates/{template_id}", response_model=ExpectationTemplateOut)
+def update_expectation_template(
+    session: DbSession,
+    user: PeriodManager,
+    request: Request,
+    template_id: uuid.UUID,
+    payload: ExpectationTemplateIn,
+) -> ExpectationTemplateOut:
+    """Schimbă profilul. **Clienții cărora li s-a aplicat rămân neatinși.**
+
+    Șablonul nu este o legătură: ce s-a aplicat este de-acum al clientului. Dacă
+    ar moșteni la distanță, o bifă scoasă azi ar reapărea pe doisprezece clienți
+    fără ca cineva să le fi atins ecranul.
+    """
+    service = ExpectationTemplateService(session)
+    _check_unique_name(service, user.organization_id, payload.name, template_id)
+    wanted = _wanted_types(session, user.organization_id, payload.expectations)
+
+    template = service.replace(user.organization_id, template_id, payload.name, wanted)
+    if template is None:
+        raise NotFoundError("Șablon", template_id)
+
+    _audit_template(session, user, request, "EXPECTATION_TEMPLATE_UPDATED", template)
+    return _to_template(template)
+
+
+@router.delete("/expectation-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_expectation_template(
+    session: DbSession, user: PeriodManager, request: Request, template_id: uuid.UUID
+) -> None:
+    """Șterge profilul. Clienții configurați cu el rămân configurați."""
+    service = ExpectationTemplateService(session)
+    template = service.get(user.organization_id, template_id)
+    if template is None or not service.delete(user.organization_id, template_id):
+        raise NotFoundError("Șablon", template_id)
+
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="EXPECTATION_TEMPLATE_DELETED",
+        entity_type="ExpectationTemplate",
+        entity_id=str(template_id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=template.name,
+        ip=client_ip(request),
+    )
+
+
+class ApplyTemplateOut(ApiModel):
+    """Câți clienți au primit lista. Numărul se arată, nu se presupune."""
+
+    applied: int
+
+
+@router.post("/expectation-templates/{template_id}/apply", response_model=ApplyTemplateOut)
+def apply_expectation_template(
+    session: DbSession,
+    user: PeriodManager,
+    request: Request,
+    template_id: uuid.UUID,
+    payload: ApplyTemplateIn,
+) -> ApplyTemplateOut:
+    """Scrie lista șablonului peste așteptările clienților aleși.
+
+    **Înlocuiește, nu adaugă.** Un client căruia i se aplică „SRL neplătitor de
+    TVA" rămâne cu exact acea listă; altfel, două profiluri aplicate pe rând ar
+    lăsa o listă pe care n-a ales-o nimeni.
+
+    **Un client necunoscut oprește totul**, înainte de orice scriere. Aplicată
+    parțial, operația ar lăsa pe cineva cu jumătate din clienți configurați și
+    fără să știe care jumătate.
+    """
+    service = ExpectationTemplateService(session)
+    template = service.get(user.organization_id, template_id)
+    if template is None:
+        raise NotFoundError("Șablon", template_id)
+
+    repository = ClientRepository(session)
+    # Id-uri unice, în ordinea în care au venit: un client trimis de două ori nu
+    # este o eroare, dar nici nu se numără de două ori în raportul de la sfârșit.
+    client_ids = list(dict.fromkeys(payload.client_ids))
+    for client_id in client_ids:
+        if repository.get(user.organization_id, client_id) is None:
+            raise NotFoundError("Client", client_id)
+
+    applied = service.apply(user.organization_id, template_id, client_ids)
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="EXPECTATION_TEMPLATE_APPLIED",
+        entity_type="ExpectationTemplate",
+        entity_id=str(template_id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=f"{template.name} · {applied} clienți",
+        new_value={"clientIds": [str(row) for row in client_ids]},
+        ip=client_ip(request),
+    )
+    return ApplyTemplateOut(applied=applied)

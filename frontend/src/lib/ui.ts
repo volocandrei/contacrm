@@ -26,10 +26,27 @@ export const surface =
 export const surfaceInteractive = `${surface} transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md dark:hover:border-slate-700`;
 
 /** Fundalul paginii. Un gri foarte deschis, nu alb: cardurile trebuie să se vadă. */
-export const pageBackground = "bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100";
+export const pageBackground =
+  "bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100";
 
 /** Linia care desparte două zone înrudite. */
 export const divider = "border-slate-200 dark:border-slate-800";
+
+/**
+ * Învelișul unui tabel care nu încape pe lățime.
+ *
+ * **`relative` nu este decorativ.** Un `sr-only` din Tailwind este
+ * `position: absolute`, iar un tabel lat îl împinge departe la dreapta. Fără un
+ * strămoș poziționat, el se așază față de pagină, nu față de containerul cu
+ * scroll — și atunci **documentul întreg** se lățește, pe telefon cu sute de
+ * pixeli, deși tabelul avea unde să deruleze.
+ *
+ * S-a întâmplat exact așa: o coloană în plus pe „Documente lipsă" a mutat
+ * antetul invizibil al ultimei coloane la 615px într-un ecran de 375, iar testul
+ * de accesibilitate a prins pagina ruptă. `relative` face containerul să fie
+ * blocul de referință, deci ce e absolut înăuntru rămâne înăuntru.
+ */
+export const scrollX = "relative overflow-x-auto";
 
 /** Text secundar: descrieri, ajutor, unități de măsură. */
 export const mutedText = "text-slate-500 dark:text-slate-400";
@@ -57,10 +74,12 @@ export type Tone = "blue" | "green" | "amber" | "red" | "purple" | "slate";
 /** Pătratul colorat în care stă iconul unui card. */
 export const iconChip: Record<Tone, string> = {
   blue: "bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400",
-  green: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400",
+  green:
+    "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400",
   amber: "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
   red: "bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400",
-  purple: "bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400",
+  purple:
+    "bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400",
   slate: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
 };
 

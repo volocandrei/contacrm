@@ -111,3 +111,57 @@ class ClientExpectation(Base, OrganizationMixin, TimestampMixin):
             f"<ClientExpectation {self.client_id} {self.document_type_id} "
             f"x{self.expected_min_count}>"
         )
+
+
+class ExpectationTemplate(Base, OrganizationMixin, TimestampMixin):
+    """Un profil de client, cu numele pe care i-l dă cabinetul (§19).
+
+    **De ce există.** Fără așteptări configurate, checklistul lunii este gol,
+    „Documente lipsă" nu are ce raporta, iar fiecare lună apare completă pentru
+    că nu i se cere nimic. Configurarea se făcea client cu client, bifă cu bifă —
+    iar un cabinet cu treizeci de clienți are, în realitate, trei-patru
+    profiluri: SRL plătitor de TVA lunar, SRL neplătitor, PFA în sistem real.
+
+    **Nu este o legătură.** Se aplică o dată, iar rezultatul rămâne al clientului:
+    cine schimbă pe urmă șablonul nu rescrie tăcut ce s-a configurat manual după
+    aceea. Un client care ar „moșteni" la distanță ar face ca o bifă scoasă azi să
+    reapară peste o lună fără ca cineva să-i fi atins ecranul — și nimeni n-ar
+    ști de ce raportul cere din nou un extras de cont care nu vine.
+    """
+
+    __tablename__ = "expectation_templates"
+    __table_args__ = (
+        # Două profiluri cu același nume nu se pot deosebi pe ecran, iar aplicarea
+        # greșită a unuia rescrie checklistul unui client.
+        UniqueConstraint("organization_id", "name", name="uq_expectation_template_name"),
+        Index("ix_expectation_templates_organization_id", "organization_id"),
+    )
+
+    id: Mapped[uuid_pk]
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<ExpectationTemplate {self.name!r}>"
+
+
+class ExpectationTemplateItem(Base, OrganizationMixin, TimestampMixin):
+    """Un tip de document dintr-un șablon, cu câte bucăți se așteaptă."""
+
+    __tablename__ = "expectation_template_items"
+    __table_args__ = (
+        UniqueConstraint("template_id", "document_type_id", name="uq_template_item_type"),
+        CheckConstraint("expected_min_count >= 1", name="expected_min_positive"),
+        Index("ix_expectation_template_items_template_id", "template_id"),
+    )
+
+    id: Mapped[uuid_pk]
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("expectation_templates.id", ondelete="CASCADE"), nullable=False
+    )
+    document_type_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("document_types.id", ondelete="CASCADE"), nullable=False
+    )
+    expected_min_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<ExpectationTemplateItem {self.document_type_id} x{self.expected_min_count}>"

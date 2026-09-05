@@ -7,7 +7,7 @@ import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { ProgressRing } from "@/components/charts";
 import { PeriodStatusBadge } from "@/components/status-badge";
 import { PERIOD_STATUS_LABEL } from "@/lib/labels";
-import { buttonSecondary, divider, mutedText, pillClass } from "@/lib/ui";
+import { buttonSecondary, divider, mutedText, pillClass, scrollX } from "@/lib/ui";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { currentMonth } from "@/lib/current-month";
 import { dayLabel, daysSince, formatDate, formatReferenceMonth } from "@/lib/format";
@@ -131,7 +131,7 @@ export function MissingDocumentsPage() {
         </Panel>
       ) : (
         <Panel bodyClassName="p-0">
-          <div className="overflow-x-auto">
+          <div className={scrollX}>
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
                 <tr>

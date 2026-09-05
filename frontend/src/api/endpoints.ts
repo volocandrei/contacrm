@@ -14,6 +14,7 @@ import type {
   DocumentRequest,
   IssuedUploadLink,
   ClientExpectation,
+  ExpectationTemplate,
   ClientNote,
   ClientStatus,
   Contact,
@@ -215,6 +216,22 @@ export type MissingDocumentsEntry = {
   requestedAt: string | null;
   /** Câte documente au intrat prin linkul acelei cereri. Zero = n-a atins drumul. */
   receivedThroughLink: number;
+};
+
+export type ExpectationInput = { documentTypeCode: string; expectedMinCount: number };
+
+export const expectationTemplates = {
+  list: () => api.get<ExpectationTemplate[]>("/expectation-templates"),
+  create: (name: string, expectations: ExpectationInput[]) =>
+    api.post<ExpectationTemplate>("/expectation-templates", { name, expectations }),
+  update: (id: string, name: string, expectations: ExpectationInput[]) =>
+    api.put<ExpectationTemplate>(`/expectation-templates/${id}`, { name, expectations }),
+  remove: (id: string) => api.delete<void>(`/expectation-templates/${id}`),
+  /** Salvează ce s-a configurat deja pe un client, ca profil. */
+  fromClient: (clientId: string, name: string) =>
+    api.post<ExpectationTemplate>(`/expectation-templates/from-client/${clientId}`, { name }),
+  apply: (id: string, clientIds: string[]) =>
+    api.post<{ applied: number }>(`/expectation-templates/${id}/apply`, { clientIds }),
 };
 
 export const periods = {

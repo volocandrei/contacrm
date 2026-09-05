@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import ConflictError, NotFoundError
 from app.core.logging import get_logger
-from app.domain.enums import DocumentStatus, PeriodStatus
+from app.domain.enums import ClientStatus, DocumentStatus, PeriodStatus
 from app.domain.periods import (
     ChecklistEntry,
     derive_period_status,
@@ -150,9 +150,60 @@ class PeriodService:
 
         Doar clienții cărora chiar le lipsește ceva: un raport care listează și
         clienții în regulă nu se mai citește.
+
+        **Inclusiv cei care n-au trimis absolut nimic.** `list_periods` nu
+        inventează o lună fără documente și fără rând, și are dreptate: acolo
+        întrebarea este „ce perioade există". Aici întrebarea este alta — „cui îi
+        lipsește ceva" —, iar clientul care n-a trimis nimic este exact cel căruia
+        îi lipsește tot. Lăsat pe dinafară, devenea invizibil tocmai în raportul
+        făcut ca să-l găsească, și reapărea abia după ce trimitea primul document.
         """
         result = []
+        seen: set[uuid.UUID] = set()
         for view in self.list_periods(organization_id, reference_month=reference_month):
+            seen.add(view.client_id)
+            gaps = [item for item in view.checklist if not item.is_satisfied]
+            if gaps:
+                result.append((view, gaps))
+
+        result.extend(self._never_started(organization_id, reference_month, seen))
+        result.sort(key=lambda pair: pair[0].client_name.lower())
+        return result
+
+    def _never_started(
+        self, organization_id: uuid.UUID, reference_month: str, seen: set[uuid.UUID]
+    ) -> list[tuple[PeriodView, list[ChecklistEntry]]]:
+        """Clienții cu așteptări din care n-a sosit niciun document în luna cerută.
+
+        Doi clienți sunt lăsați deoparte, și amândoi din același motiv — un raport
+        care strigă degeaba ajunge să nu mai fie citit:
+
+        - **cei fără nicio așteptare configurată**: nu li se cere nimic, deci nu
+          le lipsește nimic;
+        - **cei care nu sunt activi**: un prospect nu este încă client, iar unul
+          suspendat nu se mai aleargă.
+
+        **Nu se filtrează după data la care a fost creat clientul**, deși pare
+        tentant — „n-avea cum să trimită pentru o lună în care nu era client".
+        `created_at` spune când a fost adăugat rândul în aplicație, nu de când i
+        se ține contabilitatea. Un cabinet care își mută evidența aici creează
+        toți clienții în aceeași zi; filtrul acela ar goli raportul exact pentru
+        luna la care lucrează. Iar un client nou aduce, de regulă, și lunile din
+        urmă.
+
+        Un rând existent rămâne cum era, indiferent de status: acolo s-a
+        întâmplat ceva. Filtrul se aplică doar cererilor pe care le inventăm aici.
+        """
+        expectations = self._expectations(organization_id)
+        labels = self._type_labels(organization_id)
+
+        result = []
+        for client in self._clients(organization_id, None):
+            if client.id in seen or not expectations.get(client.id):
+                continue
+            if client.status is not ClientStatus.ACTIVE:
+                continue
+            view = self._build(client, reference_month, {}, expectations, labels, None)
             gaps = [item for item in view.checklist if not item.is_satisfied]
             if gaps:
                 result.append((view, gaps))

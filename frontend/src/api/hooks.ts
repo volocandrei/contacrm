@@ -14,6 +14,7 @@ import {
   contacts,
   dashboard,
   documents,
+  expectationTemplates,
   anaf,
   drive,
   intakes,
@@ -23,6 +24,7 @@ import {
   type BulkPayload,
   type ClientInput,
   type ContactInput,
+  type ExpectationInput,
   type TaskInput,
 } from "@/api/endpoints";
 import type { DocumentDetail, DocumentFieldName, RoleCode, TaskStatus } from "@/types/domain";
@@ -45,6 +47,7 @@ export const queryKeys = {
   documentTypes: ["document-types"] as const,
   nextReview: (after?: string) => ["documents", "next-review", after ?? null] as const,
   periods: (params: QueryParams) => ["periods", params] as const,
+  expectationTemplates: ["expectation-templates"] as const,
   missingDocuments: (referenceMonth: string) => ["periods", "missing", referenceMonth] as const,
   tasks: (params: QueryParams) => ["tasks", params] as const,
   reportSummary: (params: QueryParams) => ["reports", "summary", params] as const,
@@ -225,6 +228,83 @@ export function useSaveExpectations(clientId: string) {
       queryClient.invalidateQueries({ queryKey: ["periods"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
+  });
+}
+
+/* ─── Șabloane de așteptări ───────────────────────────────────────────────── */
+
+export function useExpectationTemplates() {
+  return useQuery({
+    queryKey: queryKeys.expectationTemplates,
+    queryFn: () => expectationTemplates.list(),
+  });
+}
+
+/**
+ * Ce se invalidează după ce un șablon atinge clienți.
+ *
+ * Aplicarea rescrie listele lor, iar din liste se derivă checklistul fiecărei
+ * luni, raportul „Documente lipsă" și numărătoarea de pe panoul principal. Un
+ * ecran care arată încă starea de dinainte te face să aplici a doua oară.
+ */
+function invalidateAfterApply(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: ["clients"] });
+  void queryClient.invalidateQueries({ queryKey: ["periods"] });
+  void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+}
+
+export function useCreateExpectationTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, expectations }: { name: string; expectations: ExpectationInput[] }) =>
+      expectationTemplates.create(name, expectations),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: queryKeys.expectationTemplates }),
+  });
+}
+
+export function useSaveExpectationTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      name,
+      expectations,
+    }: {
+      id: string;
+      name: string;
+      expectations: ExpectationInput[];
+    }) => expectationTemplates.update(id, name, expectations),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: queryKeys.expectationTemplates }),
+  });
+}
+
+export function useDeleteExpectationTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => expectationTemplates.remove(id),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: queryKeys.expectationTemplates }),
+  });
+}
+
+export function useTemplateFromClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clientId, name }: { clientId: string; name: string }) =>
+      expectationTemplates.fromClient(clientId, name),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: queryKeys.expectationTemplates }),
+  });
+}
+
+export function useApplyExpectationTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, clientIds }: { id: string; clientIds: string[] }) =>
+      expectationTemplates.apply(id, clientIds),
+    onSuccess: () => invalidateAfterApply(queryClient),
   });
 }
 

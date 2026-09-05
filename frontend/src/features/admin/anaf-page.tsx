@@ -46,7 +46,7 @@ import { ApiError } from "@/api/types";
 import { ConnectionCard, Notice } from "@/components/connection-card";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { formatDateTime } from "@/lib/format";
-import { buttonDanger, buttonPrimary, buttonSecondary, inputField } from "@/lib/ui";
+import { buttonDanger, buttonPrimary, buttonSecondary, inputField, scrollX } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import type { AnafMandate, AnafStatus } from "@/types/domain";
 
@@ -265,7 +265,7 @@ function MandatesPanel({ status }: { status: AnafStatus }) {
 
   return (
     <Panel title={`Clienți cu împuternicire (${status.mandates.length})`} bodyClassName="p-0">
-      <div className="overflow-x-auto">
+      <div className={scrollX}>
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
             <tr>

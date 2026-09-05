@@ -23,7 +23,7 @@ import { useAuth, useHasPermission } from "@/features/auth/use-auth";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { formatDateTime } from "@/lib/format";
 import { PERMISSION_AREA_LABEL, PERMISSION_LABEL, ROLE_LABEL } from "@/lib/labels";
-import { iconChip, mutedText, pillClass, surface, type Tone } from "@/lib/ui";
+import { iconChip, mutedText, pillClass, scrollX, surface, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import {
   SETTING_GROUPS,
@@ -84,7 +84,7 @@ export function UsersPage() {
       </div>
 
       <Panel bodyClassName="p-0">
-        <div className="overflow-x-auto">
+        <div className={scrollX}>
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
               <tr>
@@ -142,7 +142,7 @@ export function RolesPage() {
 
       <QueryBoundary isLoading={isLoading} error={error} isEmpty={roles.length === 0}>
         <Panel bodyClassName="p-0" className="overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className={scrollX}>
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800">
@@ -332,7 +332,7 @@ export function AuditLogPage() {
           <EmptyState title="Nicio înregistrare" />
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className={scrollX}>
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
                   <tr>

@@ -12,6 +12,7 @@ import {
   FileStack,
   FileQuestionMark,
   Inbox,
+  LayoutTemplate,
   KeyRound,
   LayoutDashboard,
   MessageSquare,
@@ -135,6 +136,14 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Documente lipsă",
         path: "/contabilitate/lipsa",
         Icon: ClipboardList,
+        permission: "documents:read",
+      },
+      {
+        // Ultimul din grup: se deschide o dată, la instalare, și pe urmă rar.
+        // Ordinea grupului urmează frecvența, nu importanța.
+        label: "Șabloane",
+        path: "/contabilitate/sabloane",
+        Icon: LayoutTemplate,
         permission: "documents:read",
       },
     ],

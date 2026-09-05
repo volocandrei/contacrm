@@ -28,7 +28,7 @@ import { useFilterParams } from "@/hooks/use-filter-params";
 import { useHasPermission } from "@/features/auth/use-auth";
 import { UploadPanel } from "@/features/documents/upload-panel";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
-import { buttonPrimary, focusRing, iconChip, pillClass, type Tone } from "@/lib/ui";
+import { buttonPrimary, focusRing, iconChip, pillClass, scrollX, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import {
   DOCUMENT_SOURCE,
@@ -336,7 +336,7 @@ export function DocumentsPage({
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className={scrollX}>
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
                   <tr>

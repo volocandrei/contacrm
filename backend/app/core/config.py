@@ -34,7 +34,7 @@ ASSISTANT_PROVIDERS = frozenset({"rules", "anthropic"})
 # XML-uri și PDF-uri, iar `OCR_PROVIDER` este o singură valoare pentru tot procesul.
 # Un nume neimplementat trebuie să oprească pornirea, nu să eșueze abia în worker,
 # la primul document — adică după ce cineva a crezut că sistemul funcționează.
-EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text", "efactura", "local"})
+EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text", "efactura", "local", "vision", "hybrid"})
 
 # Dintre ei, cei care nu trimit nimic nicăieri și nu au un model în spate. Astăzi
 # sunt toți — distincția există pentru verificarea de producție, care trebuie să
@@ -42,6 +42,14 @@ EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text", "efactura", "local"})
 # false pentru unul local. `pdf_text` citește text; nu ghicește și nu întreabă pe
 # nimeni, deci nu are ce să fie „inconsistent" cu `AI_PROVIDER=mock`.
 LOCAL_EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text", "efactura", "local"})
+
+#: Cei care trimit documentul în afara cabinetului, la un model.
+#:
+#: `vision` trimite tot ce primește; `hybrid` doar ce nu s-a putut citi local —
+#: adică pozele și scanurile. Amândoi cer o cheie, și amândoi sunt o decizie pe
+#: care un cabinet o ia explicit: implicit rămâne `mock`, iar recomandarea pentru
+#: producție rămâne `local`, care nu trimite nimic nicăieri (R2).
+MODEL_EXTRACTION_PROVIDERS = frozenset({"vision", "hybrid"})
 
 #: Mediile ANAF. `test` și `prod` sunt baze separate la ANAF, nu niveluri de log:
 #: o factură din mediul de test nu există în producție și invers.
@@ -201,6 +209,15 @@ class Settings(BaseSettings):
     # `mock` este implicit: în development niciun document nu părăsește mașina (R2).
     ocr_provider: str = "mock"
     ai_provider: str = "mock"
+    #: Cheia modelului care **vede** documentele (`vision`, `hybrid`).
+    #:
+    #: Separată de `ASSISTANT_API_KEY` fiindcă sunt două decizii diferite: un
+    #: cabinet poate vrea un asistent care răspunde la întrebări fără să trimită
+    #: nicăieri documentele clienților. Aceeași cheie se poate pune în amândouă,
+    #: dar alegerea rămâne a lui.
+    ai_api_key: str = ""
+    #: Modelul care citește pozele. Trebuie să vadă imagini și PDF-uri.
+    ai_model: str = "claude-sonnet-5"
     prompt_version: str = "v1"
     confidence_auto_threshold: float = 0.90
     confidence_review_threshold: float = 0.70
@@ -358,6 +375,14 @@ class Settings(BaseSettings):
             )
         if self.ocr_provider not in LOCAL_EXTRACTION_PROVIDERS and self.ai_provider == "mock":
             problems.append("OCR_PROVIDER real cu AI_PROVIDER=mock — configurare inconsistentă.")
+        if self.ocr_provider in MODEL_EXTRACTION_PROVIDERS and not self.ai_api_key.strip():
+            # Fără cheie, fiecare poză ar marca documentul `OCR_FAILED`. Se vede,
+            # dar abia după ce se strâng o sută de documente eșuate; oprirea la
+            # pornire este singurul moment în care cineva chiar citește mesajul.
+            problems.append(
+                f"OCR_PROVIDER={self.ocr_provider} fără AI_API_KEY: "
+                "citirea documentelor fotografiate ar eșua la fiecare document."
+            )
         if self.public_base_url.startswith("http://localhost"):
             # Un link de trimitere compus cu `localhost` ajunge la client și nu
             # duce nicăieri. Se descoperă abia când cineva îl deschide — adică

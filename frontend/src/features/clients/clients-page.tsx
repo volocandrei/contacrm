@@ -10,7 +10,7 @@ import { ClientStatusBadge } from "@/components/status-badge";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { formatDateTime } from "@/lib/format";
 import { avatarTone, initials } from "@/lib/avatar";
-import { buttonPrimary, iconChip, pillClass } from "@/lib/ui";
+import { buttonPrimary, iconChip, pillClass, scrollX } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { CLIENT_STATUS } from "@/types/domain";
 
@@ -97,7 +97,7 @@ export function ClientsPage() {
           <EmptyState title="Niciun client" description="Ajustează filtrele de căutare." />
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className={scrollX}>
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
                   <tr>

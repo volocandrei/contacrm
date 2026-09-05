@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import {
+  useApplyExpectationTemplate,
   useClient,
   useClientAliases,
   useClientContacts,
@@ -21,8 +22,10 @@ import {
   useForgetAlias,
   useDocumentTypes,
   useDocuments,
+  useExpectationTemplates,
   useRevokeUploadLink,
   useSaveExpectations,
+  useTemplateFromClient,
   useUploadLinks,
 } from "@/api/hooks";
 import { ApiError } from "@/api/types";
@@ -38,7 +41,16 @@ import {
 import { formatDate, formatDateTime, formatMoney, formatReferenceMonth } from "@/lib/format";
 import { avatarTone, initials } from "@/lib/avatar";
 import { describeError } from "@/lib/errors";
-import { buttonPrimary, buttonSecondary, focusRing, iconChip, mutedText } from "@/lib/ui";
+import {
+  buttonPrimary,
+  buttonSecondary,
+  divider,
+  focusRing,
+  iconChip,
+  inputField,
+  mutedText,
+  scrollX,
+} from "@/lib/ui";
 import { cn } from "@/lib/utils";
 
 /** Cât poate avea o notă. Oglindește `MAX_NOTE_LENGTH` din backend. */
@@ -272,7 +284,7 @@ function ContactsTab({ clientId }: { clientId: string }) {
       )}
 
     <Panel bodyClassName="p-0">
-      <div className="overflow-x-auto">
+      <div className={scrollX}>
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
             <tr>
@@ -374,7 +386,7 @@ function DocumentsTab({ clientId }: { clientId: string }) {
 
   return (
     <Panel bodyClassName="p-0">
-      <div className="overflow-x-auto">
+      <div className={scrollX}>
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
             <tr>
@@ -673,7 +685,137 @@ function ExpectationsPanel({ clientId }: { clientId: string }) {
           </button>
         </div>
       )}
+
+      {editable && <TemplateShortcuts clientId={clientId} configured={Object.keys(current).length} />}
     </Panel>
+  );
+}
+
+/**
+ * Cele două scurtături dintre un client și profilurile cabinetului.
+ *
+ * **De la client spre șablon** este drumul pe care se face primul profil: cineva
+ * potrivește un client cu mâna, vede că e bun, și îi dă un nume — în loc să
+ * reintroducă aceleași bife într-un formular gol, unde ar greși exact ce tocmai
+ * nimerise.
+ *
+ * **De la șablon spre client** înlocuiește lista, nu o completează. Scrie asta
+ * pe buton: un contabil care crede că adaugă un tip ar șterge, fără să vrea, tot
+ * ce configurase.
+ */
+function TemplateShortcuts({ clientId, configured }: { clientId: string; configured: number }) {
+  const { data: templates } = useExpectationTemplates();
+  const apply = useApplyExpectationTemplate();
+  const fromClient = useTemplateFromClient();
+  const [name, setName] = useState("");
+  const [naming, setNaming] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const list = templates ?? [];
+
+  return (
+    <div className={cn("mt-4 border-t pt-4", divider)}>
+      <div className="flex flex-wrap items-center gap-2">
+        {list.length > 0 && (
+          <>
+            <label className="sr-only" htmlFor="apply-template">
+              Aplică un profil
+            </label>
+            <select
+              id="apply-template"
+              defaultValue=""
+              disabled={apply.isPending}
+              onChange={(event) => {
+                const id = event.target.value;
+                event.target.value = "";
+                if (!id) return;
+                setProblem(null);
+                apply.mutate(
+                  { id, clientIds: [clientId] },
+                  {
+                    onSuccess: () => setNote("Profilul a fost aplicat."),
+                    onError: (caught) => setProblem(describeError(caught)),
+                  },
+                );
+              }}
+              className={cn(inputField, "w-56")}
+            >
+              <option value="">Înlocuiește cu un profil…</option>
+              {list.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+
+        {configured > 0 && !naming && (
+          <button
+            type="button"
+            onClick={() => {
+              setNaming(true);
+              setNote(null);
+              setProblem(null);
+            }}
+            className={cn(buttonSecondary, "h-9")}
+          >
+            Salvează lista ca profil
+          </button>
+        )}
+      </div>
+
+      {naming && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <label className="sr-only" htmlFor="template-name-from-client">
+            Numele profilului
+          </label>
+          <input
+            id="template-name-from-client"
+            value={name}
+            autoFocus
+            placeholder="SRL plătitor de TVA lunar"
+            onChange={(event) => setName(event.target.value)}
+            className={cn(inputField, "w-64")}
+          />
+          <button
+            type="button"
+            disabled={!name.trim() || fromClient.isPending}
+            onClick={() =>
+              fromClient.mutate(
+                { clientId, name },
+                {
+                  onSuccess: (saved) => {
+                    setNaming(false);
+                    setName("");
+                    setNote(`Profilul „${saved.name}” a fost salvat.`);
+                  },
+                  onError: (caught) => setProblem(describeError(caught)),
+                },
+              )
+            }
+            className={cn(buttonPrimary, "h-9")}
+          >
+            Salvează profilul
+          </button>
+          <button
+            type="button"
+            onClick={() => setNaming(false)}
+            className="text-sm font-medium text-slate-600 hover:underline dark:text-slate-300"
+          >
+            Renunță
+          </button>
+        </div>
+      )}
+
+      {note && <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">{note}</p>}
+      {problem && (
+        <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+          {problem}
+        </p>
+      )}
+    </div>
   );
 }
 
