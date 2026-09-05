@@ -12,8 +12,10 @@ client, tip) și ce se răspunde când nu s-a terminat încă nimic.
 
 from __future__ import annotations
 
+import csv
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -27,7 +29,7 @@ from app.models.client import Client
 from app.models.document import Document, DocumentType
 from app.models.organization import Organization
 from app.models.user import Permission, Role, User
-from app.services import report_export
+from app.services import document_register, report_export
 from app.services.report_service import TOP_CLIENTS
 from tests.conftest import requires_db
 
@@ -517,6 +519,24 @@ class TestTheExport:
         rate_line = next(line for line in self._csv(api).splitlines() if "Rată de succes" in line)
         assert rate_line.endswith(report_export.DELIMITER)
 
+    def test_the_rate_uses_the_decimal_comma_excel_expects(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Se scria cu punct, deci Excel românesc o citea ca text, nu ca număr.
+
+        Fișierul se deschidea, coloana arăta plauzibil, iar singurul semn era
+        alinierea la stânga. Găsit scoțând convențiile de format într-un modul
+        comun cu registrul: acolo întrebarea „cum se scrie un număr" se pune o
+        singură dată, iar răspunsul de aici nu se potrivea.
+        """
+        add_document(db, org, client=client_row)
+        add_document(db, org, client=client_row, status=DocumentStatus.ERROR)
+        add_document(db, org, client=client_row, status=DocumentStatus.ERROR)
+
+        rate_line = next(line for line in self._csv(api).splitlines() if "Rată de succes" in line)
+
+        assert rate_line.endswith("0,3333")
+
     def test_the_filename_carries_the_interval(
         self, api: TestClient, db: Session, org: Organization, client_row: Client
     ) -> None:
@@ -545,3 +565,250 @@ class TestTheExport:
     def test_an_anonymous_request_is_refused(self, api: TestClient) -> None:
         api.post("/api/v1/auth/logout")
         assert api.get(f"{URL}.csv").status_code == 401
+
+
+REGISTER = "/api/v1/reports/register.csv"
+
+
+def with_amounts(
+    db: Session,
+    document: Document,
+    *,
+    document_date: date | None = date(2026, 8, 14),
+    subtotal: Decimal | None = Decimal("1000.00"),
+    vat_amount: Decimal | None = Decimal("190.00"),
+    total_amount: Decimal | None = Decimal("1190.00"),
+) -> Document:
+    """Un document cu ce s-a citit din el.
+
+    Se setează pe obiectul deja creat, nu prin `add_document`: fabrica aceea este
+    folosită de tot fișierul, iar parametri noi acolo ar fi complicat fiecare test
+    care nu are nevoie de sume.
+    """
+    document.document_date = document_date
+    document.series = "FCT"
+    document.document_number = "1042"
+    document.supplier_name = "Furnizor Test SRL"
+    document.supplier_tax_id = "RO12345678"
+    document.currency = "RON"
+    document.subtotal = subtotal
+    document.vat_amount = vat_amount
+    document.total_amount = total_amount
+    db.flush()
+    return document
+
+
+@pytest.mark.usefixtures("as_admin")
+class TestTheRegister:
+    """Registrul lunii: un rând pe document, cu tot ce s-a citit din el.
+
+    `summary.csv` numără documente. Acesta le listează cu sumele lor, și este
+    singura cale prin care datele extrase ies din aplicație — până acum se puteau
+    doar citi de pe ecran și retasta în programul de contabilitate.
+    """
+
+    def _lines(self, api: TestClient, **params: str) -> list[str]:
+        response = api.get(REGISTER, params=params)
+        assert response.status_code == 200, response.text
+        assert response.headers["content-type"].startswith("text/csv")
+        return response.text.lstrip(report_export.BOM).strip().splitlines()
+
+    def _row(self, api: TestClient) -> list[str]:
+        return self._lines(api)[1].split(report_export.DELIMITER)
+
+    def test_what_was_read_from_the_document_ends_up_in_the_file(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        client_row: Client,
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Motivul pentru care există endpointul."""
+        with_amounts(
+            db, add_document(db, org, client=client_row, document_type=types["FACTURA_INTRARE"])
+        )
+
+        lines = self._lines(api)
+
+        assert len(lines) == 2
+        row = lines[1].split(report_export.DELIMITER)
+        assert row[0] == "Alfa Conta SRL"
+        assert row[2] == "14.08.2026"
+        assert row[5] == "FCT"
+        assert row[6] == "1042"
+        assert row[7] == "Furnizor Test SRL"
+        assert row[8] == "RO12345678"
+
+    def test_amounts_use_the_decimal_comma_excel_expects(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Cea mai perfidă dintre convenții.
+
+        `1190.00` scris cu punct nu este un număr pentru Excel în setările
+        românești: îl ia ca text, îl aliniază la stânga și nu îl adună. Fișierul
+        pare bun până când cineva trage un total pe coloană și primește zero.
+        """
+        with_amounts(db, add_document(db, org, client=client_row))
+
+        row = self._row(api)
+
+        assert row[12] == "1000,00"
+        assert row[13] == "190,00"
+        assert row[14] == "1190,00"
+
+    def test_an_amount_that_was_not_read_stays_empty_not_zero(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Într-un registru, „nu s-a citit" și „este zero" nu sunt același lucru.
+
+        Al doilea se aprobă fără să se uite nimeni la el.
+        """
+        with_amounts(db, add_document(db, org, client=client_row), total_amount=None)
+
+        assert self._row(api)[14] == ""
+
+    def test_a_document_still_in_review_is_listed_with_its_state(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Un registru care ar conține doar aprobatele ar tăcea despre restul.
+
+        Cine exportă o lună cu documente rămase în verificare ar primi mai puține
+        rânduri decât are documente și n-ar avea de unde ști. Omisiunea tăcută
+        dintr-un registru se descoperă la un control; un rând care scrie
+        „Necesită verificare" se vede.
+        """
+        with_amounts(
+            db,
+            add_document(db, org, client=client_row, status=DocumentStatus.REVIEW_REQUIRED),
+        )
+
+        assert self._row(api)[15] == "Necesită verificare"
+
+    def test_a_rejected_document_is_not_in_the_register(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Un document respins nu se înregistrează."""
+        add_document(db, org, client=client_row, status=DocumentStatus.REJECTED)
+
+        assert len(self._lines(api)) == 1
+
+    def test_a_duplicate_is_not_recorded_a_second_time(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Exact greșeala pe care detecția duplicatelor o previne.
+
+        Duplicatul arată spre originalul lui, fiindcă schema o cere
+        (`ck_documents_duplicate_has_origin`). Un duplicat orfan ar testa o stare
+        care nu poate exista — și ar trece pe lângă întrebarea reală: din două
+        rânduri, câte ajung în registru.
+        """
+        original = with_amounts(db, add_document(db, org, client=client_row))
+        # Marcat după inserare: constrângerea cere ca cele două câmpuri să ajungă
+        # în baza de date împreună, iar fabrica scrie rândul înainte de a le avea.
+        copy = add_document(db, org, client=client_row)
+        copy.is_duplicate = True
+        copy.duplicate_of_id = original.id
+        db.flush()
+
+        assert len(self._lines(api)) == 2
+
+    def test_a_deleted_document_is_not_in_the_register(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Documentele nu se șterg fizic (§62), dar un șters nu se înregistrează.
+
+        `soft_delete` nu are încă apelanți. Testul îl scrie direct, pentru că
+        garanția trebuie să existe **înainte** de primul apelant — altfel se
+        descoperă dintr-un fișier deja trimis mai departe.
+        """
+        document = with_amounts(db, add_document(db, org, client=client_row))
+        document.deleted_at = datetime.now(UTC)
+        db.flush()
+
+        assert len(self._lines(api)) == 1
+
+    def test_every_row_has_as_many_columns_as_the_header(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """O coloană adăugată la antet și uitată la rând mută toate valorile."""
+        with_amounts(db, add_document(db, org, client=client_row))
+
+        widths = {len(line.split(report_export.DELIMITER)) for line in self._lines(api)}
+
+        assert widths == {len(document_register.HEADER)}
+
+    def test_a_semicolon_in_a_client_name_does_not_break_the_columns(
+        self, api: TestClient, db: Session, org: Organization
+    ) -> None:
+        """Separatorul este `;`; o denumire care îl conține trebuie citată."""
+        odd = Client(organization_id=org.id, name="Alfa; Beta SRL", tax_id="RO2")
+        db.add(odd)
+        db.flush()
+        with_amounts(db, add_document(db, org, client=odd))
+
+        line = self._lines(api)[1]
+        parsed = next(csv.reader([line], delimiter=report_export.DELIMITER))
+
+        assert parsed[0] == "Alfa; Beta SRL"
+        assert len(parsed) == len(document_register.HEADER)
+
+    def test_another_organizations_documents_never_appear(
+        self, api: TestClient, db: Session, other_org: Organization
+    ) -> None:
+        """Izolarea pe organizație stă prima și nu este opțională (§72)."""
+        stranger = Client(organization_id=other_org.id, name="Terț SRL", tax_id="RO3")
+        db.add(stranger)
+        db.flush()
+        with_amounts(db, add_document(db, other_org, client=stranger))
+
+        assert len(self._lines(api)) == 1
+
+    def test_the_filename_carries_the_month(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Două exporturi succesive nu au voie să se suprascrie în „Descărcări"."""
+        add_document(db, org, client=client_row)
+
+        response = api.get(REGISTER, params={"fromMonth": MONTH, "toMonth": MONTH})
+
+        assert f"registru-documente-{MONTH}.csv" in response.headers["content-disposition"]
+
+    def test_a_reversed_interval_is_refused_here_too(self, api: TestClient) -> None:
+        """Un registru gol se citește ca „nu am documente", nu ca „ai greșit intervalul"."""
+        response = api.get(REGISTER, params={"fromMonth": "2026-09", "toMonth": "2026-08"})
+
+        assert response.status_code == 422
+
+    def test_the_register_is_not_cached_by_a_proxy(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """Sumele clienților nu au ce căuta în cache-ul unui proxy."""
+        add_document(db, org, client=client_row)
+
+        assert api.get(REGISTER).headers["cache-control"] == "no-store"
+
+    def test_neither_storage_keys_nor_confidence_leak_into_the_file(
+        self, api: TestClient, db: Session, org: Organization, client_row: Client
+    ) -> None:
+        """§73: fișierul circulă pe email, iar o cale de stocare nu are ce căuta în el.
+
+        Nici încrederea extracției: o probabilitate lângă o sumă nu ajută pe
+        nimeni și sugerează că suma ar fi negociabilă.
+        """
+        document = with_amounts(db, add_document(db, org, client=client_row))
+        document.ocr_confidence = 0.83
+        document.ai_provider = "anthropic"
+        db.flush()
+
+        exported = api.get(REGISTER).text
+
+        assert document.storage_key not in exported
+        assert "0.83" not in exported
+        assert "0,83" not in exported
+        assert "anthropic" not in exported
+
+    def test_an_anonymous_request_is_refused(self, api: TestClient) -> None:
+        api.post("/api/v1/auth/logout")
+
+        assert api.get(REGISTER).status_code == 401

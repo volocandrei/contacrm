@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  19.164 linii sursă +  2.966 linii teste  →   229 teste
-backend   24.373 linii sursă + 21.031 linii teste  → 1.389 teste
-end-to-end 1.819 linii                             →    68 teste (browser real)
+frontend  19.218 linii sursă +  2.966 linii teste  →   229 teste
+backend   24.704 linii sursă + 21.298 linii teste  → 1.405 teste
+end-to-end 1.870 linii                             →    69 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.686 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.703 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -268,6 +268,40 @@ Ecranul spune **„Pregătit"**, nu „Trimis". Aplicația nu trimite (Faza 2): 
 se copiază și pleacă din clientul de email al contabilului, deci tot ce știe
 sigur este că cererea a fost compusă. „Trimis" ar fi o promisiune pe care nimic
 din spate nu o acoperă.
+
+### Numerele citite ies din aplicație
+
+Sistemul citea data, seria, numărul, furnizorul, CUI-ul, baza, TVA-ul și totalul
+— și le ținea pe ecran. Contabilul le retasta în programul de contabilitate,
+câmp cu câmp, uitându-se la fișă. Extracția nu se plătește până când numerele nu
+ies într-un fișier.
+
+`GET /reports/register.csv` scoate **registrul lunii**: un rând pe document, cu
+tot ce s-a citit din el. Nu este același lucru cu `summary.csv`, care numără
+documente.
+
+**Ce conține și ce nu, cu motivul.** Toate documentele lunii, fără cele respinse
+și fără duplicate — un respins nu se înregistrează, iar un duplicat înregistrat a
+doua oară este exact greșeala pe care detecția lui o previne. Restul intră toate,
+**inclusiv cele neajunse la aprobare**, cu starea scrisă pe rând.
+
+Alegerea merită motivul, pentru că varianta „curată" era la îndemână. Un registru
+cu doar documentele aprobate ar fi **tăcut** despre celelalte: cine exportă o lună
+cu 12 documente rămase în verificare ar primi 88 de rânduri dintr-o sută și n-ar
+avea de unde ști. O omisiune tăcută dintr-un registru contabil se descoperă la un
+control. Un rând care scrie „Necesită verificare" se vede.
+
+Nu se calculează nimic în export: nici TVA, nici totaluri, nici conversii de
+monedă. Un total pus de sistem ar arăta pe hârtie identic cu unul citit de pe
+factură.
+
+**Un defect găsit pe drum.** Convențiile de format — separator `;`, BOM, CRLF —
+erau scrise în exportul de rapoarte. Scoase într-un modul comun, ca registrul să
+nu le reinventeze pe jumătate, a ieșit la iveală a patra, care lipsea: „rata de
+succes" se scria `0.9412`, cu punct. În Excel cu setări românești, aceea nu este
+o valoare numerică — este text aliniat la stânga, care nu se adună. Fișierul se
+deschidea și părea în regulă. Acum se scrie `0,9412`, iar zecimala cu virgulă are
+test propriu în ambele exporturi.
 
 ### Pozele se citesc singure (M16)
 
@@ -1402,7 +1436,11 @@ Necesită input uman, nu sunt de rezolvat în cod:
    decizie de business, ci un defect care aștepta o instalare. Pentru
    demonstrații rămâne `ENVIRONMENT=staging`; `pdf_text` este, din punctul de
    vedere al GDPR, identic cu `mock` — local, fără rețea — doar că adevărat.
-5. **Software-ul contabil țintă** pentru export — determină formatul.
+5. **Software-ul contabil țintă** pentru export — determină formatul. Nu mai
+   blochează nimic: registrul lunii (`GET /reports/register.csv`) scoate datele
+   într-un CSV care se deschide în Excel oriunde, iar un format anume — Saga,
+   WinMentor, altul — se adaugă peste el când se știe care este. *Întrebarea
+   rămâne pusă: ce program folosește cabinetul.*
 6. **Tenant unic vs. multi-firmă** de la lansare. Schema suportă ambele;
    `organization_id` există peste tot de la început.
 

@@ -8,37 +8,19 @@ retasta.
 nimic — se aplatizează ce s-a calculat deja. Două căi de calcul ar fi ajuns,
 într-o zi, la două numere diferite pentru aceeași întrebare.
 
-Trei detalii care par mărunte și fără de care fișierul nu se poate folosi în
-România:
-
-- **separatorul este `;`**, nu virgulă: cu virgulă, Excel în setările românești
-  pune totul într-o singură coloană;
-- **BOM la început**: fără el, Excel citește UTF-8 ca ANSI și „Rată" devine
-  „RatÄƒ";
-- **sfârșit de linie CRLF**, pentru că Windows este destinația.
-
-Valorile trec prin `csv.writer`, care scapă singur ghilimelele și separatorii din
-interiorul lor: un client care are `;` în denumire nu are voie să rupă coloanele.
+Forma fișierului — separator, BOM, sfârșit de linie, virgulă la zecimale — stă în
+`excel_csv.py`, cu motivul fiecărei alegeri. Constantele se re-exportă de aici
+fiindcă erau publice înainte să existe al doilea export.
 """
 
 from __future__ import annotations
 
-import csv
-import io
 from typing import Final
 
+from app.services.excel_csv import BOM, DELIMITER, LINE_ENDING, number, render
 from app.services.report_service import ReportSummary
 
-#: Separatorul așteptat de Excel în setările românești.
-DELIMITER: Final = ";"
-
-#: Fără el, Excel citește fișierul ca ANSI și diacriticele se strică.
-BOM: Final = "﻿"
-
-#: Windows este destinația.
-LINE_ENDING: Final = "\r\n"
-
-HEADER: Final = ("Sectiune", "Cheie", "Eticheta", "Numar")
+HEADER: Final = ("Secțiune", "Cheie", "Etichetă", "Număr")
 
 
 def rows_for(summary: ReportSummary) -> list[list[str]]:
@@ -60,7 +42,7 @@ def rows_for(summary: ReportSummary) -> list[list[str]]:
 
     # Gol, nu zero: `null` înseamnă „nu s-a terminat încă nimic", iar zero s-ar
     # citi ca „totul a eșuat". Aceeași distincție ca pe ecran.
-    rate = "" if summary.success_rate is None else f"{summary.success_rate:.4f}"
+    rate = number(summary.success_rate, decimals=4)
     rows.append(["Total", "", "Rată de succes", rate])
 
     for section, buckets in (
@@ -80,10 +62,7 @@ def rows_for(summary: ReportSummary) -> list[list[str]]:
 
 def to_csv(summary: ReportSummary) -> str:
     """Fișierul întreg, gata de trimis ca răspuns."""
-    buffer = io.StringIO()
-    writer = csv.writer(buffer, delimiter=DELIMITER, lineterminator=LINE_ENDING)
-    writer.writerows(rows_for(summary))
-    return BOM + buffer.getvalue()
+    return render(rows_for(summary))
 
 
 def filename(from_month: str | None, to_month: str | None) -> str:

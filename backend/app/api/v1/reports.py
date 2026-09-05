@@ -24,7 +24,8 @@ from app.core.errors import ValidationError
 from app.domain.permissions import Permission
 from app.models.user import User
 from app.schemas.common import ApiModel
-from app.services import report_export
+from app.services import document_register, report_export
+from app.services.document_register import RegisterService
 from app.services.report_service import Bucket, ReportService, ReportSummary
 
 router = APIRouter(route_class=CommittingRoute, prefix="/reports", tags=["reports"])
@@ -91,19 +92,26 @@ def _to_summary(summary: ReportSummary) -> ReportSummaryOut:
     )
 
 
+def _assert_interval(filters: ReportFilters) -> None:
+    """Un interval întors ar da tăcut zero rezultate.
+
+    Zero rezultate se citește ca „nu aveți documente", nu ca „ai greșit
+    intervalul" — iar la un registru gol concluzia greșită este mai scumpă.
+    """
+    if filters.from_month and filters.to_month and filters.from_month > filters.to_month:
+        raise ValidationError(
+            "Luna de început este după luna de sfârșit.",
+            details={"fromMonth": ["Trebuie să fie anterioară lunii de sfârșit."]},
+        )
+
+
 def _computed(session: DbSession, user: ReportReader, filters: ReportFilters) -> ReportSummary:
     """Raportul, calculat o singură dată pentru amândouă rutele.
 
     Ecranul și exportul trebuie să răspundă cu aceleași numere; două căi de
     calcul ar fi ajuns, într-o zi, la două răspunsuri pentru aceeași întrebare.
     """
-    if filters.from_month and filters.to_month and filters.from_month > filters.to_month:
-        # Un interval întors ar da tăcut zero rezultate, care se citește ca „nu
-        # aveți documente" în loc de „ai greșit intervalul".
-        raise ValidationError(
-            "Luna de început este după luna de sfârșit.",
-            details={"fromMonth": ["Trebuie să fie anterioară lunii de sfârșit."]},
-        )
+    _assert_interval(filters)
 
     return ReportService(session, user.organization_id).summary(
         from_month=filters.from_month,
@@ -144,6 +152,40 @@ def summary_csv(
         headers={
             "Content-Disposition": f'attachment; filename="{name}"',
             # Un raport nu are ce căuta în cache-ul unui proxy.
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/register.csv")
+def register_csv(
+    session: DbSession,
+    user: ReportReader,
+    filters: Annotated[ReportFilters, Query()],
+) -> Response:
+    """Registrul lunii: un rând pe document, cu tot ce s-a citit din el.
+
+    Nu este același lucru cu `summary.csv`. Acela numără documente, acesta le
+    listează cu sumele lor — este fișierul din care se lucrează în programul de
+    contabilitate, iar până acum nu exista: numerele extrase se puteau doar citi
+    de pe ecran și retasta.
+
+    Ce intră și ce nu, cu motivele, în `services/document_register.py`.
+    """
+    _assert_interval(filters)
+
+    rows = RegisterService(session, user.organization_id).rows(
+        from_month=filters.from_month,
+        to_month=filters.to_month,
+        client_id=filters.client_id,
+    )
+    name = document_register.filename(filters.from_month, filters.to_month)
+    return Response(
+        content=document_register.to_csv(rows),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            # Sumele clienților nu au ce căuta în cache-ul unui proxy.
             "Cache-Control": "no-store",
         },
     )

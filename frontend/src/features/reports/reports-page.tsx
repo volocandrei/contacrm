@@ -49,7 +49,7 @@ export function ReportsPage() {
       <PageHeader
         title="Rapoarte"
         description="Agregări calculate în backend, peste toate documentele care trec de filtre."
-        actions={<ExportButton filters={values} />}
+        actions={<ExportActions filters={values} />}
       />
 
       <div className="mb-4 flex flex-wrap gap-3">
@@ -273,7 +273,21 @@ function BarList({
  * Fișierul se cere cu **aceleași filtre** ca ecranul: un export care ar acoperi
  * altceva decât ce se vede ar fi mai rău decât niciunul.
  */
-function ExportButton({ filters }: { filters: Record<string, string> }) {
+function ExportButton({
+  filters,
+  path,
+  fallbackName,
+  label,
+  title,
+  primary = false,
+}: {
+  filters: Record<string, string>;
+  path: string;
+  fallbackName: string;
+  label: string;
+  title: string;
+  primary?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -291,12 +305,12 @@ function ExportButton({ filters }: { filters: Record<string, string> }) {
       const query = new URLSearchParams(
         Object.entries(filters).filter(([, value]) => value !== ""),
       ).toString();
-      const file = await fetchFile(`/reports/summary.csv${query ? `?${query}` : ""}`);
+      const file = await fetchFile(`${path}${query ? `?${query}` : ""}`);
       const url = URL.createObjectURL(file.blob);
       try {
         const anchor = document.createElement("a");
         anchor.href = url;
-        anchor.download = file.filename ?? "raport-documente.csv";
+        anchor.download = file.filename ?? fallbackName;
         document.body.append(anchor);
         anchor.click();
         anchor.remove();
@@ -306,7 +320,7 @@ function ExportButton({ filters }: { filters: Record<string, string> }) {
       }
     } catch (caught) {
       setProblem(
-        caught instanceof ApiError ? caught.message : "Raportul nu a putut fi descărcat.",
+        caught instanceof ApiError ? caught.message : "Fișierul nu a putut fi descărcat.",
       );
     } finally {
       setBusy(false);
@@ -319,20 +333,60 @@ function ExportButton({ filters }: { filters: Record<string, string> }) {
         type="button"
         onClick={() => void download()}
         disabled={busy}
-        className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+        title={title}
+        className={
+          primary
+            ? "flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+            : "flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+        }
       >
         {busy ? (
           <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
         ) : (
           <Download className="h-4 w-4" aria-hidden="true" />
         )}
-        Descarcă CSV
+        {label}
       </button>
       {problem && (
         <p role="alert" className="text-xs text-red-600 dark:text-red-400">
           {problem}
         </p>
       )}
+    </div>
+  );
+}
+
+
+/**
+ * Cele două fișiere pe care le poate scoate ecranul, și de ce sunt două.
+ *
+ * **Registrul** are un rând pe document, cu data, seria, numărul, furnizorul,
+ * CUI-ul și sumele citite din el. Este fișierul din care se lucrează mai departe
+ * în programul de contabilitate — până acum numerele extrase se puteau doar citi
+ * de pe ecran și retasta, câmp cu câmp. De aceea stă primul și este butonul
+ * plin: raportul se consultă, registrul se folosește.
+ *
+ * **Raportul** are numerele de pe ecran, agregate. Se pune într-un raport intern
+ * sau se trimite cuiva; nu conține niciun document.
+ */
+function ExportActions({ filters }: { filters: Record<string, string> }) {
+  return (
+    <div className="flex flex-wrap items-start justify-end gap-2">
+      <ExportButton
+        filters={filters}
+        path="/reports/register.csv"
+        fallbackName="registru-documente.csv"
+        label="Descarcă registrul"
+        title="Un rând pe document, cu datele și sumele citite din el. Fără cele respinse și fără duplicate."
+        primary
+      />
+      <ExportButton
+        filters={filters}
+        path="/reports/summary.csv"
+        fallbackName="raport-documente.csv"
+        label="Descarcă raportul"
+        title="Numerele de pe ecran, agregate."
+      />
     </div>
   );
 }

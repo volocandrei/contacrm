@@ -92,7 +92,14 @@ class ReportService:
         client_id: uuid.UUID | None,
     ) -> list[ColumnElement[bool]]:
         """Izolarea pe organizație stă prima și nu este opțională (§72)."""
-        conditions: list[ColumnElement[bool]] = [Document.organization_id == self.organization_id]
+        conditions: list[ColumnElement[bool]] = [
+            Document.organization_id == self.organization_id,
+            # Documentele nu se șterg fizic (§62). Lipsea de aici, iar
+            # `count_by_status` îl avea: raportul și panoul ar fi ajuns să dea
+            # numere diferite pentru aceeași lună în ziua în care `soft_delete`
+            # capătă un apelant. Astăzi nu are, deci nimic nu se schimbă.
+            Document.deleted_at.is_(None),
+        ]
         # `YYYY-MM` se compară lexicografic exact ca cronologic — de asta este
         # stocat așa. Un document fără lună nu intră într-un interval de luni:
         # nu se poate spune că este înainte sau după.
