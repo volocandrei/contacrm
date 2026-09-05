@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  20.059 linii sursă +  3.285 linii teste  →   250 teste
+frontend  20.248 linii sursă +  3.285 linii teste  →   250 teste
 backend   25.976 linii sursă + 22.340 linii teste  → 1.462 teste
-end-to-end 1.955 linii                             →    73 teste (browser real)
+end-to-end 1.987 linii                             →    74 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.785 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.786 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -319,6 +319,17 @@ Restul, pe scurt:
   opuse;
 - fereastra pornește **din urmă**: un termen ratat nu se rezolvă trecând timpul;
 - marcarea este idempotentă și nu rescrie cine a depus prima oară.
+
+**Un gol în ce tocmai construisem.** Obligațiile se puteau seta doar prin API:
+un client adăugat din interfață n-ar fi avut nicio declarație și n-ar fi apărut
+niciodată în „Termene" — tăcut, adică în felul cel mai prost cu putință, fiindcă
+ecranul ar fi arătat corect, dar despre alți clienți. Fișa clientului are acum
+panoul „Ce declarații depune", iar un test E2E parcurge bucla întreagă: bifezi,
+salvezi, reîncarci, rămâne bifat.
+
+Panoul principal arată **restanțele primele**, înaintea documentelor eșuate: un
+termen ratat este singurul lucru din listă care costă bani, iar la client, nu la
+cabinet. Plus termenele din următoarele șapte zile.
 
 Două lucruri prinse de teste, amândouă reale:
 

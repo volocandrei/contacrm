@@ -75,6 +75,26 @@ export function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
 }
 
+/**
+ * Câte zile întregi mai sunt până la o dată, `YYYY-MM-DD`.
+ *
+ * Negativ dacă data a trecut. Se compară zile calendaristice, nu momente: o
+ * scădere pe milisecunde ar da „0 zile" pentru un termen de mâine dimineață.
+ */
+export function daysUntil(isoDate: string): number {
+  const today = new Date(new Date().toISOString().slice(0, 10)).getTime();
+  return Math.round((new Date(isoDate).getTime() - today) / 86_400_000);
+}
+
+/**
+ * Ziua de peste `days` zile, ca `YYYY-MM-DD`, pentru comparat cu date de la server.
+ *
+ * Aici, nu în componentă, din același motiv ca `daysSince`.
+ */
+export function isoDaysFromNow(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+}
+
 /** `reference_month` vine ca "YYYY-MM". */
 export function formatReferenceMonth(referenceMonth: string): string {
   const [year, month] = referenceMonth.split("-");

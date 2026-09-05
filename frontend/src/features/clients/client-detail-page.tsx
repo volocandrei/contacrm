@@ -15,6 +15,7 @@ import {
   useClientAliases,
   useClientContacts,
   useClientExpectations,
+  useClientObligations,
   useClientNotes,
   useClientPeriods,
   useCreateNote,
@@ -24,7 +25,9 @@ import {
   useDocuments,
   useExpectationTemplates,
   useRevokeUploadLink,
+  useObligationTypes,
   useSaveExpectations,
+  useSetClientObligations,
   useTemplateFromClient,
   useUploadLinks,
 } from "@/api/hooks";
@@ -52,6 +55,7 @@ import {
   scrollX,
 } from "@/lib/ui";
 import { cn } from "@/lib/utils";
+import type { ObligationFrequency } from "@/types/domain";
 
 /** Cât poate avea o notă. Oglindește `MAX_NOTE_LENGTH` din backend. */
 const MAX_NOTE_LENGTH = 4000;
@@ -347,6 +351,7 @@ function AccountingTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4">
       <ExpectationsPanel clientId={clientId} />
+      <ObligationsPanel clientId={clientId} />
       {periods?.map((period) => (
         <Panel
           key={period.id}
@@ -1023,6 +1028,131 @@ function UploadLinkPanel({ clientId }: { clientId: string }) {
         <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">
           {problem}
         </p>
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * Ce declarații depune clientul acesta.
+ *
+ * **De ce este obligatoriu să existe ecranul.** Fără el, obligațiile se puteau
+ * seta doar prin API: un client adăugat din interfață nu avea nicio declarație
+ * și nu apărea niciodată în „Termene" — tăcut, ceea ce este cel mai rău fel de
+ * a lipsi. Ecranul „Termene" ar fi arătat corect, dar despre alți clienți.
+ *
+ * **De ce contează ziua bifării.** Aplicația nu produce termene dinainte de
+ * momentul în care i s-a spus că un client depune o declarație. O bifă pusă azi
+ * nu inventează restanțe din luni în care aplicația nu știa că există obligația
+ * — și nici nu le va inventa mâine, dacă cineva scoate bifa și o pune la loc.
+ */
+/** Cum se citește periodicitatea. Text de interfață, ca toate etichetele. */
+const FREQUENCY_LABEL: Record<ObligationFrequency, string> = {
+  MONTHLY: "lunar",
+  QUARTERLY: "trimestrial",
+  ANNUAL: "anual",
+};
+
+function ObligationsPanel({ clientId }: { clientId: string }) {
+  const { data: assigned, isLoading } = useClientObligations(clientId);
+  const { data: catalogue } = useObligationTypes();
+  const save = useSetClientObligations();
+  const can = usePermissionCheck();
+
+  const [draft, setDraft] = useState<string[] | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  if (isLoading) return <LoadingState />;
+
+  const editable = can("periods:manage");
+  const current = draft ?? (assigned ?? []).map((type) => type.id);
+  // Dezactivatele nu se pot bifa, dar una deja bifată rămâne vizibilă: altfel ar
+  // dispărea de pe ecran fără ca nimeni să fi scos-o.
+  const shown = (catalogue ?? []).filter((type) => type.isActive || current.includes(type.id));
+
+  function toggle(id: string, checked: boolean) {
+    setDraft(checked ? [...current, id] : current.filter((entry) => entry !== id));
+  }
+
+  function submit() {
+    setProblem(null);
+    save.mutate(
+      { clientId, obligationTypeIds: current },
+      {
+        onSuccess: () => setDraft(null),
+        onError: (caught) =>
+          setProblem(
+            caught instanceof ApiError ? caught.message : "Declarațiile nu au putut fi salvate.",
+          ),
+      },
+    );
+  }
+
+  return (
+    <Panel title="Ce declarații depune">
+      <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+        Din lista asta se construiesc termenele din „Termene". Un client fără nicio
+        bifă nu apare acolo niciodată — nu pentru că nu are ce depune, ci pentru că
+        nimeni nu i-a spus aplicației.
+      </p>
+
+      {problem && (
+        <p
+          role="alert"
+          className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300"
+        >
+          {problem}
+        </p>
+      )}
+
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {shown.map((type) => (
+          <li
+            key={type.id}
+            className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800"
+          >
+            <input
+              type="checkbox"
+              id={`obligation-${type.id}`}
+              checked={current.includes(type.id)}
+              disabled={!editable || save.isPending || !type.isActive}
+              onChange={(event) => toggle(type.id, event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
+            />
+            <label
+              htmlFor={`obligation-${type.id}`}
+              className="flex-1 text-sm text-slate-800 dark:text-slate-200"
+            >
+              {type.label}
+              <span className={cn("ml-1 text-xs", mutedText)}>
+                · {FREQUENCY_LABEL[type.frequency]}, ziua {type.deadlineDay}
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+
+      {editable && (
+        <div className="mt-3 flex items-center justify-end gap-3">
+          {draft !== null && (
+            <button
+              type="button"
+              onClick={() => setDraft(null)}
+              className="text-sm font-medium text-slate-600 hover:underline dark:text-slate-300"
+            >
+              Renunță
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={submit}
+            disabled={draft === null || save.isPending}
+            className={cn(buttonPrimary, "h-9")}
+          >
+            {save.isPending && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            Salvează declarațiile
+          </button>
+        </div>
       )}
     </Panel>
   );

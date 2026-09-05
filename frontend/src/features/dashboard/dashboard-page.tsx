@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowUpRight,
   Building2,
+  CalendarCheck,
   CalendarClock,
   TrendingDown,
   TrendingUp,
@@ -17,13 +19,13 @@ import {
   UserX,
   type LucideIcon,
 } from "lucide-react";
-import { useDashboard } from "@/api/hooks";
+import { useDashboard, useObligations } from "@/api/hooks";
 import { Donut, TrendArea } from "@/components/charts";
 import { ErrorState, LoadingState, Panel } from "@/components/page";
 import { ConfidenceBadge, DocumentStatusBadge, PeriodStatusBadge } from "@/components/status-badge";
 import { DOCUMENT_STATUS_LABEL } from "@/lib/labels";
 import { STATUS_ARC, statusDot } from "@/lib/status-colors";
-import { formatDate, formatReferenceMonth, formatTime } from "@/lib/format";
+import { formatDate, formatReferenceMonth, formatTime, isoDaysFromNow } from "@/lib/format";
 import {
   focusRing,
   iconChip,
@@ -69,8 +71,24 @@ const ATTENTION_TONE: Record<AttentionReason, "danger" | "warning"> = {
   INCOMPLETE_PERIOD: "warning",
 };
 
+/** Cât în față se uită panoul după termene. O săptămână de lucru. */
+const DEADLINE_HORIZON_DAYS = 7;
+
 export function DashboardPage() {
   const { data, isLoading, error } = useDashboard();
+  // Separat de `/dashboard`, deliberat: termenele au propria fereastră și
+  // propria invalidare. Băgate în contorul panoului, s-ar fi recalculat la
+  // fiecare document sosit, iar o depunere marcată n-ar fi mutat nimic.
+  const { data: obligations } = useObligations();
+
+  const deadlines = useMemo(() => {
+    const horizon = isoDaysFromNow(DEADLINE_HORIZON_DAYS);
+    const open = (obligations ?? []).filter((row) => row.filedAt === null);
+    return {
+      overdue: open.filter((row) => row.isOverdue).length,
+      soon: open.filter((row) => !row.isOverdue && row.deadline <= horizon).length,
+    };
+  }, [obligations]);
 
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState error={error} />;
@@ -85,7 +103,7 @@ export function DashboardPage() {
     <div className="space-y-6">
       <HeroHeader month={month} kpis={kpis} trend={data.trend} closing={data.closing} />
 
-      <TodayPlan kpis={kpis} closing={data.closing} />
+      <TodayPlan kpis={kpis} closing={data.closing} deadlines={deadlines} />
 
       {/* KPI (§20) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -433,11 +451,24 @@ type Todo = {
 function TodayPlan({
   kpis,
   closing,
+  deadlines,
 }: {
   kpis: DashboardData["kpis"];
   closing: DashboardClosing | null;
+  deadlines: { overdue: number; soon: number };
 }) {
   const all: Todo[] = [
+    {
+      // Primul, înaintea documentelor rupte: un termen ratat este singurul de
+      // pe listă care costă bani, iar la client, nu la cabinet.
+      key: "overdue",
+      count: deadlines.overdue,
+      label: deadlines.overdue === 1 ? "declarație nedepusă" : "declarații nedepuse",
+      action: "Vezi restanțele",
+      to: "/contabilitate/termene",
+      Icon: CalendarCheck,
+      tone: "red",
+    },
     {
       key: "errors",
       count: kpis.documentsError,
@@ -463,6 +494,15 @@ function TodayPlan({
       action: "Deschide verificarea",
       to: "/documente/verificare",
       Icon: ShieldCheck,
+      tone: "amber",
+    },
+    {
+      key: "deadlines",
+      count: deadlines.soon,
+      label: deadlines.soon === 1 ? "termen în 7 zile" : "termene în 7 zile",
+      action: "Deschide termenele",
+      to: "/contabilitate/termene",
+      Icon: CalendarCheck,
       tone: "amber",
     },
     {

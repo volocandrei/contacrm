@@ -22,7 +22,7 @@ import { useClients, useMarkFiled, useObligations, useUnmarkFiled } from "@/api/
 import { SelectFilter } from "@/components/form-controls";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { useFilterParams } from "@/hooks/use-filter-params";
-import { formatDate, formatReferenceMonth } from "@/lib/format";
+import { daysUntil, formatDate, formatReferenceMonth } from "@/lib/format";
 import { buttonSecondary, iconChip, mutedText } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import type { DueObligation, ObligationFrequency } from "@/types/domain";
@@ -148,8 +148,7 @@ function rowKey(row: DueObligation): string {
  * răspunsuri diferite pe același ecran.
  */
 function DaysLeft({ deadline }: { deadline: string }) {
-  const today = new Date(new Date().toISOString().slice(0, 10));
-  const days = Math.round((new Date(deadline).getTime() - today.getTime()) / 86_400_000);
+  const days = daysUntil(deadline);
 
   if (days === 0) return <span className="text-xs font-medium text-amber-600">astăzi</span>;
   return (
