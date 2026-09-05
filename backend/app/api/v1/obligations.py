@@ -21,6 +21,7 @@ from pydantic import Field
 from app.api.deps import DbSession, require_permission
 from app.api.route import CommittingRoute
 from app.api.v1.periods import REFERENCE_MONTH
+from app.core.errors import AppError
 from app.domain.enums import ObligationFrequency
 from app.domain.permissions import Permission
 from app.models.obligation import ObligationType
@@ -281,6 +282,92 @@ def mark_filed(session: DbSession, user: ObligationManager, payload: FilingIn) -
         filed_by_name=user.full_name,
         note=filing.note,
     )
+
+
+class FilingsIn(ApiModel):
+    """Ce se marchează, spus rând cu rând.
+
+    **De ce lista întreagă și nu „toate cele de pe 25 septembrie".** Serverul
+    marchează exact rândurile pe care omul le-a văzut. Un criteriu interpretat de
+    server ar putea prinde, la o diferență de o secundă între ce s-a afișat și ce
+    s-a apăsat, o declarație în plus — iar „depus" este o afirmație care ajunge
+    într-o evidență contabilă.
+    """
+
+    filings: list[FilingIn] = Field(min_length=1, max_length=200)
+
+
+class FailedFilingOut(ApiModel):
+    client_id: uuid.UUID
+    obligation_type_id: uuid.UUID
+    period: str
+    message: str
+
+
+class FilingsResultOut(ApiModel):
+    """Câte au intrat și ce nu a mers, cu motivul pe rând."""
+
+    marked: int
+    failed: list[FailedFilingOut]
+
+
+@router.post("/filings/bulk", response_model=FilingsResultOut)
+def mark_many_filed(
+    session: DbSession, user: ObligationManager, payload: FilingsIn
+) -> FilingsResultOut:
+    """Marchează un teanc de depuneri deodată.
+
+    **De ce există.** Un cabinet depune D300 pentru douăzeci de clienți într-o
+    singură ședință. Bifate una câte una, asta înseamnă douăzeci de apăsări și
+    douăzeci de reîncărcări ale listei.
+
+    **Fiecare rând este propria tranzacție.** Un teanc în care al treilea are un
+    client șters între timp nu are voie să anuleze primele două: omul a apăsat un
+    buton, dar a confirmat douăzeci de depuneri.
+
+    Marcarea rămâne idempotentă: un rând deja depus nu se rescrie, deci cine a
+    depus rămâne cine a depus.
+    """
+    service = ObligationService(session, user.organization_id)
+    audit = AuditService(session)
+
+    marked = 0
+    failed: list[FailedFilingOut] = []
+
+    for entry in payload.filings:
+        savepoint = session.begin_nested()
+        try:
+            obligation = service.get_type(entry.obligation_type_id)
+            service.mark_filed(
+                client_id=entry.client_id,
+                obligation_type_id=obligation.id,
+                period=entry.period,
+                user=user,
+                note=entry.note,
+            )
+            audit.record(
+                organization_id=user.organization_id,
+                action="OBLIGATION_FILED",
+                entity_type="Client",
+                entity_id=str(entry.client_id),
+                user_id=user.id,
+                user_name=user.full_name,
+                detail=f"{obligation.code} · {entry.period}",
+            )
+            savepoint.commit()
+            marked += 1
+        except AppError as exc:
+            savepoint.rollback()
+            failed.append(
+                FailedFilingOut(
+                    client_id=entry.client_id,
+                    obligation_type_id=entry.obligation_type_id,
+                    period=entry.period,
+                    message=exc.message,
+                )
+            )
+
+    return FilingsResultOut(marked=marked, failed=failed)
 
 
 @router.delete("/filings", status_code=status.HTTP_204_NO_CONTENT)

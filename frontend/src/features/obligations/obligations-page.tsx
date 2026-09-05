@@ -18,7 +18,14 @@
  */
 import { useMemo, useState } from "react";
 import { CalendarCheck, Check, CircleAlert, LoaderCircle, Undo2 } from "lucide-react";
-import { useClients, useMarkFiled, useObligations, useUnmarkFiled } from "@/api/hooks";
+import {
+  useClients,
+  useMarkFiled,
+  useMarkManyFiled,
+  useObligations,
+  useUnmarkFiled,
+} from "@/api/hooks";
+import { ApiError } from "@/api/types";
 import { SelectFilter } from "@/components/form-controls";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { useFilterParams } from "@/hooks/use-filter-params";
@@ -104,9 +111,12 @@ export function ObligationsPage() {
               title="Restanțe"
               // Numărul în titlu: „Restanțe" singur nu spune cât de rău stai.
               action={
-                <span className="text-xs font-medium text-red-600 dark:text-red-400">
-                  {overdue.length} nedepuse după termen
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium text-red-600 dark:text-red-400">
+                    {overdue.length} nedepuse după termen
+                  </span>
+                  <MarkAllFiled rows={overdue} />
+                </div>
               }
             >
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -121,7 +131,12 @@ export function ObligationsPage() {
             <Panel
               key={deadline}
               title={formatDate(deadline)}
-              action={<DaysLeft deadline={deadline} />}
+              action={
+                <div className="flex items-center gap-3">
+                  <DaysLeft deadline={deadline} />
+                  <MarkAllFiled rows={rows} />
+                </div>
+              }
             >
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {rows.map((row) => (
@@ -133,6 +148,74 @@ export function ObligationsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Marchează tot grupul ca depus.
+ *
+ * **De ce pe grup și nu pe listă întreagă.** Un cabinet depune declarație cu
+ * declarație: intră în SPV, depune D300 pentru toți clienții pe care îi are de
+ * depus în ziua aceea, iese. Gruparea de pe ecran este chiar unitatea de lucru,
+ * deci butonul stă pe ea.
+ *
+ * **Se trimit rândurile, nu un criteriu.** Un „toate cele de pe 25 septembrie"
+ * interpretat de server ar putea prinde o declarație în plus, la o secundă
+ * diferență între ce s-a afișat și ce s-a apăsat — iar „depus" este o afirmație
+ * care ajunge într-o evidență contabilă.
+ */
+function MarkAllFiled({ rows }: { rows: DueObligation[] }) {
+  const mark = useMarkManyFiled();
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const open = rows.filter((row) => row.filedAt === null);
+  if (open.length < 2) return null;
+
+  function submit() {
+    setProblem(null);
+    mark.mutate(
+      open.map((row) => ({
+        clientId: row.clientId,
+        obligationTypeId: row.obligationTypeId,
+        period: row.period,
+      })),
+      {
+        onSuccess: (result) => {
+          if (result.failed.length > 0) {
+            // Câte, și că sunt încă pe ecran: rândurile rămase nemarcate se văd
+            // în listă, deci nu are rost să le enumerăm încă o dată aici.
+            setProblem(`${result.failed.length} nu au putut fi marcate; au rămas în listă.`);
+          }
+        },
+        onError: (caught) =>
+          setProblem(
+            caught instanceof ApiError ? caught.message : "Depunerile nu au putut fi marcate.",
+          ),
+      },
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={submit}
+        disabled={mark.isPending}
+        className={cn(buttonSecondary, "h-8 px-2.5 text-xs")}
+      >
+        {mark.isPending ? (
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        ) : (
+          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+        )}
+        Marchează toate ({open.length})
+      </button>
+      {problem && (
+        <span role="alert" className="text-xs text-red-600 dark:text-red-400">
+          {problem}
+        </span>
+      )}
+    </span>
   );
 }
 

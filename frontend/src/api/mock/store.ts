@@ -3699,6 +3699,34 @@ export function markObligationFiled(input: {
   return { ...input, ...filing };
 }
 
+export function markObligationsFiled(
+  filings: { clientId: string; obligationTypeId: string; period: string }[],
+): { marked: number; failed: { clientId: string; obligationTypeId: string; period: string; message: string }[] } {
+  requirePermission("periods:manage");
+  const failed: {
+    clientId: string;
+    obligationTypeId: string;
+    period: string;
+    message: string;
+  }[] = [];
+  let marked = 0;
+
+  for (const entry of filings) {
+    // Fiecare rând pe cont propriu: un teanc în care al treilea are un client
+    // șters nu are voie să anuleze primele două.
+    try {
+      markObligationFiled(entry);
+      marked += 1;
+    } catch (caught) {
+      failed.push({
+        ...entry,
+        message: caught instanceof ApiError ? caught.message : "Eroare neașteptată.",
+      });
+    }
+  }
+  return { marked, failed };
+}
+
 export function unmarkObligationFiled(input: {
   clientId: string;
   obligationTypeId: string;

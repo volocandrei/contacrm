@@ -414,6 +414,14 @@ const routes: Route[] = [
   },
   {
     method: "POST",
+    pattern: "/obligations/filings/bulk",
+    handler: ({ body }) =>
+      store.markObligationsFiled(
+        (body?.filings as { clientId: string; obligationTypeId: string; period: string }[]) ?? [],
+      ),
+  },
+  {
+    method: "POST",
     pattern: "/obligations/filings",
     handler: ({ body }) =>
       store.markObligationFiled({

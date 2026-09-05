@@ -510,6 +510,10 @@ export function useUnmarkFiled() {
   return useObligationMutation(obligations.unmarkFiled);
 }
 
+export function useMarkManyFiled() {
+  return useObligationMutation(obligations.markManyFiled);
+}
+
 export function useUpdateObligationType() {
   return useObligationMutation(
     ({ id, changes }: { id: string; changes: Partial<ObligationType> }) =>

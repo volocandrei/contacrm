@@ -891,3 +891,9 @@ export interface SendRequestsResult {
   /** Care, nu doar câte: „au eșuat 7" fără nume nu se poate folosi. */
   failed: { clientId: string; message: string }[];
 }
+
+/** Câte depuneri au intrat și ce nu a mers, cu motivul pe rând. */
+export interface FilingsResult {
+  marked: number;
+  failed: { clientId: string; obligationTypeId: string; period: string; message: string }[];
+}

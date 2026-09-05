@@ -94,3 +94,20 @@ test("o declarație bifată pe fișa clientului ajunge în termene", async ({ pa
   await page.getByRole("button", { name: "Salvează declarațiile" }).click();
   await expect(page.getByRole("button", { name: "Salvează declarațiile" })).toBeDisabled();
 });
+
+test("un grup întreg se marchează dintr-o apăsare", async ({ page }) => {
+  // Un cabinet depune D300 pentru douăzeci de clienți într-o singură ședință.
+  // Bifate una câte una, asta înseamnă douăzeci de apăsări.
+  await loginAs(page, ACCOUNTS.admin);
+  await page.goto("/contabilitate/termene");
+
+  const all = page.getByRole("button", { name: /^Marchează toate \(\d+\)$/ }).first();
+  await expect(all).toBeVisible();
+  const before = await page.getByRole("button", { name: /^Marchează depus/ }).count();
+
+  await all.click();
+
+  // Rândurile marcate își schimbă butonul; cele rămase se văd în listă.
+  await expect(page.getByRole("button", { name: /^Marchează depus/ })).not.toHaveCount(before);
+  await expect(page.getByRole("button", { name: /^Anulează depunerea/ }).first()).toBeVisible();
+});

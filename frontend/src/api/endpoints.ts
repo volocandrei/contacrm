@@ -35,6 +35,7 @@ import type {
   MailBrowseItem,
   MailFolder,
   DueObligation,
+  FilingsResult,
   ObligationFiling,
   ObligationType,
   ReportSummary,
@@ -297,6 +298,15 @@ export const obligations = {
     api.put<ObligationType[]>(`/obligations/clients/${clientId}`, { obligationTypeIds }),
   markFiled: (input: { clientId: string; obligationTypeId: string; period: string }) =>
     api.post<ObligationFiling>("/obligations/filings", { ...input }),
+  /**
+   * Un teanc de depuneri deodată.
+   *
+   * Se trimit **rândurile de pe ecran**, nu un criteriu. Un „toate cele de pe 25
+   * septembrie" interpretat de server ar putea prinde o declarație în plus, iar
+   * „depus" este o afirmație care ajunge într-o evidență contabilă.
+   */
+  markManyFiled: (filings: { clientId: string; obligationTypeId: string; period: string }[]) =>
+    api.post<FilingsResult>("/obligations/filings/bulk", { filings }),
   unmarkFiled: (input: { clientId: string; obligationTypeId: string; period: string }) =>
     api.delete<void>("/obligations/filings", { ...input }),
 };

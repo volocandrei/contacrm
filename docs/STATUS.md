@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  20.648 linii sursă +  3.311 linii teste  →   252 teste
-backend   26.648 linii sursă + 23.117 linii teste  → 1.493 teste
-end-to-end 2.055 linii                             →    76 teste (browser real)
+frontend  20.787 linii sursă +  3.347 linii teste  →   254 teste
+backend   26.735 linii sursă + 23.229 linii teste  → 1.498 teste
+end-to-end 2.072 linii                             →    77 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.821 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.829 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -304,6 +304,13 @@ nu se vedea din cod — doar apăsând.
 
 Acum ambele citesc din aceeași sursă, iar un test verifică proprietatea direct:
 fiecare client pe care raportul îl listează trebuie să poată fi și întrebat.
+
+**Marcarea unui grup întreg.** Un cabinet depune declarație cu declarație: intră
+în SPV, depune D300 pentru toți clienții pe care îi are de depus în ziua aceea,
+iese. Gruparea de pe ecran este chiar unitatea de lucru, deci butonul stă pe ea.
+Ca la cererile în masă, se trimit **rândurile**, nu un criteriu: un „toate cele
+de pe 25 septembrie" interpretat de server ar putea prinde o declarație în plus,
+iar „depus" este o afirmație care ajunge într-o evidență contabilă.
 
 **Sweep-ul de securitate a prins ruta nouă**, cum trebuia: fiecare rută de
 documente trece printr-o revizuire explicită, iar una neacoperită oprește suita.

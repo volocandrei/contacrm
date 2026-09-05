@@ -398,6 +398,118 @@ class TestMarkingAFiling:
 
 
 @pytest.mark.usefixtures("as_admin")
+class TestMarkingManyAtOnce:
+    """Un cabinet depune D300 pentru douăzeci de clienți într-o singură ședință.
+
+    Bifate una câte una, asta înseamnă douăzeci de apăsări și douăzeci de
+    reîncărcări ale listei.
+    """
+
+    def test_a_stack_of_filings_goes_in_at_once(
+        self, api: TestClient, db: Session, client_row: Client, vat: ObligationType
+    ) -> None:
+        assign(db, client_row, vat)
+        rows = fetch(api)[:3]
+        assert len(rows) == 3
+
+        response = api.post(
+            f"{URL}/filings/bulk",
+            json={
+                "filings": [
+                    {
+                        "clientId": row["clientId"],
+                        "obligationTypeId": row["obligationTypeId"],
+                        "period": row["period"],
+                    }
+                    for row in rows
+                ]
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["marked"] == 3
+        assert response.json()["failed"] == []
+        filed = {row["period"] for row in fetch(api) if row["filedAt"] is not None}
+        assert {row["period"] for row in rows} <= filed
+
+    def test_one_bad_row_does_not_stop_the_others(
+        self, api: TestClient, db: Session, client_row: Client, vat: ObligationType
+    ) -> None:
+        """Omul a apăsat un buton, dar a confirmat douăzeci de depuneri."""
+        assign(db, client_row, vat)
+        good = fetch(api)[0]
+
+        response = api.post(
+            f"{URL}/filings/bulk",
+            json={
+                "filings": [
+                    {
+                        "clientId": good["clientId"],
+                        "obligationTypeId": str(uuid.uuid4()),
+                        "period": good["period"],
+                    },
+                    {
+                        "clientId": good["clientId"],
+                        "obligationTypeId": good["obligationTypeId"],
+                        "period": good["period"],
+                    },
+                ]
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["marked"] == 1
+        assert len(body["failed"]) == 1
+
+    def test_marking_the_same_row_twice_stays_one_filing(
+        self, api: TestClient, db: Session, client_row: Client, vat: ObligationType
+    ) -> None:
+        """Cine a depus rămâne cine a depus."""
+        assign(db, client_row, vat)
+        row = fetch(api)[0]
+        entry = {
+            "clientId": row["clientId"],
+            "obligationTypeId": row["obligationTypeId"],
+            "period": row["period"],
+        }
+
+        api.post(f"{URL}/filings/bulk", json={"filings": [entry]})
+        first = next(e for e in fetch(api) if e["period"] == row["period"])["filedAt"]
+        api.post(f"{URL}/filings/bulk", json={"filings": [entry]})
+
+        after = next(e for e in fetch(api) if e["period"] == row["period"])["filedAt"]
+        assert after == first
+
+    def test_an_empty_stack_is_refused(self, api: TestClient) -> None:
+        """Un teanc gol este o greșeală de ecran, nu o cerere validă."""
+        assert api.post(f"{URL}/filings/bulk", json={"filings": []}).status_code == 422
+
+    def test_an_operator_may_not_mark_a_stack_either(
+        self, api: TestClient, db: Session, org: Organization, roles: dict[RoleCode, Role]
+    ) -> None:
+        operator = make_user(
+            db, org, roles, email="operator2@contacrm.test", role=RoleCode.OPERATOR
+        )
+        api.post("/api/v1/auth/login", json={"email": operator.email, "password": PASSWORD})
+
+        response = api.post(
+            f"{URL}/filings/bulk",
+            json={
+                "filings": [
+                    {
+                        "clientId": str(uuid.uuid4()),
+                        "obligationTypeId": str(uuid.uuid4()),
+                        "period": "2026-08",
+                    }
+                ]
+            },
+        )
+
+        assert response.status_code == 403
+
+
+@pytest.mark.usefixtures("as_admin")
 class TestTheCatalogue:
     def test_the_deadline_belongs_to_the_office_not_to_the_application(
         self, api: TestClient, db: Session, client_row: Client, vat: ObligationType

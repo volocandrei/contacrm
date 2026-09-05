@@ -21,6 +21,7 @@ import {
   listObligationTypes,
   listObligations,
   markObligationFiled,
+  markObligationsFiled,
   mockLogin,
   setClientObligations,
   unmarkObligationFiled,
@@ -315,5 +316,40 @@ describe("permisiuni", () => {
         period: row.period,
       }),
     ).toThrow();
+  });
+});
+
+describe("marcarea unui teanc", () => {
+  it("intră toate deodată", () => {
+    // Un cabinet depune D300 pentru douăzeci de clienți într-o ședință.
+    mockLogin(ADMIN);
+    const rows = listObligations({})
+      .filter((row) => row.filedAt === null)
+      .slice(0, 3);
+
+    const result = markObligationsFiled(
+      rows.map((row) => ({
+        clientId: row.clientId,
+        obligationTypeId: row.obligationTypeId,
+        period: row.period,
+      })),
+    );
+
+    expect(result.marked).toBe(rows.length);
+    expect(result.failed).toEqual([]);
+  });
+
+  it("un rând greșit nu-i oprește pe ceilalți", () => {
+    // Omul a apăsat un buton, dar a confirmat douăzeci de depuneri.
+    mockLogin(ADMIN);
+    const good = listObligations({}).find((row) => row.filedAt === null)!;
+
+    const result = markObligationsFiled([
+      { clientId: "client-inexistent", obligationTypeId: good.obligationTypeId, period: good.period },
+      { clientId: good.clientId, obligationTypeId: good.obligationTypeId, period: good.period },
+    ]);
+
+    expect(result.marked).toBe(1);
+    expect(result.failed).toHaveLength(1);
   });
 });
