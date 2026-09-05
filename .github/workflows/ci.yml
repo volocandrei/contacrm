@@ -130,12 +130,21 @@ jobs:
       - run: npm run test:e2e
         working-directory: frontend
 
+      # `playwright-report/` este gol: raportorul din CI este `github` + `list`,
+      # nu `html`. Ce ajuta la un esec sta in `test-results/` — captura de ecran,
+      # `error-context.md` cu arborele paginii, si urma pentru `show-trace`.
+      #
+      # Fara ele, un test care cade doar pe Linux nu se poate diagnostica decat
+      # ghicind: exact situatia in care am scris randurile astea.
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
-          path: frontend/playwright-report/
+          name: playwright-esec
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
           retention-days: 7
+          if-no-files-found: ignore
 
   # Ce nu are voie să intre în repo, indiferent cine face push.
   hygiene:
