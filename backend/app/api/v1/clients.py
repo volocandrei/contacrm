@@ -14,9 +14,13 @@ from fastapi import APIRouter, Depends, Query, Request, status
 
 from app.api.deps import DbSession, client_ip, require_permission
 from app.api.v1.documents import to_list_item
-from app.core.errors import NotFoundError
+from app.api.v1.periods import MissingFilters
+from app.core.config import settings
+from app.core.errors import NotFoundError, ValidationError
+from app.domain.periods import filing_deadline
 from app.domain.permissions import Permission
 from app.models.client import Client
+from app.models.organization import Organization
 from app.models.user import User
 from app.repositories.client import ClientRepository
 from app.repositories.document import DocumentRepository
@@ -31,9 +35,11 @@ from app.schemas.client import (
     ContactOut,
     ContactUpdate,
 )
-from app.schemas.common import PageParams, Paginated
+from app.schemas.common import ApiModel, PageParams, Paginated
 from app.schemas.document import DocumentFilters, DocumentListItemOut
 from app.services.client_service import ActorContext, ClientService
+from app.services.document_request import build_request_message
+from app.services.period_service import PeriodService
 
 router = APIRouter(prefix="/clients", tags=["crm"])
 
@@ -87,6 +93,57 @@ def get_client(session: DbSession, user: ClientReader, client_id: uuid.UUID) -> 
         # răspunsul confirmă că id-ul există undeva.
         raise NotFoundError("Client", client_id)
     return _to_out(client, repository.accountant_names([client]))
+
+
+class DocumentRequestOut(ApiModel):
+    """Solicitarea de documente, gata de trimis."""
+
+    message: str
+
+
+@router.get("/{client_id}/document-request", response_model=DocumentRequestOut)
+def document_request(
+    session: DbSession,
+    user: ClientReader,
+    client_id: uuid.UUID,
+    filters: Annotated[MissingFilters, Query()],
+) -> DocumentRequestOut:
+    """Textul prin care i se cer clientului documentele lipsă.
+
+    **De ce vine de la server.** Mesajul spune numele cabinetului, listează ce
+    lipsește și dă termenul lunii: este conținut de business, nu formatare de
+    ecran. A stat o vreme în frontend, unde îl folosea butonul „Copiază
+    solicitarea". Din momentul în care îl cere și asistentul, două implementări
+    ar însemna că doi clienți primesc, în aceeași zi, două mesaje diferite de la
+    același cabinet.
+
+    Nu trimite nimic. Trimiterea cere un provider și rămâne în Faza 2; până
+    atunci textul pleacă din clientul de email al contabilului, cu semnătura lui.
+    """
+    client = ClientRepository(session).get(user.organization_id, client_id)
+    if client is None:
+        raise NotFoundError("Client", client_id)
+
+    views = PeriodService(session).list_periods(
+        user.organization_id, reference_month=filters.reference_month, client_id=client_id
+    )
+    missing = [item for item in views[0].checklist if not item.is_satisfied] if views else []
+    if not missing:
+        raise ValidationError(
+            "Clientul nu are documente lipsă în luna cerută.",
+            {"referenceMonth": ["Nimic de cerut."]},
+        )
+
+    organization = session.get(Organization, user.organization_id)
+    return DocumentRequestOut(
+        message=build_request_message(
+            client_name=client.name,
+            reference_month=filters.reference_month,
+            deadline=filing_deadline(filters.reference_month, day=settings.filing_deadline_day),
+            missing=missing,
+            organization_name=organization.name if organization else "Cabinetul dumneavoastră",
+        )
+    )
 
 
 @router.get("/{client_id}/contacts", response_model=list[ContactOut])

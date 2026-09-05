@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  16.282 linii sursă +  2.517 linii teste  →   202 teste
-backend   21.171 linii sursă + 18.279 linii teste  → 1.258 teste
-end-to-end 1.484 linii                             →    58 teste (browser real)
+frontend  16.743 linii sursă +  2.478 linii teste  →   200 teste
+backend   21.675 linii sursă + 18.486 linii teste  → 1.271 teste
+end-to-end 1.541 linii                             →    60 teste (browser real)
 migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.518 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.531 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -137,7 +137,7 @@ niciodată. „Integrări" stă separat de „Administrare" — „cum adaug un 
 | Zonă | Ecrane |
 |---|---|
 | Panou principal | KPI, inbox recent, „necesită atenție", perioade, cronologie |
-| CRM | listă clienți (filtre + paginare), detaliu client, **agendă de contacte căutabilă**, sarcini (kanban) |
+| CRM | listă clienți (filtre + paginare), detaliu client, **agendă de contacte căutabilă**, sarcini (kanban, cu adăugare) |
 | Documente | inbox, în procesare, verificare, **neatribuite**, arhivă, **ecranul de verificare** |
 | Contabilitate | perioade cu checklist, documente lipsă |
 | Comunicare | mesaje, șabloane, remindere |
@@ -150,11 +150,18 @@ termenul?" — și propune drumul către ecranul potrivit.
 
 Trei reguli îl țin onest. **Rulează ca utilizatorul**: fiecare întrebare se
 execută cu permisiunile lui, prin aceleași repository-uri ca rutele obișnuite,
-deci nu poate vedea peste ce vede el. **Doar citire**: nu aprobă, nu respinge,
-nu trimite — o aprobare este un act contabil cu nume și oră în jurnal, deci
-trebuie să aibă în spate un om care a apăsat, nu o propoziție interpretată. Și
-**nu inventează**: fiecare cifră vine dintr-o unealtă care a interogat baza; când
-nu știe, spune ce poate în schimb.
+deci nu poate vedea peste ce vede el. **Nu execută nimic**: uneltele `propose_*`
+*pregătesc* o acțiune — sarcina de notat, documentul de atribuit — și o trimit ca
+buton, cu rezumatul scris în cuvinte; apăsarea cheamă ruta obișnuită, cu aceeași
+urmă în jurnal ca atunci când omul ar fi făcut-o de mână. Aprobarea unui document
+nu se pregătește nici măcar așa: acolo trebuie să te uiți la document. Și **nu
+inventează**: fiecare cifră vine dintr-o unealtă care a interogat baza; când nu
+știe, spune ce poate în schimb.
+
+Poate și **scrie solicitarea** de documente pentru un client — același text ca
+butonul de pe „Documente lipsă", fiindcă vine din același loc de pe server. Două
+formulări ar însemna că doi clienți primesc, în aceeași zi, mesaje diferite de la
+același cabinet.
 
 Două motoare, același seam ca la OCR și stocare (ADR-004, ADR-005):
 
@@ -212,7 +219,7 @@ documentul aprobat și mai avea de făcut două lucruri pentru fiecare document
 următor. Scurtături: `Alt+S` salvează, `Alt+A` aprobă, `Alt+N` sare peste
 fără să atingă documentul.
 
-**Backendul simulat** (`src/api/mock/`, ~3.769 linii) implementează 66 de rute cu
+**Backendul simulat** (`src/api/mock/`, ~4.023 linii) implementează 68 de rute cu
 aceleași căi, paginare, filtrare, permisiuni și coduri de eroare ca API-ul real.
 Comutarea se face din `VITE_API_MODE` — restul aplicației nu știe cine răspunde.
 
@@ -438,7 +445,7 @@ Vechile și noile valori nu ies prin API: auditul răspunde la „cine, ce, cân
 „ce scria pe factură". Cine are nevoie de conținut deschide documentul, iar acea
 deschidere se auditează la rândul ei.
 
-Rute reale existente **azi**: **64 de căi** sub `/api/v1`, cu 77 de operații
+Rute reale existente **azi**: **65 de căi** sub `/api/v1`, cu 79 de operații
 HTTP — plus cele trei `/health/*` de la rădăcină și `/internal/run-queue`, care nu
 apare în OpenAPI pentru că nu face parte din contractul cu frontend-ul.
 

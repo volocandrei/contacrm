@@ -45,9 +45,19 @@ class LinkOut(ApiModel):
     path: str
 
 
+class ActionOut(ApiModel):
+    """O acțiune pregătită. Interfața o arată ca buton; nimic nu se execută aici."""
+
+    kind: str
+    label: str
+    summary: str
+    payload: dict[str, str]
+
+
 class ChatOut(ApiModel):
     text: str
     links: list[LinkOut]
+    actions: list[ActionOut]
     suggestions: list[str]
     #: Uneltele care au produs cifrele. Cine vrea să verifice, poate.
     used: list[str]
@@ -93,6 +103,7 @@ def chat(session: DbSession, user: CurrentUser, payload: ChatIn) -> ChatOut:
         reply = AssistantReply(
             text=f"{FALLBACK_NOTE}\n{reply.text}",
             links=reply.links,
+            actions=reply.actions,
             suggestions=reply.suggestions,
             used=reply.used,
         )
@@ -113,6 +124,15 @@ def chat(session: DbSession, user: CurrentUser, payload: ChatIn) -> ChatOut:
     return ChatOut(
         text=reply.text,
         links=[LinkOut(label=link.label, path=link.path) for link in reply.links],
+        actions=[
+            ActionOut(
+                kind=action.kind,
+                label=action.label,
+                summary=action.summary,
+                payload=action.payload,
+            )
+            for action in reply.actions
+        ],
         suggestions=list(reply.suggestions),
         used=list(reply.used),
         engine=engine,

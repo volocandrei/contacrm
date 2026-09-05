@@ -72,6 +72,23 @@ class TaskRepository:
             )
         ).first()
 
+    def client_exists(self, organization_id: uuid.UUID, client_id: uuid.UUID) -> bool:
+        """Clientul este al organizației și nu este șters.
+
+        Verificarea stă aici, nu în rută: un endpoint care o uită leagă tăcut o
+        sarcină de un client din alt cabinet.
+        """
+        stmt = select(Client.id).where(
+            Client.id == client_id,
+            Client.organization_id == organization_id,
+            Client.deleted_at.is_(None),
+        )
+        return self.session.scalar(stmt) is not None
+
+    def user_exists(self, organization_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+        stmt = select(User.id).where(User.id == user_id, User.organization_id == organization_id)
+        return self.session.scalar(stmt) is not None
+
     def describe(self, task: Task) -> TaskRow:
         """Numele pentru o singură sarcină — folosit după o actualizare."""
         assignee = aliased(User)

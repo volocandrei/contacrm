@@ -5,10 +5,12 @@
  * ecranul potrivit: „cât e de lucru?", „ce lipsește la Alfa Conta?", „când e
  * termenul?".
  *
- * **Ce nu face, deliberat.** Nu apasă butoane în locul tău. Nu aprobă, nu
- * respinge, nu trimite. O aprobare este un act contabil cu nume și oră în
- * jurnal — trebuie să aibă în spate un om care a apăsat, nu o propoziție
- * interpretată. Ce face este să propună un drum; tu îl deschizi.
+ * **Ce nu face, deliberat.** Nu apasă butoane în locul tău. O acțiune care lasă
+ * urmă în jurnal trebuie să aibă în spate un om care a apăsat, nu o propoziție
+ * interpretată. Ce face este să **pregătească**: un drum către ecranul potrivit,
+ * sau o acțiune gata compusă — sarcina de notat, documentul de atribuit — pe
+ * care o vezi scrisă în cuvinte înainte de a confirma. Aprobarea unui document
+ * nu se pregătește nici măcar așa: acolo trebuie să te uiți la document.
  *
  * **Ce nu vede.** Nimic peste ce vezi tu: serverul execută fiecare întrebare cu
  * permisiunile tale. Un rol fără drept pe clienți primește un refuz, nu
@@ -19,18 +21,19 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Bot, LoaderCircle, Send, User, X } from "lucide-react";
-import { useAssistant } from "@/api/hooks";
+import { ArrowRight, Bot, Check, LoaderCircle, Send, TriangleAlert, User, X } from "lucide-react";
+import { useAssignClient, useAssistant, useCreateTask } from "@/api/hooks";
 import { describeError } from "@/lib/errors";
 import { buttonPrimary, focusRing, iconChip, inputField, mutedText, surface } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import type { AssistantLink } from "@/types/domain";
+import type { AssistantAction, AssistantLink } from "@/types/domain";
 
 type Turn = {
   id: number;
   role: "user" | "assistant";
   text: string;
   links?: AssistantLink[];
+  actions?: AssistantAction[];
   suggestions?: string[];
 };
 
@@ -87,6 +90,7 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
             role: "assistant",
             text: reply.text,
             links: reply.links,
+            actions: reply.actions,
             suggestions: reply.suggestions,
           },
         ]),
@@ -136,10 +140,15 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
 
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           {turns.map((turn) => (
-            <Bubble key={turn.id} turn={turn} onFollowUp={send} onOpen={(path) => {
-              onClose();
-              navigate(path);
-            }} />
+            <Bubble
+              key={turn.id}
+              turn={turn}
+              onFollowUp={send}
+              onOpen={(path) => {
+                onClose();
+                navigate(path);
+              }}
+            />
           ))}
           {ask.isPending && (
             <p className={cn("flex items-center gap-2 text-sm", mutedText)}>
@@ -237,6 +246,12 @@ function Bubble({
           </div>
         )}
 
+        {/* Propunerile. Butoane care cheamă ruta obișnuită — nimic nu s-a
+            întâmplat până nu apeși. */}
+        {turn.actions?.map((action) => (
+          <ActionCard key={`${action.kind}-${action.label}`} action={action} />
+        ))}
+
         {turn.suggestions && turn.suggestions.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {turn.suggestions.map((suggestion) => (
@@ -255,6 +270,71 @@ function Bubble({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * O acțiune pregătită de asistent.
+ *
+ * Cheamă exact ruta pe care ar fi chemat-o omul din ecran, cu aceleași
+ * permisiuni și aceeași urmă în jurnal. Asistentul a compus doar corpul cererii,
+ * din date pe care le-a verificat — interfața nu completează nimic.
+ *
+ * După confirmare butonul rămâne, dezactivat, cu ce s-a întâmplat scris pe el:
+ * un buton care dispare lasă îndoiala dacă a apucat să facă ceva.
+ */
+function ActionCard({ action }: { action: AssistantAction }) {
+  const createTask = useCreateTask();
+  const assignClient = useAssignClient();
+  const [done, setDone] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const pending = createTask.isPending || assignClient.isPending;
+
+  function confirm() {
+    setProblem(null);
+    const onError = (caught: unknown) => setProblem(describeError(caught));
+    const onSuccess = () => setDone(true);
+
+    if (action.kind === "create_task") {
+      createTask.mutate(
+        { title: action.payload.title ?? "", assignedToId: action.payload.assignedToId ?? null },
+        { onSuccess, onError },
+      );
+      return;
+    }
+    assignClient.mutate(
+      { id: action.payload.documentId ?? "", clientId: action.payload.clientId ?? "" },
+      { onSuccess, onError },
+    );
+  }
+
+  return (
+    <div className={cn(surface, "space-y-2 p-3")}>
+      <p className={cn("text-xs", mutedText)}>{action.summary}</p>
+      <button
+        type="button"
+        onClick={confirm}
+        disabled={done || pending}
+        className={cn(buttonPrimary, "h-9 w-full", done && "bg-emerald-600 hover:bg-emerald-600")}
+      >
+        {done ? (
+          <>
+            <Check className="h-4 w-4" aria-hidden="true" />
+            Gata
+          </>
+        ) : (
+          action.label
+        )}
+      </button>
+      {problem && (
+        <p role="alert" className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
+          <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {problem}
+        </p>
+      )}
     </div>
   );
 }

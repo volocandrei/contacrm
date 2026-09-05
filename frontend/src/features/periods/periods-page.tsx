@@ -2,19 +2,18 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Check, CircleCheck, Copy, TriangleAlert } from "lucide-react";
 import { useMissingDocuments, usePeriods } from "@/api/hooks";
+import { clients } from "@/api/endpoints";
 import { MonthFilter, SelectFilter } from "@/components/form-controls";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { ProgressRing } from "@/components/charts";
 import { PeriodStatusBadge } from "@/components/status-badge";
-import { useAuth } from "@/features/auth/use-auth";
 import { PERIOD_STATUS_LABEL } from "@/lib/labels";
-import { buildRequestMessage } from "@/lib/request-message";
 import { buttonSecondary, divider, mutedText, pillClass } from "@/lib/ui";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { currentMonth } from "@/lib/current-month";
 import { formatReferenceMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { PERIOD_STATUS, type AccountingPeriod, type ChecklistItem } from "@/types/domain";
+import { PERIOD_STATUS, type AccountingPeriod } from "@/types/domain";
 
 export function PeriodsPage() {
   const { values, setValue } = useFilterParams({ referenceMonth: currentMonth(), status: "" });
@@ -108,7 +107,7 @@ export function MissingDocumentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {data?.map(({ period, missing, deadline }) => (
+                {data?.map(({ period, missing }) => (
                   <tr key={period.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                     <td className="px-4 py-3">
                       <Link
@@ -147,10 +146,9 @@ export function MissingDocumentsPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <CopyRequestButton
+                        clientId={period.clientId}
                         clientName={period.clientName}
                         referenceMonth={period.referenceMonth}
-                        deadline={deadline}
-                        missing={missing}
                       />
                     </td>
                   </tr>
@@ -271,40 +269,37 @@ const COPIED_FEEDBACK_MS = 2000;
  * Aplicația știe ce lipsește și până când, dar nu poate **trimite** — asta cere
  * un provider și rămâne în Faza 2. Între „știm" și „clientul află" stătea un om
  * care recitea tabelul și rescria lista de mână, de treizeci de ori pe lună.
- * Textul iese de aici gata scris; trimiterea rămâne a contabilului, din clientul
- * lui de email, cu semnătura lui.
+ * Textul iese gata scris; trimiterea rămâne a contabilului, din clientul lui de
+ * email, cu semnătura lui.
+ *
+ * **Textul vine de la server.** A fost o vreme compus aici, ceea ce era în
+ * regulă cât timp butonul ăsta era singurul care îl cerea. Din momentul în care
+ * îl scrie și asistentul, două formulări ar însemna că doi clienți primesc, în
+ * aceeași zi, mesaje diferite de la același cabinet.
  */
 function CopyRequestButton({
+  clientId,
   clientName,
   referenceMonth,
-  deadline,
-  missing,
 }: {
+  clientId: string;
   clientName: string;
   referenceMonth: string;
-  deadline: string;
-  missing: ChecklistItem[];
 }) {
-  const { user } = useAuth();
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
 
   async function copy() {
-    const message = buildRequestMessage({
-      clientName,
-      referenceMonth,
-      deadline,
-      missing,
-      organizationName: user?.organizationName ?? "Cabinetul dumneavoastră",
-    });
     try {
+      const { message } = await clients.documentRequest(clientId, referenceMonth);
       await navigator.clipboard.writeText(message);
       setCopied(true);
       setFailed(false);
       setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
     } catch {
-      // Clipboard-ul cere context sigur și, în unele browsere, permisiune. Dacă
-      // refuză, se spune — un buton care pare că a funcționat este mai rău.
+      // Clipboard-ul cere context sigur și, în unele browsere, permisiune; iar
+      // textul poate să nu vină deloc. Oricare ar fi motivul, se spune — un
+      // buton care pare că a funcționat este mai rău.
       setFailed(true);
     }
   }

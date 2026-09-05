@@ -73,6 +73,21 @@ class Intent:
 #: Un grup este o **conjuncție**: toate cuvintele din el trebuie să apară.
 INTENTS: tuple[Intent, ...] = (
     Intent(
+        tool="draft_request",
+        triggers=(("scrie", "solicitare"), ("cere", "documente"), ("mesaj", "client")),
+        argument="client",
+    ),
+    Intent(
+        tool="propose_task",
+        triggers=(("noteaza",), ("adauga sarcina",), ("sarcina noua",), ("aminteste",)),
+        argument="raw",
+    ),
+    Intent(
+        tool="propose_assignment",
+        triggers=(("atribuie",), ("neatribuit",), ("fara client",)),
+        argument="client",
+    ),
+    Intent(
         tool="client_month",
         triggers=(("lipseste", "la"), ("cum sta",), ("situatia", "la"), ("stadiu",)),
         argument="client",
@@ -134,7 +149,18 @@ def extract_client(text: str) -> str:
     Nu încearcă să fie deșteaptă. Dacă rămâne prea puțin, unealta întreabă.
     """
     normalised = normalise(text)
+    # Ordinea contează: se ia prima expresie găsită, deci cele lungi stau
+    # înaintea celor scurte. „atribuie documentele lui X" trebuie să lase „X",
+    # nu „documentele lui X".
     for phrase in (
+        "scrie solicitarea pentru",
+        "solicitarea pentru",
+        "cere documente de la",
+        "cere documentele de la",
+        "atribuie documentele lui",
+        "atribuie documentele catre",
+        "atribuie lui",
+        "atribuie",
         "ce lipseste la",
         "cum sta",
         "situatia la",
@@ -149,6 +175,21 @@ def extract_client(text: str) -> str:
         index = normalised.find(phrase)
         if index >= 0:
             return text[index + len(phrase) :].strip(" ?.,:;")
+    return text.strip(" ?.,:;")
+
+
+#: Cuvintele de comandă care nu fac parte din ce se cere. „notează să sun la
+#: Alfa" trebuie să devină sarcina „să sun la Alfa", nu „notează să sun la Alfa".
+_COMMAND_WORDS = ("noteaza", "adauga sarcina", "sarcina noua", "aminteste-mi", "aminteste")
+
+
+def extract_raw(text: str) -> str:
+    """Ce a cerut omul, fără cuvântul de comandă din față."""
+    normalised = normalise(text)
+    for phrase in _COMMAND_WORDS:
+        index = normalised.find(phrase)
+        if index >= 0:
+            return text[index + len(phrase) :].strip(" ?.,:;-")
     return text.strip(" ?.,:;")
 
 
@@ -175,11 +216,14 @@ class RuleAssistant:
                 argument = extract_month(text)
             elif intent.argument == "client":
                 argument = extract_client(text)
+            elif intent.argument == "raw":
+                argument = extract_raw(text)
 
             result = run_tool(intent.tool, self.session, context, argument)
             return AssistantReply(
                 text=result.text,
                 links=tuple(result.links),
+                actions=tuple(result.actions),
                 suggestions=tuple(result.suggestions) or self._suggestions(context),
                 used=(intent.tool,),
             )

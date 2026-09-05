@@ -33,6 +33,7 @@ import type {
   RoleInfo,
   SettingEntry,
   Task,
+  TaskPriority,
   TaskStatus,
   UserSummary,
 } from "@/types/domain";
@@ -124,6 +125,16 @@ export const clients = {
     expectations: Array<{ documentTypeCode: string; expectedMinCount: number }>,
   ) => api.put<ClientExpectation[]>(`/clients/${id}/expectations`, { expectations }),
   periods: (id: string) => api.get<AccountingPeriod[]>(`/clients/${id}/periods`),
+  /**
+   * Textul prin care i se cer clientului documentele lipsă.
+   *
+   * Vine de la server, nu se compune aici: mesajul spune numele
+   * cabinetului și listează ce lipsește — este conținut de business, iar
+   * asistentul îl scrie din același loc. Două formulări ar însemna că doi
+   * clienți primesc, în aceeași zi, mesaje diferite de la același cabinet.
+   */
+  documentRequest: (id: string, referenceMonth: string) =>
+    api.get<{ message: string }>(`/clients/${id}/document-request`, { referenceMonth }),
 };
 
 /**
@@ -176,8 +187,18 @@ export const periods = {
     api.get<MissingDocumentsEntry[]>("/periods/missing", { referenceMonth }),
 };
 
+export type TaskInput = {
+  title: string;
+  description?: string;
+  clientId?: string | null;
+  assignedToId?: string | null;
+  priority?: TaskPriority;
+  dueDate?: string | null;
+};
+
 export const tasks = {
   list: (params: QueryParams) => api.get<Task[]>("/tasks", params),
+  create: (input: TaskInput) => api.post<Task>("/tasks", { ...input }),
   updateStatus: (id: string, status: TaskStatus) => api.patch<Task>(`/tasks/${id}`, { status }),
 };
 

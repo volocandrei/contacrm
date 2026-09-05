@@ -23,17 +23,25 @@ from app.core.config import settings
 from app.domain.enums import DocumentStatus, TaskStatus
 from app.domain.periods import filing_deadline
 from app.domain.permissions import Permission
+from app.models.organization import Organization
 from app.models.task import Task
 from app.repositories.client import ClientRepository
 from app.repositories.document import DocumentRepository
 from app.schemas.client import ClientFilters
 from app.schemas.common import PageParams
-from app.services.assistant.base import AssistantContext, Link, ToolResult
+from app.schemas.document import DocumentFilters
+from app.services.assistant.base import Action, AssistantContext, Link, ToolResult
+from app.services.document_request import build_request_message
 from app.services.period_service import PeriodService
 
 #: Câte rânduri intră într-un răspuns de chat. Peste atât, răspunsul devine un
 #: tabel prost — omul are ecrane pentru asta, iar linkul îl duce acolo.
 MAX_ROWS = 5
+
+#: Cât poate avea titlul unei sarcini. Aceeași limită ca în schema rutei: un
+#: titlu care ar fi refuzat de server nu are de ce să ajungă până la butonul de
+#: confirmare.
+MAX_TASK_TITLE = 255
 
 
 @dataclass(frozen=True)
@@ -257,6 +265,143 @@ def my_tasks(session: Session, context: AssistantContext, _argument: str) -> Too
     )
 
 
+# ── Ce pregătește pentru un om ───────────────────────────────────────────────
+
+
+def draft_request(session: Session, context: AssistantContext, argument: str) -> ToolResult:
+    """Scrie solicitarea de documente pentru un client, gata de trimis.
+
+    Textul îl compune `document_request.py`, același de pe ecranul „Documente
+    lipsă": o a doua formulare ar însemna că doi clienți primesc, în aceeași zi,
+    două mesaje diferite de la același cabinet.
+    """
+    if not argument:
+        return ToolResult(text="Spune-mi pentru care client.")
+
+    clients, _ = ClientRepository(session).list(
+        context.organization_id, ClientFilters(q=argument), PageParams(page=1, page_size=2)
+    )
+    if not clients:
+        return ToolResult(text=f"Nu am găsit niciun client pentru „{argument}”.")
+    if len(clients) > 1:
+        return ToolResult(text="Sunt mai mulți clienți cu numele ăsta. Spune-mi numele întreg.")
+
+    client = clients[0]
+    month = previous_month()
+    views = PeriodService(session).list_periods(
+        context.organization_id, reference_month=month, client_id=client.id
+    )
+    gaps = [item for item in views[0].checklist if not item.is_satisfied] if views else []
+    if not gaps:
+        return ToolResult(
+            text=f"{client.name} nu are documente lipsă pe {month}. Nu e nimic de cerut."
+        )
+
+    message = build_request_message(
+        client_name=client.name,
+        reference_month=month,
+        deadline=filing_deadline(month, day=settings.filing_deadline_day),
+        missing=gaps,
+        organization_name=_organization_name(session, context),
+    )
+    return ToolResult(
+        text=message,
+        links=[
+            Link(
+                label="Documente lipsă",
+                path=f"/contabilitate/lipsa?referenceMonth={month}",
+            )
+        ],
+    )
+
+
+def propose_task(session: Session, context: AssistantContext, argument: str) -> ToolResult:
+    """Pregătește o sarcină, cu titlul cerut. Nu o creează.
+
+    Se atribuie celui care a cerut-o: „notează-mi" înseamnă „mie". Termenul și
+    clientul se pun după aceea, din kanban — o sarcină pe care nu o poți nota în
+    trei secunde nu se notează deloc.
+    """
+    title = argument.strip()
+    if not title:
+        return ToolResult(text="Spune-mi ce să notez.")
+    if len(title) > MAX_TASK_TITLE:
+        title = title[:MAX_TASK_TITLE].rstrip()
+
+    return ToolResult(
+        text=f"Pot nota sarcina „{title}”, pe numele tău.",
+        actions=[
+            Action(
+                kind="create_task",
+                label="Notează sarcina",
+                summary=f"Se creează sarcina „{title}”, atribuită ție.",
+                payload={"title": title, "assignedToId": str(context.user_id)},
+            )
+        ],
+        links=[Link(label="Sarcini", path="/crm/sarcini")],
+    )
+
+
+def propose_assignment(session: Session, context: AssistantContext, argument: str) -> ToolResult:
+    """Pregătește atribuirea documentelor neatribuite către un client.
+
+    Documentele fără client identificat sunt munca cea mai ingrată: cineva
+    trebuie să se uite la fiecare și să știe firmele. Asistentul găsește
+    clientul și pregătește atribuirea; apăsarea rămâne a omului, fiindcă o
+    atribuire greșită mută o factură în contabilitatea altei firme.
+    """
+    if not argument:
+        return ToolResult(text="Spune-mi către care client.")
+
+    clients, _ = ClientRepository(session).list(
+        context.organization_id, ClientFilters(q=argument), PageParams(page=1, page_size=2)
+    )
+    if not clients:
+        return ToolResult(text=f"Nu am găsit niciun client pentru „{argument}”.")
+    if len(clients) > 1:
+        return ToolResult(text="Sunt mai mulți clienți cu numele ăsta. Spune-mi numele întreg.")
+
+    client = clients[0]
+    unmatched, total = DocumentRepository(session).list(
+        context.organization_id,
+        DocumentFilters(status=DocumentStatus.UNMATCHED.value),
+        PageParams(page=1, page_size=MAX_ROWS),
+    )
+    if not unmatched:
+        return ToolResult(text="Nu există documente neatribuite.")
+
+    listed = "\n".join(f"• {row.document.original_filename}" for row in unmatched)
+    more = f" (din {total})" if total > len(unmatched) else ""
+    return ToolResult(
+        text=(
+            f"Sunt {total} documente neatribuite. Primele{more}:\n{listed}\n"
+            f"Le pot pregăti pentru {client.name} — verifică-le înainte de a confirma."
+        ),
+        actions=[
+            Action(
+                kind="assign_client",
+                label=f"Atribuie primul lui {client.name}",
+                summary=(
+                    f"„{unmatched[0].document.original_filename}” trece la {client.name} "
+                    "și intră la verificare."
+                ),
+                payload={
+                    "documentId": str(unmatched[0].document.id),
+                    "clientId": str(client.id),
+                },
+            )
+        ],
+        links=[Link(label="Neatribuite", path="/documente/neatribuite")],
+    )
+
+
+def _organization_name(session: Session, context: AssistantContext) -> str:
+    name = session.scalar(
+        select(Organization.name).where(Organization.id == context.organization_id)
+    )
+    return name or "Cabinetul dumneavoastră"
+
+
 # ── Registrul ────────────────────────────────────────────────────────────────
 
 TOOLS: tuple[Tool, ...] = (
@@ -293,6 +438,33 @@ TOOLS: tuple[Tool, ...] = (
         description="Cum stă un client cu luna în curs de depunere.",
         run=client_month,
         argument_hint="Numele firmei sau CUI-ul.",
+    ),
+    Tool(
+        name="draft_request",
+        permission=Permission.CLIENTS_READ,
+        description=(
+            "Scrie solicitarea de documente pentru un client, gata de trimis. "
+            "Nu trimite nimic — doar compune textul."
+        ),
+        run=draft_request,
+        argument_hint="Numele firmei sau CUI-ul.",
+    ),
+    Tool(
+        name="propose_task",
+        permission=Permission.TASKS_WRITE,
+        description=("Pregătește o sarcină cu titlul cerut. Nu o creează: omul confirmă."),
+        run=propose_task,
+        argument_hint="Ce trebuie făcut, ca titlu scurt.",
+    ),
+    Tool(
+        name="propose_assignment",
+        permission=Permission.DOCUMENTS_WRITE,
+        description=(
+            "Pregătește atribuirea unui document neatribuit către un client. "
+            "Nu atribuie: omul confirmă."
+        ),
+        run=propose_assignment,
+        argument_hint="Numele firmei căreia îi aparțin documentele.",
     ),
     Tool(
         name="my_tasks",

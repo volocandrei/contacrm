@@ -180,9 +180,25 @@ export type Contact = {
 /** Un drum propus de asistent. Nu se urmează singur: omul apasă. */
 export type AssistantLink = { label: string; path: string };
 
+/**
+ * O acțiune **pregătită** de asistent, nu executată.
+ *
+ * `payload` este corpul cererii, exact cum îl așteaptă ruta: interfața nu îl
+ * compune și nu îl completează. Apăsarea cheamă ruta obișnuită, cu permisiunile
+ * obișnuite și cu aceeași urmă în jurnal ca atunci când omul ar fi făcut-o de
+ * mână.
+ */
+export type AssistantAction = {
+  kind: "create_task" | "assign_client";
+  label: string;
+  summary: string;
+  payload: Record<string, string>;
+};
+
 export type AssistantReply = {
   text: string;
   links: AssistantLink[];
+  actions: AssistantAction[];
   suggestions: string[];
   /** Uneltele care au produs cifrele — cine vrea să verifice, poate. */
   used: string[];

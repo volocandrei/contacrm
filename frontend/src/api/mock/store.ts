@@ -32,6 +32,7 @@ import type {
   AnafMandate,
   AnafStatus,
   AnafSyncResult,
+  AssistantAction,
   AssistantLink,
   AssistantReply,
   AuditLogEntry,
@@ -1344,6 +1345,63 @@ export function listTasks(filters: { status?: string; assignedToId?: string; cli
   return [...items].sort((a, b) => order[a.status] - order[b.status]);
 }
 
+/**
+ * O sarcină nouă.
+ *
+ * Oglindește `POST /tasks`: titlul se taie de spații **înainte** de verificare
+ * (altfel „   " ar deveni o sarcină fără nume), iar clientul și colegul se caută
+ * în organizația celui care scrie — un id inventat nu devine o legătură tăcută
+ * către nimic.
+ */
+export function createTask(input: Record<string, unknown>): Task {
+  requirePermission("tasks:write");
+
+  const title = String(input.title ?? "").trim();
+  if (!title || title.length > 255) {
+    throw new ApiError("VALIDATION_ERROR", "Titlul este obligatoriu.", 422, {
+      title: ["Titlul este obligatoriu."],
+    });
+  }
+
+  const clientId = (input.clientId as string | undefined) ?? null;
+  if (clientId && !state.clients.some((row) => row.id === clientId)) {
+    throw new ApiError("VALIDATION_ERROR", "Clientul nu există.", 422, {
+      clientId: ["Client inexistent."],
+    });
+  }
+
+  const assignedToId = (input.assignedToId as string | undefined) ?? null;
+  const assignee = assignedToId ? state.users.find((row) => row.id === assignedToId) : undefined;
+  if (assignedToId && !assignee) {
+    throw new ApiError("VALIDATION_ERROR", "Colegul nu există.", 422, {
+      assignedToId: ["Utilizator inexistent."],
+    });
+  }
+
+  taskCounter += 1;
+  const task: Task = {
+    id: `task-nou-${taskCounter}`,
+    title,
+    description: String(input.description ?? "").trim(),
+    clientId,
+    clientName: clientId
+      ? (state.clients.find((row) => row.id === clientId)?.name ?? null)
+      : null,
+    assignedToId,
+    assignedToName: assignee?.fullName ?? null,
+    priority: (input.priority as Task["priority"]) ?? "NORMAL",
+    status: "TODO",
+    dueDate: (input.dueDate as string | undefined) ?? null,
+    createdAt: MOCK_NOW,
+    completedAt: null,
+  };
+  state.tasks.unshift(task);
+  recordAudit("TASK_CREATED", "Task", task.id, task.title);
+  return task;
+}
+
+let taskCounter = 0;
+
 export function updateTaskStatus(id: string, status: Task["status"]): Task {
   requirePermission("tasks:write");
   const task = state.tasks.find((t) => t.id === id) ?? notFound("Sarcină", id);
@@ -2344,6 +2402,69 @@ export function getSidebarCounts() {
   };
 }
 
+/* ─── Solicitarea de documente ─────────────────────────────────────────────── */
+
+/** Numele lunilor, ca într-un mesaj către un client. */
+const MONTH_NAMES = [
+  "ianuarie", "februarie", "martie", "aprilie", "mai", "iunie",
+  "iulie", "august", "septembrie", "octombrie", "noiembrie", "decembrie",
+];
+
+/**
+ * Oglinda lui `services/document_request.py`.
+ *
+ * Textul spune numele cabinetului, listează ce lipsește și dă termenul lunii:
+ * este conținut de business, nu formatare de ecran. Ecranul „Documente lipsă" și
+ * asistentul îl cer din același loc — două formulări ar însemna că doi clienți
+ * primesc, în aceeași zi, mesaje diferite de la același cabinet.
+ */
+export function buildDocumentRequest(clientId: string, referenceMonth: string): string {
+  const client = state.clients.find((row) => row.id === clientId);
+  if (!client) notFound("Client", clientId);
+
+  const period = state.periods.find(
+    (row) => row.clientId === clientId && row.referenceMonth === referenceMonth,
+  );
+  const missing = (period?.checklist ?? []).filter((item) => !item.isSatisfied);
+  if (missing.length === 0) {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      "Clientul nu are documente lipsă în luna cerută.",
+      422,
+      { referenceMonth: ["Nimic de cerut."] },
+    );
+  }
+
+  const [year, month] = referenceMonth.split("-");
+  const deadline = filingDeadline(referenceMonth);
+  const lines = missing.map((item) => {
+    // Câte bucăți mai lipsesc, nu doar că lipsește: „Facturi de achiziție" nu
+    // spune nimic unui client care crede că le-a trimis.
+    if (item.receivedCount > 0) {
+      const left = item.expectedMinCount - item.receivedCount;
+      const seen = `${item.receivedCount} din ${item.expectedMinCount}`;
+      return `• ${item.documentTypeLabel} — mai așteptăm ${left} (am primit ${seen})`;
+    }
+    const piece = item.expectedMinCount === 1 ? "bucată" : "bucăți";
+    return `• ${item.documentTypeLabel} — ${item.expectedMinCount} ${piece}`;
+  });
+
+  return [
+    "Bună ziua,",
+    "",
+    `Pentru evidența contabilă a lunii ${MONTH_NAMES[Number(month) - 1]} ${year} ` +
+      "mai avem nevoie de următoarele documente:",
+    "",
+    ...lines,
+    "",
+    `Vă rugăm să ni le transmiteți până la ${deadline.slice(8)}.${deadline.slice(5, 7)}.` +
+      `${deadline.slice(0, 4)}, ca declarațiile să poată fi depuse la timp.`,
+    "",
+    "Vă mulțumim,",
+    currentUser.organizationName,
+  ].join("\n");
+}
+
 /* ─── Asistentul (M13) ─────────────────────────────────────────────────────── */
 
 /**
@@ -2355,11 +2476,18 @@ export function getSidebarCounts() {
  *
  * Ca și acolo: **numai citire**. Asistentul propune un drum, omul îl deschide.
  */
+type AssistantToolResult = {
+  text: string;
+  links?: AssistantLink[];
+  suggestions?: string[];
+  actions?: AssistantAction[];
+};
+
 type AssistantTool = {
   name: string;
   permission: Permission;
   description: string;
-  run: (argument: string) => { text: string; links?: AssistantLink[]; suggestions?: string[] };
+  run: (argument: string) => AssistantToolResult;
 };
 
 /** Fără diacritice, litere mici — într-un chat se scrie repede. */
@@ -2517,6 +2645,91 @@ function assistantTools(): AssistantTool[] {
       },
     },
     {
+      name: "draft_request",
+      permission: "clients:read",
+      description:
+        "Scrie solicitarea de documente pentru un client, gata de trimis. Nu trimite nimic.",
+      run: (argument) => {
+        if (!argument) return { text: "Spune-mi pentru care client." };
+        const page = listClients({ q: argument, pageSize: 2 });
+        if (page.items.length === 0) {
+          return { text: `Nu am găsit niciun client pentru „${argument}”.` };
+        }
+        if (page.items.length > 1) {
+          return { text: "Sunt mai mulți clienți cu numele ăsta. Spune-mi numele întreg." };
+        }
+        const client = page.items[0]!;
+        const month = assistantPreviousMonth();
+        try {
+          return {
+            text: buildDocumentRequest(client.id, month),
+            links: [
+              { label: "Documente lipsă", path: `/contabilitate/lipsa?referenceMonth=${month}` },
+            ],
+          };
+        } catch {
+          return { text: `${client.name} nu are documente lipsă pe ${month}. Nu e nimic de cerut.` };
+        }
+      },
+    },
+    {
+      name: "propose_task",
+      permission: "tasks:write",
+      description: "Pregătește o sarcină cu titlul cerut. Nu o creează: omul confirmă.",
+      run: (argument) => {
+        const title = argument.trim().slice(0, 255);
+        if (!title) return { text: "Spune-mi ce să notez." };
+        return {
+          text: `Pot nota sarcina „${title}”, pe numele tău.`,
+          actions: [
+            {
+              kind: "create_task",
+              label: "Notează sarcina",
+              summary: `Se creează sarcina „${title}”, atribuită ție.`,
+              payload: { title, assignedToId: currentUser.id },
+            },
+          ],
+          links: [{ label: "Sarcini", path: "/crm/sarcini" }],
+        };
+      },
+    },
+    {
+      name: "propose_assignment",
+      permission: "documents:write",
+      description:
+        "Pregătește atribuirea unui document neatribuit către un client. Nu atribuie: omul confirmă.",
+      run: (argument) => {
+        if (!argument) return { text: "Spune-mi către care client." };
+        const page = listClients({ q: argument, pageSize: 2 });
+        if (page.items.length === 0) {
+          return { text: `Nu am găsit niciun client pentru „${argument}”.` };
+        }
+        if (page.items.length > 1) {
+          return { text: "Sunt mai mulți clienți cu numele ăsta. Spune-mi numele întreg." };
+        }
+        const client = page.items[0]!;
+        const unmatched = state.documents.filter((doc) => doc.status === "UNMATCHED");
+        if (unmatched.length === 0) return { text: "Nu există documente neatribuite." };
+
+        const listed = unmatched.slice(0, 5).map((doc) => `• ${doc.originalFilename}`).join("\n");
+        const first = unmatched[0]!;
+        return {
+          text:
+            `Sunt ${unmatched.length} documente neatribuite. Primele:\n${listed}\n` +
+            `Le pot pregăti pentru ${client.name} — verifică-le înainte de a confirma.`,
+          actions: [
+            {
+              kind: "assign_client",
+              label: `Atribuie primul lui ${client.name}`,
+              summary: `„${first.originalFilename}” trece la ${client.name} și intră la verificare.`,
+              payload: { documentId: first.id, clientId: client.id },
+            },
+          ],
+          links: [{ label: "Neatribuite", path: "/documente/neatribuite" }],
+        };
+      },
+    },
+    {
       name: "my_tasks",
       permission: "tasks:read",
       description: "Sarcinile deschise ale utilizatorului curent.",
@@ -2538,7 +2751,14 @@ function assistantTools(): AssistantTool[] {
 }
 
 /** Ordinea contează: de la cea mai îngustă intenție la cea mai largă. */
-const ASSISTANT_INTENTS: Array<{ tool: string; triggers: string[][]; argument?: "month" | "client" }> = [
+const ASSISTANT_INTENTS: Array<{
+  tool: string;
+  triggers: string[][];
+  argument?: "month" | "client" | "raw";
+}> = [
+  { tool: "draft_request", triggers: [["scrie", "solicitare"], ["cere", "documente"], ["mesaj", "client"]], argument: "client" },
+  { tool: "propose_task", triggers: [["noteaza"], ["adauga sarcina"], ["sarcina noua"], ["aminteste"]], argument: "raw" },
+  { tool: "propose_assignment", triggers: [["atribuie"], ["neatribuit"], ["fara client"]], argument: "client" },
   { tool: "client_month", triggers: [["lipseste", "la"], ["cum sta"], ["situatia", "la"], ["stadiu"]], argument: "client" },
   { tool: "missing_documents", triggers: [["lipse"], ["nu au trimis"], ["incomplet"], ["nu a venit"]], argument: "month" },
   { tool: "deadline", triggers: [["termen"], ["scadent"], ["deadline"]], argument: "month" },
@@ -2564,9 +2784,26 @@ function assistantMonth(text: string): string {
   return "";
 }
 
+/** Ce a cerut omul, fără cuvântul de comandă din față. */
+function assistantRaw(text: string): string {
+  const normalised = assistantNormalise(text);
+  for (const phrase of ["noteaza", "adauga sarcina", "sarcina noua", "aminteste-mi", "aminteste"]) {
+    const index = normalised.indexOf(phrase);
+    if (index >= 0) return text.slice(index + phrase.length).replace(/^[\s?.,:;-]+|[\s?.,:;-]+$/g, "");
+  }
+  return text.replace(/^[\s?.,:;]+|[\s?.,:;]+$/g, "");
+}
+
 function assistantClient(text: string): string {
   const normalised = assistantNormalise(text);
-  for (const phrase of ["ce lipseste la", "cum sta", "situatia la", "stadiu", "clientul", "client", "firma", "deschide", "caut", "cui"]) {
+  // Ordinea contează: prima expresie găsită câștigă, deci cele lungi stau
+  // înaintea celor scurte. Oglindește `extract_client` din backend.
+  for (const phrase of [
+    "scrie solicitarea pentru", "solicitarea pentru", "cere documente de la",
+    "cere documentele de la", "atribuie documentele lui", "atribuie documentele catre",
+    "atribuie lui", "atribuie", "ce lipseste la", "cum sta", "situatia la", "stadiu",
+    "clientul", "client", "firma", "deschide", "caut", "cui",
+  ]) {
     const index = normalised.indexOf(phrase);
     if (index >= 0) return text.slice(index + phrase.length).replace(/^[\s?.,:;]+|[\s?.,:;]+$/g, "");
   }
@@ -2599,6 +2836,7 @@ export function assistantAnswer(message: string): AssistantReply {
       return {
         text: `Rolul tău nu include permisiunea \`${tool.permission}\`, deci nu pot răspunde la asta.`,
         links: [],
+        actions: [],
         suggestions,
         used: [],
         engine: "rules",
@@ -2610,11 +2848,14 @@ export function assistantAnswer(message: string): AssistantReply {
         ? assistantMonth(text)
         : intent.argument === "client"
           ? assistantClient(text)
-          : "";
+          : intent.argument === "raw"
+            ? assistantRaw(text)
+            : "";
     const result = tool.run(argument);
     return {
       text: result.text,
       links: result.links ?? [],
+      actions: result.actions ?? [],
       suggestions: result.suggestions ?? suggestions,
       used: [tool.name],
       engine: "rules",
@@ -2625,6 +2866,7 @@ export function assistantAnswer(message: string): AssistantReply {
   return {
     text: `${lead} Pot răspunde la:\n${allowed.map((tool) => `• ${tool.description}`).join("\n")}`,
     links: [],
+    actions: [],
     suggestions,
     used: [],
     engine: "rules",

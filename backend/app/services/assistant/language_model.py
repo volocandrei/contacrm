@@ -16,8 +16,10 @@ cu reguli acoperă întrebările scurte și frecvente; ăsta acoperă restul.
 - **Uneltele sunt aceleași**, cu aceeași barieră de permisiuni. Un model nu poate
   inventa o unealtă, iar una refuzată întoarce refuzul — pe care modelul îl
   explică, în loc să ocolească.
-- **Tot numai citire.** Nu există nicio unealtă care schimbă date, deci nu există
-  ce să fie folosit greșit.
+- **Modelul nu schimbă nimic.** Uneltele care încep cu `propose_` *pregătesc* o
+  acțiune și o trimit interfeței ca buton; execuția cere apăsarea unui om și
+  trece prin ruta obișnuită, cu permisiunile și jurnalul obișnuite. Modelul nu
+  poate nici compune singur o propunere: id-urile din ea vin din unelte.
 - **Linkurile sunt ale noastre.** Ce apare ca drum în răspuns vine din uneltele
   executate, nu din textul modelului: un model nu are cum să trimită omul la o
   adresă inventată.
@@ -38,6 +40,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.services.assistant.base import (
+    Action,
     AssistantContext,
     AssistantError,
     AssistantReply,
@@ -61,8 +64,10 @@ Reguli, în ordinea importanței:
 
 1. Răspunde DOAR pe baza rezultatelor uneltelor. Nu presupune și nu completa \
 cifre din memorie. Dacă uneltele nu îți dau răspunsul, spune limpede că nu știi.
-2. Nu poți executa nicio acțiune care schimbă date. Nu promite că aprobi, \
-respingi, ștergi sau trimiți ceva. Poți doar să afli și să arăți unde se face.
+2. Nu poți executa nicio acțiune care schimbă date. Uneltele care încep cu \
+`propose_` doar PREGĂTESC ceva: omul apasă un buton ca să se întâmple. Spune \
+limpede că ai pregătit, nu că ai făcut. Nu promite că aprobi, respingi, ștergi \
+sau trimiți.
 3. Scrie în română, scurt, la obiect. Fără formule de politețe lungi. \
 Cifrele exacte, așa cum le-au dat uneltele.
 4. Dacă o unealtă refuză din lipsă de permisiune, spune omului ce permisiune \
@@ -118,6 +123,7 @@ class LanguageModelAssistant:
 
         used: list[str] = []
         links: list[Link] = []
+        actions: list[Action] = []
 
         for _round in range(self._max_rounds):
             response = self._call(conversation, declared)
@@ -129,6 +135,9 @@ class LanguageModelAssistant:
                 return AssistantReply(
                     text=_text_of(blocks) or "Nu am găsit un răspuns.",
                     links=tuple(links),
+                    # Propunerile vin din unelte, ca și linkurile: un model nu
+                    # poate compune singur o acțiune și nici id-urile din ea.
+                    actions=tuple(actions),
                     used=tuple(used),
                 )
 
@@ -154,6 +163,7 @@ class LanguageModelAssistant:
 
                 used.append(name)
                 links.extend(result.links)
+                actions.extend(result.actions)
                 results.append(
                     {
                         "type": "tool_result",

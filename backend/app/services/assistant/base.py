@@ -66,11 +66,33 @@ class Link:
 
 
 @dataclass(frozen=True)
+class Action:
+    """O acțiune **pregătită**, nu executată.
+
+    Asistentul o compune din date reale — id-uri verificate, nu nume ghicite — și
+    o trimite interfeței, care o arată ca buton. Apăsarea cheamă ruta obișnuită,
+    cu permisiunile obișnuite și cu aceeași urmă în jurnal ca atunci când omul ar
+    fi făcut-o de mână. Nimic nu se execută din chat.
+
+    `label` este ce scrie pe buton, `summary` ce se întâmplă dacă îl apeși —
+    scrise pentru cineva care nu a citit conversația.
+    """
+
+    kind: str
+    label: str
+    summary: str
+    #: Corpul cererii, exact cum îl așteaptă ruta. Interfața nu îl compune.
+    payload: dict[str, str]
+
+
+@dataclass(frozen=True)
 class AssistantReply:
     """Răspunsul: text pentru om, linkuri pentru mâna lui."""
 
     text: str
     links: tuple[Link, ...] = ()
+    #: Ce se poate face, dacă omul confirmă. Gol pentru întrebările de aflat.
+    actions: tuple[Action, ...] = ()
     #: Ce ar mai putea întreba. Un chat fără sugestii se folosește o dată.
     suggestions: tuple[str, ...] = ()
     #: Numele uneltelor care au produs cifrele. Cine vrea să verifice, poate.
@@ -79,11 +101,12 @@ class AssistantReply:
 
 @dataclass
 class ToolResult:
-    """Ce întoarce o unealtă: text pentru răspuns, plus eventuale linkuri."""
+    """Ce întoarce o unealtă: text pentru răspuns, plus linkuri și propuneri."""
 
     text: str
     links: list[Link] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
+    actions: list[Action] = field(default_factory=list)
 
 
 class AssistantProvider(Protocol):

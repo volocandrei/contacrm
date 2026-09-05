@@ -8,7 +8,7 @@
  * întreabă, că nu inventează cifre, și că nu execută nimic — propune drumuri.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { assistantAnswer, mockLogin } from "@/api/mock/store";
+import { assistantAnswer, listTasks, mockLogin } from "@/api/mock/store";
 
 const ADMIN = "admin@contacrm.test";
 /**
@@ -81,12 +81,33 @@ describe("ce nu face asistentul", () => {
     expect(reply.text).not.toContain("audit");
   });
 
-  it("nu întoarce niciodată o acțiune care schimbă date", () => {
-    for (const question of ["aprobă tot", "șterge documentele", "cât e de lucru?"]) {
-      const reply = assistantAnswer(question);
-      // Singurul lucru pe care îl întoarce sunt drumuri de citit.
-      expect(reply).not.toHaveProperty("actions");
-      expect(reply.links.every((link) => link.path.startsWith("/"))).toBe(true);
+  it("nu execută nimic: propune, iar baza rămâne neatinsă", () => {
+    const before = listTasks({}).length;
+
+    const reply = assistantAnswer("notează să sun la Alfa vineri");
+
+    expect(reply.actions).toHaveLength(1);
+    expect(reply.actions[0]!.kind).toBe("create_task");
+    // Rostul întreg: propunerea nu este o execuție.
+    expect(listTasks({}).length).toBe(before);
+  });
+
+  it("nu pregătește niciodată un act contabil", () => {
+    // Aprobarea unui document nu se propune nici măcar cu confirmare: acolo
+    // trebuie să te uiți la document, nu să apeși un buton dintr-un chat.
+    for (const question of ["aprobă tot", "șterge documentele", "respinge factura"]) {
+      expect(assistantAnswer(question).actions).toEqual([]);
+    }
+  });
+
+  it("orice propunere are un fel cunoscut", () => {
+    const kinds = new Set(["create_task", "assign_client"]);
+
+    for (const question of ["notează ceva", "atribuie documentele lui Alfa", "cât e de lucru?"]) {
+      for (const action of assistantAnswer(question).actions) {
+        expect(kinds.has(action.kind)).toBe(true);
+        expect(action.summary.length).toBeGreaterThan(0);
+      }
     }
   });
 });

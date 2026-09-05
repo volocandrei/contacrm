@@ -23,6 +23,7 @@ import {
   type BulkPayload,
   type ClientInput,
   type ContactInput,
+  type TaskInput,
 } from "@/api/endpoints";
 import type { DocumentDetail, DocumentFieldName, RoleCode, TaskStatus } from "@/types/domain";
 
@@ -510,6 +511,18 @@ export function useBulkDocuments() {
       void queryClient.invalidateQueries({ queryKey: ["documents"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       void queryClient.invalidateQueries({ queryKey: ["periods"] });
+    },
+  });
+}
+
+/** O sarcină nouă. Invalidează listele: kanbanul trebuie să o arate imediat. */
+export function useCreateTask() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TaskInput) => tasks.create(input),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["tasks"] });
+      void client.invalidateQueries({ queryKey: queryKeys.sidebarCounts });
     },
   });
 }

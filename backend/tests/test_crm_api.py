@@ -504,3 +504,91 @@ class TestAuthorization:
 
         login(api, admin.email)
         assert api.patch(f"/api/v1/tasks/{foreign.id}", json={"status": "DONE"}).status_code == 404
+
+
+class TestCreatingATask:
+    """Kanbanul putea muta sarcini, dar nu putea adăuga niciuna.
+
+    Singurele existente veneau din setul de development: un cabinet care își
+    nota „de sunat la Alfa până vineri" nu avea unde.
+    """
+
+    def test_a_title_is_enough(self, api: TestClient, admin: User) -> None:
+        """O sarcină pe care nu o poți nota în trei secunde nu se notează deloc."""
+        login(api, admin.email)
+
+        response = api.post("/api/v1/tasks", json={"title": "De sunat la Alfa"})
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["title"] == "De sunat la Alfa"
+        assert body["status"] == "TODO"
+        assert body["priority"] == "NORMAL"
+        assert body["completedAt"] is None
+
+    def test_it_shows_up_in_the_list(self, api: TestClient, admin: User) -> None:
+        login(api, admin.email)
+        api.post("/api/v1/tasks", json={"title": "Apare în listă"})
+
+        titles = [row["title"] for row in api.get("/api/v1/tasks").json()]
+
+        assert "Apare în listă" in titles
+
+    def test_a_client_from_another_office_is_refused(
+        self,
+        api: TestClient,
+        db: Session,
+        roles: dict[RoleCode, Role],
+        admin: User,
+    ) -> None:
+        """Altfel, o sarcină s-ar lega tăcut de un client din alt cabinet."""
+        other = Organization(name="Cabinet Străin SRL")
+        db.add(other)
+        db.flush()
+        stranger = Client(organization_id=other.id, name="Client Străin SRL")
+        db.add(stranger)
+        db.commit()
+        login(api, admin.email)
+
+        response = api.post(
+            "/api/v1/tasks", json={"title": "Nu ai voie", "clientId": str(stranger.id)}
+        )
+
+        assert response.status_code == 422, response.text
+        assert "clientId" in response.json()["details"]
+
+    def test_an_invented_colleague_is_refused(self, api: TestClient, admin: User) -> None:
+        """Un id inventat nu devine o legătură tăcută către nimic."""
+        login(api, admin.email)
+
+        response = api.post(
+            "/api/v1/tasks",
+            json={"title": "Pentru cine?", "assignedToId": str(uuid.uuid4())},
+        )
+
+        assert response.status_code == 422
+
+    def test_an_empty_title_is_refused(self, api: TestClient, admin: User) -> None:
+        login(api, admin.email)
+        assert api.post("/api/v1/tasks", json={"title": "   "}).status_code == 422
+
+    def test_creating_needs_tasks_write(
+        self, api: TestClient, db: Session, org: Organization, roles: dict[RoleCode, Role]
+    ) -> None:
+        viewer = make_user(db, org, roles, email="nu-scrie@contacrm.test", role=RoleCode.VIEWER)
+        db.commit()
+        login(api, viewer.email)
+
+        assert api.post("/api/v1/tasks", json={"title": "Nu am voie"}).status_code == 403
+
+    def test_it_leaves_a_trace(self, api: TestClient, db: Session, admin: User) -> None:
+        login(api, admin.email)
+        api.post("/api/v1/tasks", json={"title": "Cu urmă"})
+
+        entry = db.scalars(
+            select(AuditLog)
+            .where(AuditLog.action == "TASK_CREATED")
+            .order_by(AuditLog.created_at.desc())
+        ).first()
+        assert entry is not None
+        assert entry.detail == "Cu urmă"

@@ -84,6 +84,13 @@ const routes: Route[] = [
   },
   {
     method: "GET",
+    pattern: "/clients/:id/document-request",
+    handler: ({ params, query }) => ({
+      message: store.buildDocumentRequest(params.id!, query.referenceMonth ?? ""),
+    }),
+  },
+  {
+    method: "GET",
     pattern: "/clients/:id/contacts",
     handler: ({ params }) => store.listContacts(params.id!),
   },
@@ -315,6 +322,11 @@ const routes: Route[] = [
 
   /* Sarcini */
   { method: "GET", pattern: "/tasks", handler: ({ query }) => store.listTasks(query) },
+  {
+    method: "POST",
+    pattern: "/tasks",
+    handler: ({ body }) => store.createTask(body),
+  },
   {
     method: "PATCH",
     pattern: "/tasks/:id",
