@@ -23,7 +23,10 @@ from app.models.audit import AuditLog
 from app.models.client import Client
 from app.models.document import Document, DocumentProcessingJob, DocumentType
 from app.models.organization import Organization
-from app.services.document_processing import DocumentProcessingService
+from app.services.document_processing import (
+    SEMANTIC_DUPLICATE_ISSUE,
+    DocumentProcessingService,
+)
 from app.services.document_upload import DocumentUploadService
 from app.services.document_validation import DocumentValidationService, ValidationLevel
 from app.services.extraction.base import (
@@ -566,3 +569,290 @@ def test_auto_approval_stays_off_by_default(
     ).process(org.id, document.id)
 
     assert outcome.status is DocumentStatus.REVIEW_REQUIRED
+
+
+# ── Duplicatul semantic ──────────────────────────────────────────────────────
+
+
+def _same_invoice(**overrides: str | None) -> ExtractionResult:
+    """Extracția aceleiași facturi, indiferent din ce fișier vine.
+
+    Providerul mock este determinist **pe conținut**, deci două fișiere diferite
+    dau valori diferite — exact opusul a ce trebuie aici. Fotografia și scanul
+    aceleiași facturi au alți octeți și aceleași date scrise pe ele.
+    """
+    values = {
+        "supplierTaxId": "RO12345678",
+        "series": "FCT",
+        "documentNumber": "1042",
+        "totalAmount": "1190.00",
+    }
+    values.update({key: value for key, value in overrides.items() if value is not None})
+    for key, value in overrides.items():
+        if value is None:
+            values.pop(key, None)
+    return ExtractionResult(
+        provider="test",
+        duration_ms=1,
+        ocr_text="factura",
+        ocr_confidence=0.9,
+        document_type_code="FACTURA_INTRARE",
+        classification_confidence=0.9,
+        fields={
+            name: ExtractedValue(value=value, confidence=0.9) for name, value in values.items()
+        },
+    )
+
+
+def _extracting(monkeypatch: pytest.MonkeyPatch, result: ExtractionResult) -> None:
+    def fixed(_self: object, _source: ExtractionInput) -> ExtractionResult:
+        return result
+
+    monkeypatch.setattr(MockDocumentExtractionProvider, "extract", fixed)
+
+
+class TestSemanticDuplicates:
+    """Aceeași factură, alți octeți.
+
+    Detecția pe SHA-256 vede doar fișierul identic bit cu bit. Aceeași factură
+    fotografiată de două ori, sau sosită și pe email și prin linkul de încărcare,
+    trecea ca document nou — iar o factură înregistrată de două ori este o eroare
+    contabilă, nu o neplăcere de interfață.
+
+    Indexul `ix_documents_supplier_tax_id_document_number` exista din M5 pentru
+    exact această căutare și nu era folosit de nimeni.
+    """
+
+    def test_the_same_invoice_in_a_different_file_is_flagged(
+        self,
+        db: Session,
+        storage: LocalStorageProvider,
+        org: Organization,
+        types: dict[str, DocumentType],
+        client_row: Client,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Motivul pentru care există strategia."""
+        _extracting(monkeypatch, _same_invoice())
+        first = upload(db, storage, org, content=PDF, client=client_row)
+        service(db, storage).process(org.id, first.id)
+
+        # Alți octeți: hash diferit, deci detecția de la încărcare nu vede nimic.
+        second = upload(db, storage, org, content=PDF + b"\n", client=client_row)
+        assert second.is_duplicate is False
+
+        service(db, storage).process(org.id, second.id)
+
+        assert second.duplicate_of_id == first.id
+        assert second.status is DocumentStatus.REVIEW_REQUIRED
+        assert SEMANTIC_DUPLICATE_ISSUE in second.validation_issues
+
+    def test_it_is_not_marked_as_a_duplicate_by_itself(
+        self,
+        db: Session,
+        storage: LocalStorageProvider,
+        org: Organization,
+        types: dict[str, DocumentType],
+        client_row: Client,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Potrivirea se sprijină pe câmpuri **citite**.
+
+        Un număr citit greșit ar scoate din registru un document bun, iar o
+        omisiune tăcută dintr-un registru contabil se descoperă la un control.
+        Documentul rămâne în registru, cu bănuiala scrisă lângă el, și un om
+        decide.
+        """
+        _extracting(monkeypatch, _same_invoice())
+        first = upload(db, storage, org, content=PDF, client=client_row)
+        service(db, storage).process(org.id, first.id)
+        second = upload(db, storage, org, content=PDF + b"\n", client=client_row)
+
+        service(db, storage).process(org.id, second.id)
+
+        assert second.is_duplicate is False
+        assert second.status is not DocumentStatus.DUPLICATE
+
+    def test_two_different_invoices_from_the_same_supplier_are_left_alone(
+        self,
+        db: Session,
+        storage: LocalStorageProvider,
+        org: Organization,
+        types: dict[str, DocumentType],
+        client_row: Client,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Un furnizor trimite multe facturi. Numărul le deosebește."""
+        _extracting(monkeypatch, _same_invoice())
+        first = upload(db, storage, org, content=PDF, client=client_row)
+        service(db, storage).process(org.id, first.id)
+
+        _extracting(monkeypatch, _same_invoice(documentNumber="1043"))
+        second = upload(db, storage, org, content=PDF + b"\n", client=client_row)
+        service(db, storage).process(org.id, second.id)
+
+        assert second.duplicate_of_id is None
+        assert SEMANTIC_DUPLICATE_ISSUE not in second.validation_issues
+
+    def test_the_same_number_from_another_supplier_is_left_alone(
+        self,
+        db: Session,
+        storage: LocalStorageProvider,
+        org: Organization,
+        types: dict[str, DocumentType],
+        client_row: Client,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Numărul 1042 îl are, în aceeași lună, aproape fiecare furnizor."""
+        _extracting(monkeypatch, _same_invoice())
+        first = upload(db, storage, org, content=PDF, client=client_row)
+        service(db, storage).process(org.id, first.id)
+
+        _extracting(monkeypatch, _same_invoice(supplierTaxId="RO99887766"))
+        second = upload(db, storage, org, content=PDF + b"\n", client=client_row)
+        service(db, storage).process(org.id, second.id)
+
+        assert second.duplicate_of_id is None
+
+    def test_the_tax_id_matches_with_or_without_the_ro_prefix(
+        self,
+        db: Session,
+        storage: LocalStorageProvider,
+        org: Organization,
+        types: dict[str, DocumentType],
+        client_row: Client,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`RO12345678` și `12345678` sunt aceeași firmă.
+
+        Prefixul spune cine este plătitor de TVA azi, nu cine este firma, iar pe
+        două documente ale aceluiași furnizor poate fi scris diferit.
+        """
+        _extracting(monkeypatch, _same_invoice())
+        first = upload(db, storage, org, content=PDF, client=client_row)
+        service(db, storage).process(org.id, first.id)
+
+        _extracting(monkeypatch, _same_invoice(supplierTaxId="12345678"))
+        second = upload(db, storage, org, content=PDF + b"\n", client=client_row)
+        service(db, storage).process(org.id, second.id)
+
+        assert second.duplicate_of_id == first.id
+
+    def test_a_document_without_a_supplier_is_never_flagged(
+        self,
+        db: Session,
+        storage: LocalStorageProvider,
+        org: Organization,
+        types: dict[str, DocumentType],
+        client_row: Client,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Un bon fiscal fără CUI s-ar potrivi cu oricare altul.
+
+        Zece semnalări false pe zi golesc de sens toate semnalările — inclusiv pe
+        cele adevărate.
+        """
+        _extracting(monkeypatch, _same_invoice(supplierTaxId=None))
+        first = upload(db, storage, org, content=PDF, client=client_row)
+        service(db, storage).process(org.id, first.id)
+        second = upload(db, storage, org, content=PDF + b"\n", client=client_row)
+
+        service(db, storage).process(org.id, second.id)
+
+        assert second.duplicate_of_id is None
+
+    def test_another_organizations_invoice_is_never_the_twin(
+        self,
+        db: Session,
+        storage: LocalStorageProvider,
+        org: Organization,
+        types: dict[str, DocumentType],
+        client_row: Client,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Două cabinete pot avea, legitim, facturi de la același furnizor (§72)."""
+        stranger = Organization(name="Alt Cabinet SRL")
+        db.add(stranger)
+        db.flush()
+        # Tipurile de document sunt per organizație: fără ele, procesarea celuilalt
+        # cabinet ar cădea pe „Tip de document necunoscut" și testul ar trece din
+        # motivul greșit.
+        for index, seed in enumerate(DEFAULT_DOCUMENT_TYPES):
+            db.add(
+                DocumentType(
+                    organization_id=stranger.id,
+                    code=seed.code,
+                    label=seed.label,
+                    sort_order=index,
+                    required_fields=list(seed.required_fields),
+                )
+            )
+        db.flush()
+
+        _extracting(monkeypatch, _same_invoice())
+        theirs = upload(db, storage, stranger, content=PDF, client=None)
+        service(db, storage).process(stranger.id, theirs.id)
+
+        ours = upload(db, storage, org, content=PDF + b"\n", client=client_row)
+        service(db, storage).process(org.id, ours.id)
+
+        assert ours.duplicate_of_id is None
+
+    def test_the_suspicion_disappears_once_the_number_is_corrected(
+        self,
+        db: Session,
+        storage: LocalStorageProvider,
+        org: Organization,
+        types: dict[str, DocumentType],
+        client_row: Client,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Altfel panoul „Posibil duplicat" ar rămâne pe ecran pentru totdeauna.
+
+        Iar a doua oară nimeni nu l-ar mai citi.
+        """
+        _extracting(monkeypatch, _same_invoice())
+        first = upload(db, storage, org, content=PDF, client=client_row)
+        service(db, storage).process(org.id, first.id)
+        second = upload(db, storage, org, content=PDF + b"\n", client=client_row)
+        service(db, storage).process(org.id, second.id)
+        assert second.duplicate_of_id == first.id
+
+        # Numărul fusese citit greșit; la reprocesare se citește altul.
+        _extracting(monkeypatch, _same_invoice(documentNumber="1043"))
+        second.status = DocumentStatus.RECEIVED
+        db.flush()
+        service(db, storage).process(org.id, second.id)
+
+        assert second.duplicate_of_id is None
+        assert SEMANTIC_DUPLICATE_ISSUE not in second.validation_issues
+
+    def test_a_duplicate_already_marked_by_a_person_is_not_offered_as_the_twin(
+        self,
+        db: Session,
+        storage: LocalStorageProvider,
+        org: Organization,
+        types: dict[str, DocumentType],
+        client_row: Client,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Un duplicat arată deja spre originalul lui.
+
+        Trimițând al treilea document spre el, lanțul ar duce la un rând pe care
+        nimeni nu-l mai înregistrează, nu la factura adevărată.
+        """
+        _extracting(monkeypatch, _same_invoice())
+        first = upload(db, storage, org, content=PDF, client=client_row)
+        service(db, storage).process(org.id, first.id)
+        second = upload(db, storage, org, content=PDF + b"\n", client=client_row)
+        service(db, storage).process(org.id, second.id)
+
+        second.is_duplicate = True
+        second.duplicate_of_id = first.id
+        second.status = DocumentStatus.DUPLICATE
+        db.flush()
+
+        third = upload(db, storage, org, content=PDF + b"\n\n", client=client_row)
+        service(db, storage).process(org.id, third.id)
+
+        assert third.duplicate_of_id == first.id

@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  19.218 linii sursă +  2.966 linii teste  →   229 teste
-backend   24.704 linii sursă + 21.298 linii teste  → 1.405 teste
-end-to-end 1.870 linii                             →    69 teste (browser real)
+frontend  19.231 linii sursă +  2.966 linii teste  →   229 teste
+backend   24.849 linii sursă + 21.588 linii teste  → 1.414 teste
+end-to-end 1.891 linii                             →    70 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.703 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.713 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -268,6 +268,49 @@ Ecranul spune **„Pregătit"**, nu „Trimis". Aplicația nu trimite (Faza 2): 
 se copiază și pleacă din clientul de email al contabilului, deci tot ce știe
 sigur este că cererea a fost compusă. „Trimis" ar fi o promisiune pe care nimic
 din spate nu o acoperă.
+
+### Aceeași factură, alți octeți
+
+Detecția duplicatelor vedea doar fișierul identic bit cu bit. Aceeași factură
+**fotografiată de două ori** are alți octeți; la fel una sosită și pe email, și
+prin linkul de încărcare; la fel un PDF rescanat. Toate treceau ca documente noi.
+O factură înregistrată de două ori nu este o neplăcere de interfață, este o
+eroare contabilă.
+
+`find_semantic_duplicate` compară datele de identificare: codul fiscal al
+furnizorului, seria și numărul. Legal, tripletul identifică o factură în mod
+unic. Rulează după extracție — abia atunci există ce compara — iar duplicatul pe
+conținut rămâne unde era, la încărcare, unde nu e nevoie să se citească nimic.
+
+**Nu marchează nimic de la sine, și acesta este miezul.** Potrivirea se sprijină
+pe câmpuri *citite*. Un număr citit greșit ar scoate din registru un document bun
+— exact omisiunea tăcută împotriva căreia este construit registrul. Documentul
+rămâne în registru, primește starea „Necesită verificare" și un rând care spune
+pe ce se sprijină bănuiala, plus legătura către celălalt document. „Chiar este
+aceeași factură?" rămâne o întrebare pentru om.
+
+Ce **nu** se compară, deliberat: sumele. Dacă furnizorul, seria și numărul
+coincid, o sumă diferită înseamnă că una dintre cele două a fost citită greșit —
+cu atât mai important de arătat cuiva. Și nici luna, nici clientul: aceeași
+factură ajunsă în două luni sau sub doi clienți este exact cazul care merită
+văzut.
+
+Ce **nu** declanșează nimic: un document fără furnizor sau fără număr. Un bon
+fiscal fără CUI s-ar potrivi cu oricare altul, iar zece semnalări false pe zi
+golesc de sens toate semnalările, inclusiv pe cele adevărate.
+
+Bănuiala **dispare** dacă numărul se corectează și documentul se reprocesează.
+Altfel panoul „Posibil duplicat" ar rămâne pe ecran pentru totdeauna, iar a doua
+oară nimeni nu l-ar mai citi.
+
+Două lucruri găsite pe drum:
+
+- indexul `ix_documents_supplier_tax_id_document_number` exista din M5, pentru
+  exact această căutare, și nu îl folosea nimeni. `SEMANTIC` era declarat în enum
+  cu comentariul „pentru M5.5+";
+- ecranul spunea „Documentul pare identic cu…" pentru amândouă cazurile. Pentru
+  potrivirea semantică era fals exact acolo unde omul are ceva de decis: octeții
+  *nu* sunt identici. Acum textul spune care dintre cele două s-a întâmplat.
 
 ### Numerele citite ies din aplicație
 

@@ -261,6 +261,30 @@ class DocumentRepository:
             stmt = stmt.where(Document.id != exclude_id)
         return self.session.scalars(stmt.order_by(Document.received_at)).first()
 
+    def by_supplier_tax_ids(
+        self,
+        organization_id: uuid.UUID,
+        tax_ids: Sequence[str],
+        *,
+        exclude_id: uuid.UUID | None = None,
+    ) -> Sequence[Document]:
+        """Documentele unui furnizor, pentru comparat pe câmpurile de identificare.
+
+        Se cer **variantele** codului fiscal (`RO12345678` și `12345678`), nu una
+        normalizată: normalizarea într-o expresie SQL ar face indexul
+        `ix_documents_supplier_tax_id_document_number` inutilizabil, iar aceeași
+        firmă apare scrisă în ambele feluri pe documente diferite.
+
+        Restul comparației — serie, număr — se face în Python, peste facturile
+        unui singur furnizor. Sunt zeci, nu zeci de mii.
+        """
+        if not tax_ids:
+            return []
+        stmt = self._base(organization_id).where(Document.supplier_tax_id.in_(tax_ids))
+        if exclude_id is not None:
+            stmt = stmt.where(Document.id != exclude_id)
+        return self.session.scalars(stmt.order_by(Document.received_at)).all()
+
     # ── Tipuri de document ──────────────────────────────────────────────────
 
     def list_types(

@@ -50,6 +50,7 @@ from app.services.client_matching import TYPE_BY_ROLE, ClientMatcher, MatchRole
 from app.services.document_archive import DocumentArchiveService
 from app.services.document_fields import SPEC_BY_NAME, DocumentFieldWriter, FieldUpdate
 from app.services.document_validation import DocumentValidationService, ValidationLevel
+from app.services.duplicates import DuplicateDetectionService, DuplicateResult
 from app.services.extraction.base import (
     DocumentExtractionProvider,
     ExtractionError,
@@ -60,6 +61,17 @@ from app.services.period_service import PeriodService
 from app.services.storage import ObjectNotFoundError, StorageProvider
 
 logger = get_logger(__name__)
+
+
+#: Ce scrie pe ecran când documentul are aceleași date de identificare ca altul.
+#:
+#: Formularea spune ce s-a comparat, nu doar că „seamănă": omul are de decis dacă
+#: este chiar aceeași factură, iar pentru asta trebuie să știe pe ce se sprijină
+#: bănuiala. Octeții diferă — altfel ar fi fost prins la încărcare, ca duplicat
+#: de conținut.
+SEMANTIC_DUPLICATE_ISSUE = (
+    "Același furnizor, aceeași serie și același număr ca un document deja primit."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +101,7 @@ class DocumentProcessingService:
         self.fields = DocumentFieldWriter(session)
         self.audit = AuditService(session)
         self.validator = validator or DocumentValidationService()
+        self.duplicates = DuplicateDetectionService(session)
 
     # ── Intrarea ────────────────────────────────────────────────────────────
 
@@ -163,7 +176,11 @@ class DocumentProcessingService:
         # găsit după aceea ar lăsa perioada fără rând.
         self._match_client(document, result)
         self._assign_period(document)
-        return self._decide(document, job, result)
+        # Abia acum se poate căuta duplicatul semantic: cheia lui — furnizor,
+        # serie, număr — există doar după extracție. Duplicatul pe conținut a fost
+        # deja căutat la încărcare, unde nu era nevoie să se citească nimic.
+        twin = self.duplicates.find_semantic_duplicate(organization_id, document)
+        return self._decide(document, job, result, twin=twin)
 
     # ── Pași ────────────────────────────────────────────────────────────────
 
@@ -431,16 +448,38 @@ class DocumentProcessingService:
             PeriodService(self.session).touch(document.organization_id, document.client_id, derived)
 
     def _decide(
-        self, document: Document, job: DocumentProcessingJob, result: ExtractionResult
+        self,
+        document: Document,
+        job: DocumentProcessingJob,
+        result: ExtractionResult,
+        *,
+        twin: DuplicateResult | None = None,
     ) -> ProcessingOutcome:
         outcome = self.validator.validate(document)
-        document.validation_issues = outcome.issues
+        issues = list(outcome.issues)
+
+        if twin is not None:
+            # **Nu se marchează ca duplicat.** Potrivirea se sprijină pe câmpuri
+            # *citite*: un număr citit greșit ar scoate din registru un document
+            # bun, iar o omisiune tăcută dintr-un registru contabil se descoperă
+            # la un control. `duplicate_of_id` fără `is_duplicate` este exact
+            # starea pe care ecranul o numește „Posibil duplicat".
+            document.duplicate_of_id = twin.original_id
+            issues.append(SEMANTIC_DUPLICATE_ISSUE)
+        elif not document.is_duplicate:
+            # Reprocesat după ce cineva a corectat numărul citit greșit: bănuiala
+            # trebuie să dispară. Altfel panoul „Posibil duplicat" ar rămâne pe
+            # ecran pentru totdeauna, iar a doua oară nimeni nu l-ar mai citi.
+            # Marcajul pus de un om (`is_duplicate`) nu se atinge.
+            document.duplicate_of_id = None
+
+        document.validation_issues = issues
 
         if document.client_id is None:
             # Fără client, documentul nu poate avansa: cineva trebuie să-l atribuie.
             document.status = DocumentStatus.UNMATCHED
             document.review_required = True
-        elif self.validator.needs_review(document, outcome):
+        elif twin is not None or self.validator.needs_review(document, outcome):
             document.status = DocumentStatus.REVIEW_REQUIRED
             document.review_required = True
         else:

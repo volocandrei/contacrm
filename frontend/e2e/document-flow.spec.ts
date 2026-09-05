@@ -137,3 +137,24 @@ test("un fișier neacceptat este refuzat cu un motiv, nu cu „a eșuat”", asy
   await expect(alert).toBeVisible();
   await expect(alert).not.toHaveText("");
 });
+
+test("aceeași factură cu alți octeți este semnalată, nu înregistrată a doua oară", async ({
+  page,
+}) => {
+  await loginAs(page, ACCOUNTS.admin);
+
+  // Aceeași factură, alt fișier: același furnizor, aceeași serie, același număr,
+  // dar o sumă citită altfel. Hash-ul diferă, deci detecția de la încărcare nu
+  // are ce vedea — exact cazul fotografiei făcute a doua oară.
+  const number = unique();
+  await uploadAndOpen(page, "prima.pdf", incomingInvoice({ number, total: "1.190,00" }));
+  await waitForExtraction(page);
+
+  await uploadAndOpen(page, "a-doua.pdf", incomingInvoice({ number, total: "1.190,01" }));
+  await waitForExtraction(page);
+
+  // „Posibil", nu „Duplicat": potrivirea se sprijină pe câmpuri citite, iar
+  // decizia rămâne a omului. Documentul nu dispare din registru între timp.
+  await expect(page.getByRole("heading", { name: "Posibil duplicat" })).toBeVisible();
+  await expect(page.getByText(/datele de identificare coincid/i)).toBeVisible();
+});

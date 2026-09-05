@@ -617,9 +617,22 @@ function ReviewScreen({
           </Panel>
 
           {document.duplicateOfId && (
-            <Panel title="Posibil duplicat">
+            /* Două lucruri diferite ajung aici, iar textul trebuie să le
+               deosebească. `isDuplicate` înseamnă conținut identic, octet cu
+               octet — nu există dubiu. Fără el, potrivirea s-a făcut pe datele
+               *citite* (furnizor, serie, număr): octeții diferă, deci este
+               aceeași factură sosită altfel — fotografiată a doua oară, ori
+               primită și pe email, și prin link. „Pare identic" ar fi fost fals
+               în al doilea caz, exact acolo unde omul are ceva de decis. */
+            <Panel title={document.isDuplicate ? "Duplicat" : "Posibil duplicat"}>
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                Documentul pare identic cu{" "}
+                {/* Motivul exact stă deja în lista de probleme de mai sus.
+                    Repetat aici cuvânt cu cuvânt, ecranul spunea același lucru
+                    de două ori; panoul are altceva de dat — legătura către
+                    celălalt document și ce are omul de făcut. */}
+                {document.isDuplicate
+                  ? "Conținut identic, octet cu octet, cu "
+                  : "Datele de identificare coincid cu "}
                 <button
                   type="button"
                   onClick={() => onNavigate(document.duplicateOfId!)}
