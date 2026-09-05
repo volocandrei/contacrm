@@ -34,6 +34,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.domain.enums import ClientStatus
 from app.domain.periods import filing_deadline
 from app.domain.permissions import RoleCode
 from app.models.audit import AuditLog
@@ -87,7 +88,9 @@ def outbox(monkeypatch: pytest.MonkeyPatch) -> list[EmailMessage]:
         def send(self, message: EmailMessage) -> None:
             sent.append(message)
 
+    # Amândouă rutele: cea pentru un client și cea pentru mai mulți.
     monkeypatch.setattr("app.api.v1.clients.build_email_sender", lambda: Collecting())
+    monkeypatch.setattr("app.api.v1.periods.build_email_sender", lambda: Collecting())
     return sent
 
 
@@ -695,4 +698,307 @@ class TestSendingIt:
         response = self._send(api_storage, client_row)
 
         assert response.status_code == 422
+        assert outbox == []
+
+
+class TestTheClientWhoSentNothing:
+    """Cel căruia îi lipsește tot.
+
+    Raportul „Documente lipsă" îl arată — este chiar clientul pentru care a fost
+    făcut — și îi pune butonul de cerere pe rând. Compunerea citea însă din
+    `list_periods`, care nu inventează o lună fără documente și fără rând, deci
+    butonul răspundea „clientul nu are documente lipsă" exact acolo unde lipsea
+    totul.
+
+    Găsit apăsând butonul în browser, nu citind codul.
+    """
+
+    def test_a_client_with_no_documents_at_all_can_still_be_asked(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        org: Organization,
+        types: dict[str, DocumentType],
+        gaps: None,
+    ) -> None:
+        login(api_storage, admin.email)
+        # Client cu așteptări și **niciun** document în luna cerută: nu are rând
+        # de perioadă, deci `list_periods` nu-l vede.
+        # `ACTIVE` explicit: implicit un client este `PROSPECT`, iar raportul îi
+        # lasă deoparte deliberat — un prospect nu este încă client.
+        silent = Client(
+            organization_id=org.id,
+            name="Tăcut SRL",
+            tax_id="RO4242",
+            status=ClientStatus.ACTIVE,
+        )
+        db.add(silent)
+        db.flush()
+        db.add(
+            ClientExpectation(
+                organization_id=org.id,
+                client_id=silent.id,
+                document_type_id=types["EXTRAS_CONT"].id,
+                expected_min_count=1,
+            )
+        )
+        db.commit()
+
+        response = compose(api_storage, silent, MONTH)
+
+        assert response.status_code == 200, response.text
+        assert "Extras cont" in response.json()["message"]
+
+    def test_the_report_and_the_request_agree_on_who_can_be_asked(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        org: Organization,
+        types: dict[str, DocumentType],
+        gaps: None,
+    ) -> None:
+        """Un rând cu buton pe care butonul îl refuză este mai rău decât un rând fără buton."""
+        login(api_storage, admin.email)
+        silent = Client(
+            organization_id=org.id,
+            name="Tăcut Doi SRL",
+            tax_id="RO4243",
+            status=ClientStatus.ACTIVE,
+        )
+        db.add(silent)
+        db.flush()
+        db.add(
+            ClientExpectation(
+                organization_id=org.id,
+                client_id=silent.id,
+                document_type_id=types["EXTRAS_CONT"].id,
+                expected_min_count=1,
+            )
+        )
+        db.commit()
+
+        listed = {row["period"]["clientId"] for row in report(api_storage, MONTH)}
+
+        for client_id in listed:
+            composed = api_storage.post(
+                f"/api/v1/clients/{client_id}/document-request?referenceMonth={MONTH}"
+            )
+            assert composed.status_code == 200, (
+                f"raportul îl listează pe {client_id}, dar cererea îl refuză: {composed.text}"
+            )
+
+
+class TestSendingToMany:
+    """Cererea către mai mulți clienți deodată.
+
+    Un cabinet cere documentele a treizeci de clienți în aceeași săptămână. Unul
+    câte unul, asta înseamnă treizeci de deschideri de fișă.
+
+    Ce apără testele, în ordinea gravității:
+
+    1. **Un client care eșuează nu-i oprește pe ceilalți.** Omul a apăsat un
+       buton, dar a luat treizeci de decizii.
+    2. **Ce eșuează nu lasă urmă.** Un link deschis pentru un mesaj care n-a
+       plecat este un drum către nicăieri, deschis 45 de zile — tokenul se vede o
+       singură dată.
+    3. **Se trimite exact cui a fost pe ecran.** Serverul nu decide singur cine
+       mai intră în lot; un email plecat nu se retrage.
+    """
+
+    URL = "/api/v1/periods/missing/send-requests"
+
+    def _send(self, api: TestClient, ids: list[str], month: str = MONTH):
+        return api.post(f"{self.URL}?referenceMonth={month}", json={"clientIds": ids})
+
+    def test_it_sends_to_everyone_on_the_list(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        login(api_storage, admin.email)
+        db.add(Contact(client_id=client_row.id, full_name="Maria", email="maria@alfa.test"))
+        db.commit()
+
+        response = self._send(api_storage, [str(client_row.id)])
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert [row["sentTo"] for row in body["sent"]] == ["maria@alfa.test"]
+        assert body["failed"] == []
+        assert len(outbox) == 1
+
+    def test_a_client_without_an_address_does_not_stop_the_others(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        org: Organization,
+        client_row: Client,
+        types: dict[str, DocumentType],
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        """Al treilea care nu are email nu are voie să anuleze primii doi."""
+        login(api_storage, admin.email)
+        db.add(Contact(client_id=client_row.id, full_name="Maria", email="maria@alfa.test"))
+        mute = Client(organization_id=org.id, name="Fără Email SRL", tax_id="RO777")
+        db.add(mute)
+        db.flush()
+        add_document(db, org, mute, types["FACTURA_INTRARE"])
+        db.add(
+            ClientExpectation(
+                organization_id=org.id,
+                client_id=mute.id,
+                document_type_id=types["EXTRAS_CONT"].id,
+                expected_min_count=1,
+            )
+        )
+        db.commit()
+
+        response = self._send(api_storage, [str(mute.id), str(client_row.id)])
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert [row["clientId"] for row in body["sent"]] == [str(client_row.id)]
+        assert [row["clientId"] for row in body["failed"]] == [str(mute.id)]
+        assert "email" in body["failed"][0]["message"].lower()
+        assert len(outbox) == 1
+
+    def test_a_failed_client_leaves_no_open_link(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        org: Organization,
+        client_row: Client,
+        types: dict[str, DocumentType],
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        """Tokenul se vede o singură dată.
+
+        Un link rămas după un mesaj care n-a plecat este un drum pe care nu-l
+        știe nimeni, deschis 45 de zile.
+        """
+        login(api_storage, admin.email)
+        mute = Client(organization_id=org.id, name="Fără Email SRL", tax_id="RO778")
+        db.add(mute)
+        db.flush()
+        add_document(db, org, mute, types["FACTURA_INTRARE"])
+        db.add(
+            ClientExpectation(
+                organization_id=org.id,
+                client_id=mute.id,
+                document_type_id=types["EXTRAS_CONT"].id,
+                expected_min_count=1,
+            )
+        )
+        db.commit()
+        before = len(db.scalars(select(ClientUploadLink)).all())
+
+        self._send(api_storage, [str(mute.id)])
+        db.expire_all()
+
+        assert len(db.scalars(select(ClientUploadLink)).all()) == before
+
+    def test_a_repeated_id_is_sent_once(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        """Aceeași firmă bifată de două ori nu primește două scrisori."""
+        login(api_storage, admin.email)
+        db.add(Contact(client_id=client_row.id, full_name="Maria", email="maria@alfa.test"))
+        db.commit()
+
+        self._send(api_storage, [str(client_row.id), str(client_row.id)])
+
+        assert len(outbox) == 1
+
+    def test_a_client_with_nothing_missing_is_reported_not_sent(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        org: Organization,
+        client_row: Client,
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        login(api_storage, admin.email)
+        complete = Client(organization_id=org.id, name="Complet SRL", tax_id="RO779")
+        db.add(complete)
+        db.commit()
+
+        response = self._send(api_storage, [str(complete.id)])
+
+        assert response.status_code == 200
+        assert response.json()["sent"] == []
+        assert outbox == []
+
+    def test_an_unconfigured_provider_refuses_the_whole_batch(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Al treizecilea refuz spune același lucru ca primul.
+
+        Lipsește configurarea, nu adresa unui client — deci nu are rost să
+        încercăm restul, iar rezultatul nu are voie să arate ca treizeci de
+        clienți cu probleme.
+        """
+        login(api_storage, admin.email)
+        db.add(Contact(client_id=client_row.id, full_name="Maria", email="maria@alfa.test"))
+        db.commit()
+        monkeypatch.setattr("app.api.v1.periods.build_email_sender", lambda: DisabledEmailSender())
+
+        response = self._send(api_storage, [str(client_row.id)])
+
+        assert response.status_code == 422
+        assert "NOTIFICATIONS_ENABLED" in response.json()["message"]
+
+    def test_an_empty_list_is_refused(
+        self, api_storage: TestClient, admin: User, client_row: Client
+    ) -> None:
+        """Un lot gol este o greșeală de ecran, nu o cerere validă."""
+        login(api_storage, admin.email)
+
+        assert self._send(api_storage, []).status_code == 422
+
+    def test_another_organizations_client_is_reported_not_sent(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        """§72: nu se confirmă existența, nici măcar printr-un refuz diferit."""
+        login(api_storage, admin.email)
+        stranger = Organization(name="Alt Cabinet SRL")
+        db.add(stranger)
+        db.flush()
+        theirs = Client(organization_id=stranger.id, name="Terț SRL")
+        db.add(theirs)
+        db.commit()
+
+        response = self._send(api_storage, [str(theirs.id)])
+
+        assert response.status_code == 200
+        assert response.json()["sent"] == []
         assert outbox == []

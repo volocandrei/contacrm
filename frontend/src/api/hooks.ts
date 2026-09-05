@@ -195,6 +195,29 @@ export function useSendDocumentRequest() {
   });
 }
 
+/**
+ * Cererea către mai mulți clienți deodată.
+ *
+ * Invalidează raportul lunii: după trimitere, rândurile trec din „Necerut" în
+ * „Trimis", iar un ecran care arată contrariul te face să apeși din nou.
+ */
+export function useSendRequests() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      referenceMonth,
+      clientIds,
+    }: {
+      referenceMonth: string;
+      clientIds: string[];
+    }) => periods.sendRequests(referenceMonth, clientIds),
+    onSuccess: (_data, { referenceMonth }) =>
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.missingDocuments(referenceMonth),
+      }),
+  });
+}
+
 export function useRevokeUploadLink(clientId: string) {
   const queryClient = useQueryClient();
   return useMutation({

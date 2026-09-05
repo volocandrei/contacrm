@@ -22,7 +22,8 @@ from sqlalchemy import select
 from app.api.deps import DbSession, client_ip, require_permission
 from app.api.route import CommittingRoute
 from app.core.config import settings
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import AppError, NotFoundError, ValidationError
+from app.core.logging import get_logger
 from app.domain.enums import PeriodStatus
 from app.domain.periods import ChecklistEntry, filing_deadline
 from app.domain.permissions import Permission
@@ -32,17 +33,24 @@ from app.models.user import User
 from app.repositories.client import ClientRepository
 from app.schemas.common import ApiModel
 from app.services.audit import AuditService
+from app.services.document_request import DocumentRequestService
 from app.services.expectation_templates import (
     ExpectationTemplateService,
     TemplateView,
     replace_expectations,
 )
+from app.services.mail import EmailError, EmailNotConfiguredError, build_email_sender
 from app.services.period_service import PeriodService, PeriodView
 from app.services.upload_links import RequestTrace, UploadLinkService
 
 router = APIRouter(route_class=CommittingRoute, tags=["contabilitate"])
 
+logger = get_logger(__name__)
+
 PeriodReader = Annotated[User, require_permission(Permission.DOCUMENTS_READ)]
+#: Cererea de documente este munca celui care aleargă după ele, nu a unui
+#: administrator. Același gard ca la ruta pentru un singur client.
+PeriodWriter = Annotated[User, require_permission(Permission.DOCUMENTS_WRITE)]
 PeriodManager = Annotated[User, require_permission(Permission.PERIODS_MANAGE)]
 
 REFERENCE_MONTH = r"^\d{4}-(0[1-9]|1[0-2])$"
@@ -747,3 +755,115 @@ def apply_expectation_template(
         ip=client_ip(request),
     )
     return ApplyTemplateOut(applied=applied)
+
+
+class SendRequestsIn(ApiModel):
+    """Cui i se trimite, spus explicit.
+
+    **De ce lista de id-uri și nu „tuturor".** Serverul trimite exact clienților
+    pe care omul i-a văzut pe ecran. Un „tuturor" interpretat de server ar putea
+    scrie, la o diferență de o secundă între ce s-a afișat și ce s-a apăsat, unui
+    client în plus — iar un email plecat nu se retrage.
+    """
+
+    client_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class SentRequestOut(ApiModel):
+    client_id: uuid.UUID
+    sent_to: str
+
+
+class FailedRequestOut(ApiModel):
+    client_id: uuid.UUID
+    message: str
+
+
+class SendRequestsResultOut(ApiModel):
+    """Ce a mers și ce nu, pe fiecare client.
+
+    Un „au eșuat 7" fără să spună care este inutilizabil: cabinetul ar trebui să
+    le ia pe toate la rând ca să afle.
+    """
+
+    sent: list[SentRequestOut]
+    failed: list[FailedRequestOut]
+
+
+@router.post("/periods/missing/send-requests", response_model=SendRequestsResultOut)
+def send_requests(
+    session: DbSession,
+    user: PeriodWriter,
+    request: Request,
+    filters: Annotated[MissingFilters, Query()],
+    payload: SendRequestsIn,
+) -> SendRequestsResultOut:
+    """Trimite solicitarea de documente mai multor clienți deodată.
+
+    **De ce există.** Un cabinet cere documentele a treizeci de clienți în aceeași
+    săptămână. Unul câte unul, asta înseamnă treizeci de deschideri de fișă; iar
+    partea grea a muncii nu este procesarea documentelor, ci adunarea lor.
+
+    **Fiecare client este propria tranzacție.** Un lot de treizeci în care al
+    treilea nu are adresă de email nu are voie să anuleze primele două: omul a
+    apăsat un buton, dar a luat treizeci de decizii. Ce eșuează se întoarce cu
+    motivul, pe client.
+
+    **Ce eșuează nu lasă urmă.** Savepointul se anulează, deci nu rămâne un link
+    deschis pentru un mesaj care n-a plecat — tokenul se vede o singură dată, iar
+    un link pe care nu-l știe nimeni este un drum către nicăieri, deschis 45 de
+    zile.
+
+    **Providerul se construiește o singură dată**, nu per client: dacă
+    trimiterea nu este configurată, se află din primul refuz, nu din treizeci.
+
+    *NEVERIFICAT — NECESITĂ CREDENȚIALE EXTERNE.*
+    """
+    service = DocumentRequestService(session, user.organization_id)
+    sender = build_email_sender()
+    ip = client_ip(request)
+
+    sent: list[SentRequestOut] = []
+    failed: list[FailedRequestOut] = []
+
+    for client_id in dict.fromkeys(payload.client_ids):
+        savepoint = session.begin_nested()
+        try:
+            result = service.send(
+                client_id,
+                filters.reference_month,
+                actor=user,
+                sender=sender,
+                ip=ip,
+            )
+            savepoint.commit()
+            sent.append(SentRequestOut(client_id=client_id, sent_to=result.sent_to))
+        except EmailNotConfiguredError as exc:
+            # Nu are rost să încercăm restul: lipsește configurarea, nu adresa
+            # unui client. Al treizecilea refuz spune același lucru ca primul.
+            savepoint.rollback()
+            raise ValidationError(
+                str(exc), {"clientIds": ["Trimiterea nu este configurată."]}
+            ) from exc
+        except (AppError, EmailError) as exc:
+            savepoint.rollback()
+            failed.append(FailedRequestOut(client_id=client_id, message=_describe_send(exc)))
+        except Exception:
+            savepoint.rollback()
+            logger.exception("bulk_request_crashed", client_id=str(client_id))
+            failed.append(
+                FailedRequestOut(client_id=client_id, message="Eroare neașteptată la trimitere.")
+            )
+
+    return SendRequestsResultOut(sent=sent, failed=failed)
+
+
+def _describe_send(exc: Exception) -> str:
+    """Mesajul care ajunge pe rândul clientului.
+
+    Textul erorilor de domeniu este scris în română și pentru om; celelalte nu
+    au ce căuta pe ecran.
+    """
+    if isinstance(exc, AppError):
+        return exc.message
+    return str(exc)

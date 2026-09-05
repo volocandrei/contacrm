@@ -884,3 +884,10 @@ export interface DocumentRequestSent {
   uploadUrl: string;
   uploadExpiresAt: string;
 }
+
+/** Ce a mers și ce nu, pe fiecare client, la o cerere în masă. */
+export interface SendRequestsResult {
+  sent: { clientId: string; sentTo: string }[];
+  /** Care, nu doar câte: „au eșuat 7" fără nume nu se poate folosi. */
+  failed: { clientId: string; message: string }[];
+}

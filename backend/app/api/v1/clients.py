@@ -8,13 +8,10 @@ câmpuri.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.api.deps import DbSession, client_ip, require_permission
 from app.api.route import CommittingRoute
@@ -22,10 +19,8 @@ from app.api.v1.documents import to_list_item
 from app.api.v1.periods import MissingFilters
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode, NotFoundError, ValidationError
-from app.domain.periods import filing_deadline
 from app.domain.permissions import Permission
-from app.models.client import Client, Contact
-from app.models.organization import Organization
+from app.models.client import Client
 from app.models.user import User
 from app.repositories.client import ClientRepository
 from app.repositories.document import DocumentRepository
@@ -46,14 +41,8 @@ from app.schemas.email import EmailAddress
 from app.services.audit import AuditService
 from app.services.client_aliases import ClientAliasService
 from app.services.client_service import ActorContext, ClientService
-from app.services.document_request import build_request_message, month_in_words
-from app.services.mail import (
-    EmailError,
-    EmailMessage,
-    EmailNotConfiguredError,
-    build_email_sender,
-)
-from app.services.period_service import PeriodService
+from app.services.document_request import DocumentRequestService
+from app.services.mail import EmailError, EmailNotConfiguredError, build_email_sender
 from app.services.upload_links import UploadLinkService
 
 router = APIRouter(route_class=CommittingRoute, prefix="/clients", tags=["crm"])
@@ -320,87 +309,6 @@ class DocumentRequestOut(ApiModel):
     upload_expires_at: datetime
 
 
-@dataclass(frozen=True, slots=True)
-class _ComposedRequest:
-    """Cererea compusă, plus ce trebuie ca ea să și plece."""
-
-    out: DocumentRequestOut
-    client: Client
-    link_id: uuid.UUID
-
-
-def _compose_request(
-    session: Session,
-    user: User,
-    request: Request,
-    client_id: uuid.UUID,
-    reference_month: str,
-) -> _ComposedRequest:
-    """Deschide linkul și compune textul. Un singur loc, pentru ambele rute.
-
-    Ruta care copiază și ruta care trimite trebuie să producă **exact** același
-    mesaj. Două implementări ar însemna că doi clienți primesc, în aceeași zi,
-    două scrisori diferite de la același cabinet — iar diferența s-ar vedea abia
-    când unul dintre ei o citește cu voce tare la telefon.
-    """
-    client = ClientRepository(session).get(user.organization_id, client_id)
-    if client is None:
-        raise NotFoundError("Client", client_id)
-
-    views = PeriodService(session).list_periods(
-        user.organization_id, reference_month=reference_month, client_id=client_id
-    )
-    missing = [item for item in views[0].checklist if not item.is_satisfied] if views else []
-    if not missing:
-        # Înainte de a deschide linkul: un drum public deschis pentru un mesaj
-        # care oricum nu pleacă ar rămâne deschis degeaba 45 de zile.
-        raise ValidationError(
-            "Clientul nu are documente lipsă în luna cerută.",
-            {"referenceMonth": ["Nimic de cerut."]},
-        )
-
-    issued = UploadLinkService(session).issue(
-        user.organization_id,
-        client_id,
-        created_by_id=user.id,
-        # Luna leagă linkul de cerere. Fără ea, rândul spune doar că s-a deschis
-        # un drum; cu ea, spune că **i s-a cerut**, pentru ce lună și când — iar
-        # raportul de documente lipsă poate arăta cine încă n-a fost întrebat.
-        reference_month=reference_month,
-    )
-    AuditService(session).record(
-        organization_id=user.organization_id,
-        action="UPLOAD_LINK_ISSUED",
-        entity_type="ClientUploadLink",
-        entity_id=str(issued.id),
-        user_id=user.id,
-        user_name=user.full_name,
-        # Clientul și luna, nu tokenul: jurnalul nu ține chei (§33).
-        detail=f"{client.name} · solicitare {reference_month}",
-        ip=client_ip(request),
-    )
-
-    organization = session.get(Organization, user.organization_id)
-    url = f"{settings.public_base_url}/incarca/{issued.token}"
-    return _ComposedRequest(
-        out=DocumentRequestOut(
-            message=build_request_message(
-                client_name=client.name,
-                reference_month=reference_month,
-                deadline=filing_deadline(reference_month, day=settings.filing_deadline_day),
-                missing=missing,
-                organization_name=organization.name if organization else "Cabinetul dumneavoastră",
-                upload_url=url,
-                upload_expires_on=issued.expires_at.date(),
-            ),
-            upload_url=url,
-            upload_expires_at=issued.expires_at,
-        ),
-        client=client,
-        link_id=issued.id,
-    )
-
-
 class DocumentRequestSendIn(ApiModel):
     """Către cine pleacă.
 
@@ -419,33 +327,6 @@ class DocumentRequestSentOut(ApiModel):
     sent_at: datetime
     upload_url: str
     upload_expires_at: datetime
-
-
-def _recipient(session: Session, client: Client, chosen: str | None) -> str:
-    """Cui îi scriem, dacă nu s-a spus explicit.
-
-    Primul contact care are o adresă, în ordinea în care sunt scrise pe fișă.
-    Nu „cel principal": modelul nu are noțiunea, iar a inventa una aici ar
-    însemna că ecranul nu poate arăta dinainte cui va pleca mesajul.
-    """
-    if chosen:
-        return chosen
-
-    address = session.scalars(
-        select(Contact.email)
-        .where(
-            Contact.client_id == client.id,
-            Contact.email.is_not(None),
-            Contact.email != "",
-        )
-        .order_by(Contact.created_at)
-    ).first()
-    if not address:
-        raise ValidationError(
-            "Clientul nu are nicio adresă de email.",
-            {"to": ["Adaugă un contact cu email sau scrie adresa aici."]},
-        )
-    return address
 
 
 @router.post(
@@ -468,28 +349,22 @@ def send_document_request(
     afara aplicației, iar efectele acelea nu se produc ca efect secundar al unei
     citiri.
 
-    **Ordinea contează.** Se trimite întâi, se scrie „trimis" după. Invers, un
-    server de mail căzut ar fi lăsat pe ecran „Trimis" pentru un mesaj care n-a
-    plecat niciodată — exact minciuna pe care coloana `notified_at` există ca s-o
-    evite.
-
-    Dacă trimiterea eșuează, linkul deschis rămâne deschis. Este drumul pe care
-    clientul poate trimite oricum, iar închiderea lui n-ar repara nimic.
+    Dacă trimiterea eșuează, excepția anulează tranzacția, deci și linkul deschis.
+    Așa trebuie: tokenul se vede o singură dată, în răspunsul care nu mai vine,
+    deci un link rămas ar fi un drum pe care nu-l știe nimeni.
 
     *NEVERIFICAT — NECESITĂ CREDENȚIALE EXTERNE.* Fără `SMTP_*` și
     `NOTIFICATIONS_ENABLED`, ruta răspunde 422 cu ce lipsește, nu cu o eroare.
     """
-    composed = _compose_request(session, user, request, client_id, filters.reference_month)
-    address = _recipient(session, composed.client, payload.to)
-
-    sender = build_email_sender()
+    service = DocumentRequestService(session, user.organization_id)
     try:
-        sender.send(
-            EmailMessage(
-                to=address,
-                subject=f"Documente necesare pentru {month_in_words(filters.reference_month)}",
-                body=composed.out.message,
-            )
+        sent = service.send(
+            client_id,
+            filters.reference_month,
+            actor=user,
+            sender=build_email_sender(),
+            to=payload.to,
+            ip=client_ip(request),
         )
     except EmailNotConfiguredError as exc:
         # Nu o defecțiune: cineva încă nu a pus setările. Ecranul spune ce
@@ -500,27 +375,11 @@ def send_document_request(
             ErrorCode.INTERNAL_ERROR, str(exc), status_code=status.HTTP_502_BAD_GATEWAY
         ) from exc
 
-    links = UploadLinkService(session)
-    links.mark_notified(composed.link_id, to=address)
-
-    AuditService(session).record(
-        organization_id=user.organization_id,
-        action="DOCUMENT_REQUEST_SENT",
-        entity_type="ClientUploadLink",
-        entity_id=str(composed.link_id),
-        user_id=user.id,
-        user_name=user.full_name,
-        # Cui și pentru ce lună. Nu textul: jurnalul spune cine a făcut ce, nu ce
-        # scria în mesaj (§33).
-        detail=f"{composed.client.name} · {address} · {filters.reference_month}",
-        ip=client_ip(request),
-    )
-
     return DocumentRequestSentOut(
-        sent_to=address,
-        sent_at=datetime.now(UTC),
-        upload_url=composed.out.upload_url,
-        upload_expires_at=composed.out.upload_expires_at,
+        sent_to=sent.sent_to,
+        sent_at=sent.sent_at,
+        upload_url=sent.upload_url,
+        upload_expires_at=sent.upload_expires_at,
     )
 
 
@@ -556,7 +415,14 @@ def document_request(
     Nu trimite nimic. Trimiterea cere un provider și rămâne în Faza 2; până
     atunci textul pleacă din clientul de email al contabilului, cu semnătura lui.
     """
-    return _compose_request(session, user, request, client_id, filters.reference_month).out
+    composed = DocumentRequestService(session, user.organization_id).compose(
+        client_id, filters.reference_month, actor=user, ip=client_ip(request)
+    )
+    return DocumentRequestOut(
+        message=composed.message,
+        upload_url=composed.upload_url,
+        upload_expires_at=composed.upload_expires_at,
+    )
 
 
 @router.get("/{client_id}/contacts", response_model=list[ContactOut])

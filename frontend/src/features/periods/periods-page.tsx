@@ -14,20 +14,26 @@ import {
   useMissingDocuments,
   usePeriods,
   useSendDocumentRequest,
+  useSendRequests,
 } from "@/api/hooks";
+import type { MissingDocumentsEntry } from "@/api/endpoints";
 import { ApiError } from "@/api/types";
 import { MonthFilter, SelectFilter } from "@/components/form-controls";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { ProgressRing } from "@/components/charts";
 import { PeriodStatusBadge } from "@/components/status-badge";
 import { PERIOD_STATUS_LABEL } from "@/lib/labels";
-import { buttonSecondary, divider, mutedText, pillClass, scrollX } from "@/lib/ui";
+import { buttonPrimary, buttonSecondary, divider, mutedText, pillClass, scrollX } from "@/lib/ui";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { currentMonth } from "@/lib/current-month";
 import { dayLabel, daysSince, formatDate, formatReferenceMonth } from "@/lib/format";
 import { usePermissionCheck } from "@/features/auth/use-auth";
 import { cn } from "@/lib/utils";
-import { PERIOD_STATUS, type AccountingPeriod } from "@/types/domain";
+import {
+  PERIOD_STATUS,
+  type AccountingPeriod,
+  type SendRequestsResult,
+} from "@/types/domain";
 
 export function PeriodsPage() {
   const { values, setValue } = useFilterParams({ referenceMonth: currentMonth(), status: "" });
@@ -144,7 +150,9 @@ export function MissingDocumentsPage() {
           </p>
         </Panel>
       ) : (
-        <Panel bodyClassName="p-0">
+        <>
+          {canRequest && <SendToAll rows={rows} referenceMonth={values.referenceMonth} />}
+          <Panel bodyClassName="p-0">
           <div className={scrollX}>
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-slate-800 dark:text-slate-400">
@@ -216,7 +224,8 @@ export function MissingDocumentsPage() {
               </tbody>
             </table>
           </div>
-        </Panel>
+          </Panel>
+        </>
       )}
     </div>
   );
@@ -535,5 +544,139 @@ function RequestState({
         <span className="text-amber-700 dark:text-amber-500">fără răspuns de {days} zile</span>
       )}
     </span>
+  );
+}
+
+
+/**
+ * Cererea către toți clienții din listă, dintr-o acțiune.
+ *
+ * **De ce există.** Un cabinet cere documentele a treizeci de clienți în aceeași
+ * săptămână. Unul câte unul, asta înseamnă treizeci de deschideri de fișă — iar
+ * partea grea a muncii nu este procesarea documentelor, ci adunarea lor.
+ *
+ * **De ce confirmă înainte.** Un email plecat nu se retrage. Ecranul spune
+ * exact câți clienți primesc și cum se numesc, iar butonul care trimite este al
+ * doilea, nu primul.
+ *
+ * **Ce trimite serverul.** Exact id-urile de aici, nu „toți cei care se
+ * potrivesc". Un „tuturor" interpretat de server ar putea scrie, la o diferență
+ * de o secundă între ce s-a afișat și ce s-a apăsat, unui client în plus.
+ */
+function SendToAll({
+  rows,
+  referenceMonth,
+}: {
+  rows: MissingDocumentsEntry[];
+  referenceMonth: string;
+}) {
+  const send = useSendRequests();
+  const [confirming, setConfirming] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [result, setResult] = useState<SendRequestsResult | null>(null);
+
+  // Cei cărora nu li s-a cerut încă. Ceilalți au primit deja un mesaj în luna
+  // asta; a-l trimite din nou, în masă, este exact felul în care un cabinet
+  // ajunge să fie filtrat ca spam.
+  const targets = rows.filter((row) => row.requestedAt === null);
+
+  if (targets.length === 0) return null;
+
+  function submit() {
+    setProblem(null);
+    send.mutate(
+      { referenceMonth, clientIds: targets.map((row) => row.period.clientId) },
+      {
+        onSuccess: (outcome) => {
+          setResult(outcome);
+          setConfirming(false);
+        },
+        onError: (caught) => {
+          setProblem(
+            caught instanceof ApiError ? caught.message : "Solicitările nu au putut fi trimise.",
+          );
+          setConfirming(false);
+        },
+      },
+    );
+  }
+
+  if (result) {
+    return (
+      <Panel title="Ce s-a trimis">
+        <p className="text-sm text-slate-700 dark:text-slate-300">
+          {result.sent.length} {result.sent.length === 1 ? "solicitare trimisă" : "solicitări trimise"}
+          {result.failed.length > 0 && `, ${result.failed.length} nu au plecat`}.
+        </p>
+        {result.failed.length > 0 && (
+          /* Care, nu doar câte: „au eșuat 7" fără nume obligă cabinetul să le ia
+             pe toate la rând ca să afle. */
+          <ul className="mt-2 space-y-1 text-sm text-red-700 dark:text-red-400">
+            {result.failed.map((row) => (
+              <li key={row.clientId}>
+                {rows.find((entry) => entry.period.clientId === row.clientId)?.period.clientName ??
+                  row.clientId}
+                : {row.message}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+    );
+  }
+
+  return (
+    <div className="mb-4">
+      {confirming ? (
+        <Panel title={`Trimiți ${targets.length} ${targets.length === 1 ? "solicitare" : "solicitări"}?`}>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Fiecare client primește lista lui de documente lipsă și un link de
+            trimitere. Un email plecat nu se retrage.
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {targets.map((row) => (
+              <li key={row.period.clientId} className={pillClass("blue")}>
+                {row.period.clientName}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={submit}
+              disabled={send.isPending}
+              className={cn(buttonPrimary, "h-9")}
+            >
+              {send.isPending && (
+                <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
+              Trimite acum
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="text-sm font-medium text-slate-600 hover:underline dark:text-slate-300"
+            >
+              Renunță
+            </button>
+          </div>
+        </Panel>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className={cn(buttonPrimary, "h-9")}
+        >
+          <Send className="h-4 w-4" aria-hidden="true" />
+          Trimite solicitarea la {targets.length}{" "}
+          {targets.length === 1 ? "client" : "clienți"}
+        </button>
+      )}
+      {problem && (
+        <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+          {problem}
+        </p>
+      )}
+    </div>
   );
 }

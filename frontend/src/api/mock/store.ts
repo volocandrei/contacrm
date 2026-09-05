@@ -2673,6 +2673,19 @@ export function createUploadLink(clientId: string, referenceMonth?: string): Iss
   };
 }
 
+export function sendDocumentRequests(referenceMonth: string): never {
+  requirePermission("documents:write");
+  void referenceMonth;
+  // Ca la trimiterea către un singur client: în modul simulat nu există server
+  // de email, iar un succes inventat ar scrie „Trimis" pe treizeci de rânduri.
+  throw new ApiError(
+    "VALIDATION_ERROR",
+    "În modul simulat nu există server de email. Configurează SMTP_* pe un backend real.",
+    422,
+    { clientIds: ["Trimiterea nu este disponibilă în modul simulat."] },
+  );
+}
+
 export function sendDocumentRequest(clientId: string, referenceMonth: string): never {
   requirePermission("documents:write");
   getClient(clientId);

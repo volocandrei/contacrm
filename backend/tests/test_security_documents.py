@@ -202,6 +202,11 @@ BODY_ROUTES = [
         "/api/v1/documents/bulk",
         {"ids": [str(uuid.uuid4())], "payload": {"action": "approve"}},
     ),
+    (
+        "POST",
+        "/api/v1/periods/missing/send-requests?referenceMonth=2026-08",
+        {"clientIds": [str(uuid.uuid4())]},
+    ),
 ]
 
 # Rute de documente parametrizate pe altceva decât documentul. Granița lor de
@@ -241,7 +246,12 @@ def test_the_list_covers_every_route(api_storage: TestClient) -> None:
         (method, template.split("?")[0].replace("2026-08", "{reference_month}"))
         for method, template in CLIENT_SCOPED_ROUTES
     }
-    covered |= {("POST", "/api/v1/documents/upload"), ("POST", "/api/v1/documents/bulk")}
+    # Derivate din listă, nu scrise încă o dată: ruta `bulk` era trecută de mână
+    # aici deși stă deja în `BODY_ROUTES`, iar următoarea adăugare acolo ar fi
+    # căzut la fel — pentru un motiv care nu se vede din mesajul testului.
+    covered |= {(method, path.split("?")[0]) for method, path, _ in BODY_ROUTES}
+    # Încărcarea este multipart, deci nu are ce căuta printre rutele cu corp JSON.
+    covered |= {("POST", "/api/v1/documents/upload")}
 
     missing = declared - covered
     assert not missing, f"rute neacoperite de revizuirea de securitate: {sorted(missing)}"

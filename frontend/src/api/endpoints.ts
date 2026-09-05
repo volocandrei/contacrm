@@ -13,6 +13,7 @@ import type {
   ClientAlias,
   DocumentRequest,
   DocumentRequestSent,
+  SendRequestsResult,
   IssuedUploadLink,
   ClientExpectation,
   ExpectationTemplate,
@@ -263,6 +264,19 @@ export const periods = {
   list: (params: QueryParams) => api.get<AccountingPeriod[]>("/periods", params),
   missing: (referenceMonth: string) =>
     api.get<MissingDocumentsEntry[]>("/periods/missing", { referenceMonth }),
+  /**
+   * Cererea către mai mulți clienți deodată.
+   *
+   * Se trimit **id-urile de pe ecran**, nu „toți cei care se potrivesc": un
+   * „tuturor" interpretat de server ar putea scrie, la o diferență de o secundă
+   * între ce s-a afișat și ce s-a apăsat, unui client în plus. Iar un email
+   * plecat nu se retrage.
+   */
+  sendRequests: (referenceMonth: string, clientIds: string[]) =>
+    request<SendRequestsResult>("POST", "/periods/missing/send-requests", {
+      params: { referenceMonth },
+      body: { clientIds },
+    }),
 };
 
 /**

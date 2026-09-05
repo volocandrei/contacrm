@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  20.443 linii sursă +  3.311 linii teste  →   252 teste
-backend   26.447 linii sursă + 22.801 linii teste  → 1.483 teste
-end-to-end 2.010 linii                             →    75 teste (browser real)
+frontend  20.648 linii sursă +  3.311 linii teste  →   252 teste
+backend   26.648 linii sursă + 23.117 linii teste  → 1.493 teste
+end-to-end 2.055 linii                             →    76 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.810 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.821 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -268,6 +268,48 @@ Ecranul spune **„Pregătit"**, nu „Trimis". Aplicația nu trimite (Faza 2): 
 se copiază și pleacă din clientul de email al contabilului, deci tot ce știe
 sigur este că cererea a fost compusă. „Trimis" ar fi o promisiune pe care nimic
 din spate nu o acoperă.
+
+### Cererea către toți, dintr-o acțiune
+
+Un cabinet cere documentele a treizeci de clienți în aceeași săptămână. Unul câte
+unul, asta înseamnă treizeci de deschideri de fișă — iar partea grea a muncii nu
+este procesarea documentelor, ci adunarea lor.
+
+`POST /periods/missing/send-requests` trimite unui lot. Ce s-a construit cu grijă:
+
+- **serverul trimite exact id-urile de pe ecran**, nu „toți cei care se
+  potrivesc". Un „tuturor" interpretat de server ar putea scrie, la o diferență
+  de o secundă între ce s-a afișat și ce s-a apăsat, unui client în plus — iar un
+  email plecat nu se retrage;
+- **fiecare client este propria tranzacție** (savepoint). Un lot de treizeci în
+  care al treilea nu are adresă nu are voie să anuleze primele două: omul a
+  apăsat un buton, dar a luat treizeci de decizii. Verificat prin mutație — fără
+  izolare, trei teste cad;
+- **ce eșuează nu lasă urmă**: savepointul se anulează, deci nu rămâne un link
+  deschis pentru un mesaj care n-a plecat. Tokenul se vede o singură dată, deci
+  un link rămas ar fi un drum pe care nu-l știe nimeni, deschis 45 de zile;
+- **lipsa configurării oprește tot lotul**, cu un singur mesaj. Al treizecilea
+  refuz spune același lucru ca primul, iar un rezultat cu treizeci de clienți
+  „cu probleme" ar ascunde că problema este una singură și este a cabinetului;
+- ecranul **confirmă înainte**, numind clienții. Butonul care trimite este al
+  doilea, nu primul.
+
+**Defectul găsit apăsând butonul.** Raportul „Documente lipsă" listează și
+clienții care n-au trimis **nimic** în luna cerută — este chiar raportul făcut
+ca să-i găsească. Compunerea cererii citea însă din `list_periods`, care nu
+inventează o lună fără documente și fără rând. Rezultatul: butonul de pe rând
+răspundea „clientul nu are documente lipsă" exact acolo unde lipsea totul. Era
+rupt de când a apărut raportul, pentru toți clienții care nu începuseră luna, și
+nu se vedea din cod — doar apăsând.
+
+Acum ambele citesc din aceeași sursă, iar un test verifică proprietatea direct:
+fiecare client pe care raportul îl listează trebuie să poată fi și întrebat.
+
+**Sweep-ul de securitate a prins ruta nouă**, cum trebuia: fiecare rută de
+documente trece printr-o revizuire explicită, iar una neacoperită oprește suita.
+Cu ocazia asta, lista `covered` nu mai repetă de mână ruta `bulk` — o derivă din
+`BODY_ROUTES`, ca următoarea adăugare acolo să nu cadă din același motiv
+invizibil.
 
 ### Solicitarea pleacă din aplicație
 

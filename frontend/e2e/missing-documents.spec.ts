@@ -95,3 +95,29 @@ test("trimiterea neconfigurată spune ce lipsește, nu că a eșuat", async ({ p
   await expect(alert).toBeVisible();
   await expect(alert).toContainText(/NOTIFICATIONS_ENABLED|SMTP/);
 });
+
+test("cererea în masă spune întâi câți primesc, apoi trimite", async ({ page }) => {
+  // Un email plecat nu se retrage: butonul care trimite este al doilea, nu
+  // primul, iar între ele scrie exact cine primește.
+  await loginAs(page, ACCOUNTS.admin);
+  await uploadAndOpen(
+    page,
+    "factura-masa.pdf",
+    incomingInvoice({ number: unique(), total: "1.190,00" }),
+  );
+  await page.goto(`/contabilitate/lipsa?referenceMonth=${MONTH}&request=never`);
+
+  const start = page.getByRole("button", { name: /Trimite solicitarea la \d+ clien/ });
+  await expect(start).toBeVisible();
+  await start.click();
+
+  // Confirmarea numește clienții, nu doar câți sunt.
+  await expect(page.getByRole("heading", { name: /Trimiți \d+ solicităr?i?\?/ })).toBeVisible();
+  await page.getByRole("button", { name: "Trimite acum" }).click();
+
+  // Fără SMTP configurat, tot lotul este refuzat cu ce lipsește — nu cu treizeci
+  // de clienți marcați ca având probleme.
+  const alert = page.getByRole("alert").first();
+  await expect(alert).toBeVisible();
+  await expect(alert).toContainText(/NOTIFICATIONS_ENABLED|SMTP/);
+});
