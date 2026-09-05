@@ -304,8 +304,34 @@ def draft_request(session: Session, context: AssistantContext, argument: str) ->
         missing=gaps,
         organization_name=_organization_name(session, context),
     )
+
+    # Textul de aici este **fără** linkul de trimitere, și asta nu este o
+    # scăpare: deschiderea unui link scrie în bază, iar ruta de chat nu execută
+    # nimic care schimbă date (vezi `api/v1/assistant.py`). Un asistent care
+    # deschide tăcut o cale publică de scriere pentru că cineva a scris o frază
+    # ar rupe exact promisiunea pe care stă restul lui.
+    #
+    # Așa că linkul este propus, nu creat: butonul cheamă aceeași rută pe care ar
+    # fi chemat-o omul din ecranul „Documente lipsă", cu permisiunile lui și cu
+    # aceeași urmă în jurnal — iar textul pe care îl primește atunci este întreg,
+    # compus tot de `document_request.py`. O singură formulare, un singur loc.
+    actions: list[Action] = []
+    if Permission.DOCUMENTS_WRITE in context.permissions:
+        actions.append(
+            Action(
+                kind="request_documents",
+                label="Deschide un link și copiază cererea",
+                summary=(
+                    f"Se deschide un link de trimitere pentru {client.name}, iar textul "
+                    "de mai sus îl primești cu linkul în el, gata de copiat."
+                ),
+                payload={"clientId": str(client.id), "referenceMonth": month},
+            )
+        )
+
     return ToolResult(
         text=message,
+        actions=actions,
         links=[
             Link(
                 label="Documente lipsă",

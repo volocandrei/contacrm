@@ -190,10 +190,23 @@ export type AssistantLink = { label: string; path: string };
  * mână.
  */
 export type AssistantAction = {
-  kind: "create_task" | "assign_client";
+  kind: "create_task" | "assign_client" | "request_documents";
   label: string;
   summary: string;
   payload: Record<string, string>;
+};
+
+/**
+ * Solicitarea de documente, cu drumul pe care sosește răspunsul.
+ *
+ * `uploadUrl` este deja în `message`. Câmpul separat există ca interfața să
+ * poată arăta linkul și altfel decât într-un text de copiat — și se vede **o
+ * singură dată**, ca orice link de trimitere: în bază stă doar hash-ul lui.
+ */
+export type DocumentRequest = {
+  message: string;
+  uploadUrl: string;
+  uploadExpiresAt: string;
 };
 
 export type AssistantReply = {

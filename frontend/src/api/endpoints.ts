@@ -1,5 +1,5 @@
 /** Funcțiile tipate care acoperă API-ul (§38). Un singur loc care cunoaște căile. */
-import { api } from "@/api/client";
+import { api, request } from "@/api/client";
 import type { Paginated, QueryParams } from "@/api/types";
 import type {
   AccountingPeriod,
@@ -11,6 +11,7 @@ import type {
   ChecklistItem,
   Client,
   ClientAlias,
+  DocumentRequest,
   IssuedUploadLink,
   ClientExpectation,
   ClientNote,
@@ -144,8 +145,19 @@ export const clients = {
    * asistentul îl scrie din același loc. Două formulări ar însemna că doi
    * clienți primesc, în aceeași zi, mesaje diferite de la același cabinet.
    */
+  /**
+   * Compune solicitarea și deschide drumul pe care sosesc documentele.
+   *
+   * Este POST fiindcă **creează** un link de trimitere. Un GET care creează ceva
+   * s-ar executa din nou la fiecare reîncărcare de pagină și la fiecare retry.
+   */
   documentRequest: (id: string, referenceMonth: string) =>
-    api.get<{ message: string }>(`/clients/${id}/document-request`, { referenceMonth }),
+    // `request` direct, nu `api.post`: interogarea trebuie să meargă prin
+    // `params`, iar `api.post` ia doar corpul. Lipită în cale, backendul simulat
+    // n-ar mai potrivi ruta — el compară tipare pe calea curată.
+    request<DocumentRequest>("POST", `/clients/${id}/document-request`, {
+      params: { referenceMonth },
+    }),
 };
 
 /**

@@ -50,6 +50,21 @@ router = APIRouter(prefix="/clients", tags=["crm"])
 ClientReader = Annotated[User, require_permission(Permission.CLIENTS_READ)]
 ClientWriter = Annotated[User, require_permission(Permission.CLIENTS_WRITE)]
 
+#: Cine poate deschide un drum de trimitere.
+#:
+#: **Nu `clients:write`, cum era la început.** Am pus întâi permisiunea de client,
+#: pe raționamentul că o cale publică de scriere este o decizie a cabinetului. În
+#: matricea de roluri, `clients:write` îl are numai administratorul — iar cel care
+#: aleargă după documente este contabilul. Cu gardul acela, tocmai omul pentru
+#: care a fost făcută funcția nu o putea folosi.
+#:
+#: `documents:write` este și gardul corect pe fond: linkul nu schimbă nimic în
+#: fișa clientului, ci **primește documente**. Nu dă mai mult decât are deja cel
+#: care îl deschide — el poate oricum încărca documente pentru orice client —, ci
+#: deleagă o felie din asta: un singur client, doar scriere, cu termen și cu buton
+#: de închis. Cine doar citește (rolul `viewer`) tot nu poate.
+DocumentWriter = Annotated[User, require_permission(Permission.DOCUMENTS_WRITE)]
+
 
 def _to_out(client: Client, accountant_names: dict[uuid.UUID, str]) -> ClientOut:
     return ClientOut(
@@ -147,14 +162,14 @@ def list_upload_links(
 )
 def create_upload_link(
     session: DbSession,
-    user: ClientWriter,
+    user: DocumentWriter,
     request: Request,
     client_id: uuid.UUID,
 ) -> IssuedLinkOut:
     """Deschide un drum prin care clientul își trimite singur documentele.
 
-    Cere `clients:write`: a deschide o cale publică de scriere către dosarul unui
-    client este o decizie a cabinetului, nu o consultare.
+    Cere `documents:write` — vezi `DocumentWriter`: linkul primește documente, nu
+    schimbă fișa clientului, iar cel care aleargă după ele este contabilul.
     """
     client = ClientRepository(session).get(user.organization_id, client_id)
     if client is None:
@@ -188,7 +203,7 @@ def create_upload_link(
 @router.delete("/{client_id}/upload-links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
 def revoke_upload_link(
     session: DbSession,
-    user: ClientWriter,
+    user: DocumentWriter,
     request: Request,
     client_id: uuid.UUID,
     link_id: uuid.UUID,
@@ -275,19 +290,27 @@ def forget_alias(
 
 
 class DocumentRequestOut(ApiModel):
-    """Solicitarea de documente, gata de trimis."""
+    """Solicitarea de documente, împreună cu drumul pe care sosește răspunsul.
+
+    `uploadUrl` se vede **o singură dată**, ca orice link de trimitere: în bază
+    stă doar hash-ul lui. Este deja în `message`; câmpul separat există ca
+    interfața să poată arăta linkul și altfel decât într-un text de copiat.
+    """
 
     message: str
+    upload_url: str
+    upload_expires_at: datetime
 
 
-@router.get("/{client_id}/document-request", response_model=DocumentRequestOut)
+@router.post("/{client_id}/document-request", response_model=DocumentRequestOut)
 def document_request(
     session: DbSession,
-    user: ClientReader,
+    user: DocumentWriter,
+    request: Request,
     client_id: uuid.UUID,
     filters: Annotated[MissingFilters, Query()],
 ) -> DocumentRequestOut:
-    """Textul prin care i se cer clientului documentele lipsă.
+    """Textul prin care i se cer clientului documentele lipsă, cu tot cu drum.
 
     **De ce vine de la server.** Mesajul spune numele cabinetului, listează ce
     lipsește și dă termenul lunii: este conținut de business, nu formatare de
@@ -295,6 +318,18 @@ def document_request(
     solicitarea". Din momentul în care îl cere și asistentul, două implementări
     ar însemna că doi clienți primesc, în aceeași zi, două mesaje diferite de la
     același cabinet.
+
+    **De ce este POST și nu GET.** Compunerea deschide un link de trimitere, iar
+    un link este o resursă nouă, cu urmă în jurnal. Un GET care creează ceva se
+    execută din nou la fiecare reîncărcare de pagină și la fiecare retry.
+
+    **De ce un link nou de fiecare dată.** Tokenul unui link existent nu se mai
+    poate afla: în bază stă doar SHA-256 al lui, tocmai ca cine citește baza să nu
+    poată folosi linkurile. Refolosirea și hash-ul se exclud, iar hash-ul este
+    proprietatea care contează. Prețul este o listă care crește; îl plătim ieftin,
+    fiindcă linkurile expiră singure în 45 de zile și pentru că un link vechi,
+    rămas în inboxul clientului, **continuă să funcționeze** — n-am vrut să
+    închidem tăcut drumul pe care omul tocmai se pregătea să trimită.
 
     Nu trimite nimic. Trimiterea cere un provider și rămâne în Faza 2; până
     atunci textul pleacă din clientul de email al contabilului, cu semnătura lui.
@@ -308,12 +343,30 @@ def document_request(
     )
     missing = [item for item in views[0].checklist if not item.is_satisfied] if views else []
     if not missing:
+        # Înainte de a deschide linkul: un drum public deschis pentru un mesaj
+        # care oricum nu pleacă ar rămâne deschis degeaba 45 de zile.
         raise ValidationError(
             "Clientul nu are documente lipsă în luna cerută.",
             {"referenceMonth": ["Nimic de cerut."]},
         )
 
+    issued = UploadLinkService(session).issue(
+        user.organization_id, client_id, created_by_id=user.id
+    )
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="UPLOAD_LINK_ISSUED",
+        entity_type="ClientUploadLink",
+        entity_id=str(issued.id),
+        user_id=user.id,
+        user_name=user.full_name,
+        # Clientul și luna, nu tokenul: jurnalul nu ține chei (§33).
+        detail=f"{client.name} · solicitare {filters.reference_month}",
+        ip=client_ip(request),
+    )
+
     organization = session.get(Organization, user.organization_id)
+    url = f"{settings.public_base_url}/incarca/{issued.token}"
     return DocumentRequestOut(
         message=build_request_message(
             client_name=client.name,
@@ -321,7 +374,11 @@ def document_request(
             deadline=filing_deadline(filters.reference_month, day=settings.filing_deadline_day),
             missing=missing,
             organization_name=organization.name if organization else "Cabinetul dumneavoastră",
-        )
+            upload_url=url,
+            upload_expires_on=issued.expires_at.date(),
+        ),
+        upload_url=url,
+        upload_expires_at=issued.expires_at,
     )
 
 

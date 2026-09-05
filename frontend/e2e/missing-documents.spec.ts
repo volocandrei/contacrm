@@ -39,4 +39,30 @@ test("solicitarea ajunge în clipboard, cu lista lipsurilor completată", async 
   expect(copied).not.toContain("{{");
   // Semnătura este a cabinetului, nu a aplicației.
   expect(copied).not.toContain("ContaCRM");
+
+  // Și drumul pe care sosește răspunsul: o listă cu ce lipsește îi spune
+  // clientului *ce* să caute și îl lasă singur cu *cum* trimite.
+  expect(copied).toContain("/incarca/");
+  expect(copied).toMatch(/valabil până la \d{2}\.\d{2}\.\d{4}/);
+});
+
+test("linkul din mesajul copiat chiar duce undeva", async ({ page, context }) => {
+  await loginAs(page, ACCOUNTS.admin);
+  await uploadAndOpen(page, "factura-intrare.pdf", incomingInvoice({ number: unique(), total: "1.190,00" }));
+
+  await page.goto(`/contabilitate/lipsa?referenceMonth=${MONTH}`);
+  await page.getByRole("button", { name: /Copiază solicitarea/ }).first().click();
+  await expect(page.getByRole("button", { name: /Copiat/ }).first()).toBeVisible();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+
+  // Exact ce face clientul: ia adresa din mesaj și o deschide, fără sesiune.
+  // Un link mort trimis unui client este mai rău decât niciun link — omul
+  // încearcă, nu merge, și data viitoare nu mai încearcă.
+  const url = copied.split("\n").find((line) => line.includes("/incarca/"))!;
+  const guest = await context.browser()!.newContext();
+  const clientPage = await guest.newPage();
+  await clientPage.goto(url.replace(/^https?:\/\/[^/]+/, ""));
+
+  await expect(clientPage.getByRole("heading", { name: "Trimite documentele" })).toBeVisible();
+  await guest.close();
 });

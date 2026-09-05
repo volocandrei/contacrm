@@ -108,11 +108,10 @@ const routes: Route[] = [
     handler: ({ params }) => store.forgetAlias(params.aliasId!),
   },
   {
-    method: "GET",
+    method: "POST",
     pattern: "/clients/:id/document-request",
-    handler: ({ params, query }) => ({
-      message: store.buildDocumentRequest(params.id!, query.referenceMonth ?? ""),
-    }),
+    handler: ({ params, query }) =>
+      store.composeDocumentRequest(params.id!, query.referenceMonth ?? ""),
   },
   {
     method: "GET",

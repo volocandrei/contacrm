@@ -352,9 +352,10 @@ class TestPermissions:
         response = api.post(f"/api/v1/clients/{clients[0].id}/upload-links")
         assert response.status_code == 401
 
-    def test_issuing_needs_clients_write(
+    def test_a_reader_cannot_open_a_way_in(
         self, api: TestClient, db: Session, org: Organization, roles: dict, clients: list[Client]
     ) -> None:
+        """Cine doar citește nu deschide o cale publică de scriere."""
         from app.domain.permissions import RoleCode
         from tests.test_crm_api import make_user
 
@@ -365,3 +366,27 @@ class TestPermissions:
         response = api.post(f"/api/v1/clients/{clients[0].id}/upload-links")
 
         assert response.status_code == 403
+
+    def test_the_accountant_who_chases_documents_can(
+        self, api: TestClient, db: Session, org: Organization, roles: dict, clients: list[Client]
+    ) -> None:
+        """Gardul este `documents:write`, și asta a fost o corectură, nu o scăpare.
+
+        La început am cerut `clients:write`, pe raționamentul că o cale publică de
+        scriere este o decizie a cabinetului. În matricea de roluri, `clients:write`
+        îl are numai administratorul — iar cel care aleargă după documente este
+        contabilul. Cu gardul acela, tocmai omul pentru care s-a făcut funcția nu o
+        putea folosi.
+        """
+        from app.domain.permissions import RoleCode
+        from tests.test_crm_api import make_user
+
+        accountant = make_user(
+            db, org, roles, email="contabil@contacrm.test", role=RoleCode.ACCOUNTANT
+        )
+        db.commit()
+        login(api, accountant.email)
+
+        response = api.post(f"/api/v1/clients/{clients[0].id}/upload-links")
+
+        assert response.status_code == 201, response.text

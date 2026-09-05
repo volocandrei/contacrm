@@ -23,6 +23,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Bot, Check, LoaderCircle, Send, TriangleAlert, User, X } from "lucide-react";
 import { useAssignClient, useAssistant, useCreateTask } from "@/api/hooks";
+import { clients } from "@/api/endpoints";
 import { describeError } from "@/lib/errors";
 import { buttonPrimary, focusRing, iconChip, inputField, mutedText, surface } from "@/lib/ui";
 import { cn } from "@/lib/utils";
@@ -289,15 +290,46 @@ function ActionCard({ action }: { action: AssistantAction }) {
   const createTask = useCreateTask();
   const assignClient = useAssignClient();
   const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const pending = createTask.isPending || assignClient.isPending;
+  const pending = busy || createTask.isPending || assignClient.isPending;
+
+  /**
+   * Deschide un link de trimitere și pune în clipboard textul cu tot cu el.
+   *
+   * Asistentul a scris mai sus cererea **fără** link, fiindcă el nu execută
+   * nimic care schimbă date. Linkul se deschide abia acum, de aici, prin exact
+   * ruta pe care ar fi chemat-o omul din ecranul „Documente lipsă" — cu
+   * permisiunile lui și cu aceeași urmă în jurnal.
+   */
+  async function requestDocuments() {
+    setBusy(true);
+    try {
+      const { message } = await clients.documentRequest(
+        action.payload.clientId ?? "",
+        action.payload.referenceMonth ?? "",
+      );
+      await navigator.clipboard.writeText(message);
+      setDone(true);
+    } catch (caught) {
+      // Și dacă a picat clipboard-ul, nu doar cererea: un buton care pare că a
+      // funcționat, dar n-a copiat nimic, trimite omul să caute un text gol.
+      setProblem(describeError(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function confirm() {
     setProblem(null);
     const onError = (caught: unknown) => setProblem(describeError(caught));
     const onSuccess = () => setDone(true);
 
+    if (action.kind === "request_documents") {
+      void requestDocuments();
+      return;
+    }
     if (action.kind === "create_task") {
       createTask.mutate(
         { title: action.payload.title ?? "", assignedToId: action.payload.assignedToId ?? null },
@@ -323,7 +355,7 @@ function ActionCard({ action }: { action: AssistantAction }) {
         {done ? (
           <>
             <Check className="h-4 w-4" aria-hidden="true" />
-            Gata
+            {action.kind === "request_documents" ? "Copiat" : "Gata"}
           </>
         ) : (
           action.label

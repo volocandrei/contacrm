@@ -11,7 +11,8 @@ import { PERIOD_STATUS_LABEL } from "@/lib/labels";
 import { buttonSecondary, divider, mutedText, pillClass } from "@/lib/ui";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { currentMonth } from "@/lib/current-month";
-import { formatReferenceMonth } from "@/lib/format";
+import { formatDate, formatReferenceMonth } from "@/lib/format";
+import { usePermissionCheck } from "@/features/auth/use-auth";
 import { cn } from "@/lib/utils";
 import { PERIOD_STATUS, type AccountingPeriod } from "@/types/domain";
 
@@ -67,6 +68,9 @@ export function PeriodsPage() {
 export function MissingDocumentsPage() {
   const { values, setValue } = useFilterParams({ referenceMonth: currentMonth() });
   const { data, isLoading, error } = useMissingDocuments(values.referenceMonth);
+  // Solicitarea deschide un link de trimitere, deci scrie. Cine nu poate scrie
+  // vede tot ecranul, fără butonul care i-ar da 403.
+  const canRequest = usePermissionCheck()("documents:write");
 
   return (
     <div>
@@ -145,11 +149,13 @@ export function MissingDocumentsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <CopyRequestButton
-                        clientId={period.clientId}
-                        clientName={period.clientName}
-                        referenceMonth={period.referenceMonth}
-                      />
+                      {canRequest && (
+                        <CopyRequestButton
+                          clientId={period.clientId}
+                          clientName={period.clientName}
+                          referenceMonth={period.referenceMonth}
+                        />
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -277,6 +283,17 @@ const COPIED_FEEDBACK_MS = 2000;
  * îl scrie și asistentul, două formulări ar însemna că doi clienți primesc, în
  * aceeași zi, mesaje diferite de la același cabinet.
  */
+/**
+ * Cererea de documente, gata de trimis — cu drumul pe care sosește răspunsul.
+ *
+ * **De ce apasă un buton și se întâmplă două lucruri.** Textul spune clientului
+ * *ce* lipsește; linkul îi spune *cum* trimite. Separate, a doua parte se pierde:
+ * omul primește o listă și rămâne cu scanatul, atașatul și limita de mărime a
+ * emailului. Împreună, cererea este completă.
+ *
+ * Apare doar pentru cine are `documents:write` — deschiderea unui link scrie.
+ * Un buton care ar arunca 403 la apăsare este mai rău decât unul care lipsește.
+ */
 function CopyRequestButton({
   clientId,
   clientName,
@@ -286,16 +303,19 @@ function CopyRequestButton({
   clientName: string;
   referenceMonth: string;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
   async function copy() {
     try {
-      const { message } = await clients.documentRequest(clientId, referenceMonth);
+      const { message, uploadExpiresAt } = await clients.documentRequest(
+        clientId,
+        referenceMonth,
+      );
       await navigator.clipboard.writeText(message);
-      setCopied(true);
+      setCopied(uploadExpiresAt);
       setFailed(false);
-      setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+      setTimeout(() => setCopied(null), COPIED_FEEDBACK_MS);
     } catch {
       // Clipboard-ul cere context sigur și, în unele browsere, permisiune; iar
       // textul poate să nu vină deloc. Oricare ar fi motivul, se spune — un
@@ -310,7 +330,7 @@ function CopyRequestButton({
         type="button"
         onClick={() => void copy()}
         className={cn(buttonSecondary, "h-8 px-3 text-xs")}
-        title={`Copiază solicitarea pentru ${clientName}`}
+        title={`Deschide un link de trimitere și copiază solicitarea pentru ${clientName}`}
       >
         {copied ? (
           <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
@@ -319,6 +339,11 @@ function CopyRequestButton({
         )}
         {copied ? "Copiat" : "Copiază solicitarea"}
       </button>
+      {copied && (
+        <span className="text-xs text-emerald-700 dark:text-emerald-400">
+          Cu link de trimitere, valabil până la {formatDate(copied)}
+        </span>
+      )}
       {failed && (
         <span role="alert" className="text-xs text-red-600 dark:text-red-400">
           Browserul nu a permis copierea.

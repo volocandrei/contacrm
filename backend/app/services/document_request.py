@@ -11,6 +11,16 @@ același cabinet.
 rămâne în Faza 2. Până atunci, textul iese gata scris și pleacă din clientul de
 email al contabilului, cu semnătura lui — ceea ce este, până la Faza 2, chiar mai
 onest: niciun mesaj nu pleacă în numele cabinetului fără ca cineva să îl fi citit.
+
+**De ce poartă și linkul de trimitere (M14).** O listă de ce lipsește îi spune
+clientului *ce* să caute, dar îl lasă singur cu *cum* trimite: scanează, atașează,
+se lovește de limita de mărime a emailului, amână. Cererea și drumul pe care
+sosește răspunsul pleacă împreună, într-un singur mesaj — altfel omul primește
+sarcina fără unealtă.
+
+Blocul este opțional pentru că nu oricine îl poate compune: linkul se **deschide**,
+iar deschiderea cere `documents:write`. Cine doar citește primește tot textul, mai
+puțin rândul pe care n-are dreptul să-l creeze.
 """
 
 from __future__ import annotations
@@ -59,6 +69,23 @@ def _line(entry: ChecklistEntry) -> str:
     return f"• {entry.document_type_label}{detail}"
 
 
+def _upload_block(url: str, expires_on: date | None) -> list[str]:
+    """Cum se trimite, imediat după ce s-a spus ce și până când.
+
+    Data expirării se scrie în mesaj pentru că altfel n-o știe nimeni: clientul
+    care deschide linkul peste patru luni nu află de ce nu mai merge, iar
+    contabilul care i l-a trimis nu-și amintește când l-a deschis.
+    """
+    lines = [
+        "",
+        "Cel mai simplu este să le încărcați direct aici, fără cont și fără parolă:",
+        url,
+    ]
+    if expires_on is not None:
+        lines.append(f"Linkul este valabil până la {expires_on.strftime('%d.%m.%Y')}.")
+    return lines
+
+
 def build_request_message(
     *,
     client_name: str,
@@ -66,6 +93,8 @@ def build_request_message(
     deadline: date,
     missing: Sequence[ChecklistEntry],
     organization_name: str,
+    upload_url: str | None = None,
+    upload_expires_on: date | None = None,
 ) -> str:
     del client_name  # se adresează firmei, nu o numește: mesajul îi este trimis ei
     return "\n".join(
@@ -79,6 +108,7 @@ def build_request_message(
             "",
             f"Vă rugăm să ni le transmiteți până la {deadline.strftime('%d.%m.%Y')}, "
             "ca declarațiile să poată fi depuse la timp.",
+            *(_upload_block(upload_url, upload_expires_on) if upload_url else []),
             "",
             "Vă mulțumim,",
             organization_name,

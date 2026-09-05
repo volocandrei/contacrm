@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  17.453 linii sursă +  2.478 linii teste  →   200 teste
-backend   22.664 linii sursă + 19.188 linii teste  → 1.308 teste
-end-to-end 1.675 linii                             →    64 teste (browser real)
+frontend  17.605 linii sursă +  2.607 linii teste  →   207 teste
+backend   22.777 linii sursă + 19.566 linii teste  → 1.322 teste
+end-to-end 1.701 linii                             →    65 teste (browser real)
 migrări    1.916 linii
 ```
 
-Toate verificările trec: **1.572 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.594 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -162,6 +162,13 @@ Poate și **scrie solicitarea** de documente pentru un client — același text 
 butonul de pe „Documente lipsă", fiindcă vine din același loc de pe server. Două
 formulări ar însemna că doi clienți primesc, în aceeași zi, mesaje diferite de la
 același cabinet.
+
+Textul pe care îl scrie asistentul este însă **fără linkul de trimitere**, și
+asta nu este o scăpare: deschiderea unui link scrie în bază, iar ruta de chat nu
+execută nimic care schimbă date. Un asistent care deschide tăcut o cale publică
+de scriere pentru că cineva a scris o frază ar rupe exact promisiunea pe care stă
+restul lui. Așa că îl **propune**: un buton care cheamă aceeași rută pe care ar fi
+chemat-o omul din ecran, cu permisiunile lui, iar textul primit atunci este întreg.
 
 Două motoare, același seam ca la OCR și stocare (ADR-004, ADR-005):
 
@@ -202,10 +209,14 @@ de contact **acționabile** — un click sună, scrie sau deschide WhatsApp. Un 
 pe care trebuie să-l copiezi cu ochiul nu este o agendă, este o listă.
 
 Pe „Documente lipsă", fiecare rând are **Copiază solicitarea**: textul către
-client, cu lista lipsurilor și termenul lunii, gata de trimis din clientul de
-email al contabilului. Aplicația știe ce lipsește și până când, dar nu poate
-trimite — asta cere un provider și rămâne în Faza 2; butonul acoperă exact
-distanța rămasă, fără să pretindă că o depășește.
+client, cu lista lipsurilor, termenul lunii **și linkul prin care le trimite**,
+gata de plecat din clientul de email al contabilului. Aplicația știe ce lipsește
+și până când, dar nu poate trimite — asta cere un provider și rămâne în Faza 2;
+butonul acoperă exact distanța rămasă, fără să pretindă că o depășește.
+
+Lista și linkul pleacă **împreună**, dintr-un singur buton, fiindcă separate a
+doua parte se pierde: clientul află *ce* îi lipsește și rămâne singur cu *cum*
+trimite — scanat, atașat, limita de mărime a emailului, amânat.
 
 ### Clientul își trimite singur documentele (M14)
 
@@ -239,6 +250,23 @@ există din cauza asta:
 `PUBLIC_BASE_URL` oprește pornirea în producție dacă a rămas pe `localhost`: un
 link compus așa ajunge la client și nu duce nicăieri — se descoperă abia când
 cineva îl deschide.
+
+**Un link nou la fiecare cerere, nu unul refolosit.** Tokenul unui link existent
+nu se mai poate afla: în bază stă doar SHA-256 al lui, tocmai ca cine citește baza
+să nu poată folosi linkurile. Refolosirea și hash-ul se exclud, iar hash-ul este
+proprietatea care contează. Prețul este o listă care crește — o plătim ieftin,
+fiindcă linkurile expiră singure în 45 de zile, iar unul vechi rămas în inboxul
+clientului **continuă să funcționeze**: nu închidem tăcut drumul pe care omul
+tocmai se pregătea să trimită.
+
+**Gardul este `documents:write`, și asta a fost o corectură.** Prima variantă cerea
+`clients:write`, pe raționamentul că o cale publică de scriere este o decizie a
+cabinetului. În matricea de roluri, `clients:write` îl are numai administratorul —
+iar cel care aleargă după documente este contabilul. Cu gardul acela, tocmai omul
+pentru care s-a făcut funcția nu o putea folosi. `documents:write` este și corect
+pe fond: linkul nu schimbă nimic în fișa clientului, ci primește documente, și nu
+dă mai mult decât are deja cel care îl deschide — el poate oricum încărca documente
+pentru orice client. Cine doar citește tot nu poate.
 
 ### Sistemul învață de la cine vin documentele (§8)
 
@@ -281,7 +309,7 @@ documentul aprobat și mai avea de făcut două lucruri pentru fiecare document
 următor. Scurtături: `Alt+S` salvează, `Alt+A` aprobă, `Alt+N` sare peste
 fără să atingă documentul.
 
-**Backendul simulat** (`src/api/mock/`, ~4.189 linii) implementează 73 de rute cu
+**Backendul simulat** (`src/api/mock/`, ~4.259 linii) implementează 74 de rute cu
 aceleași căi, paginare, filtrare, permisiuni și coduri de eroare ca API-ul real.
 Comutarea se face din `VITE_API_MODE` — restul aplicației nu știe cine răspunde.
 

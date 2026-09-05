@@ -826,7 +826,7 @@ function UploadLinkPanel({ clientId }: { clientId: string }) {
                       }`}
                 </span>
               </span>
-              {has("clients:write") && (
+              {has("documents:write") && (
                 <button
                   type="button"
                   onClick={() => revoke.mutate(link.id)}
@@ -846,7 +846,7 @@ function UploadLinkPanel({ clientId }: { clientId: string }) {
         </ul>
       )}
 
-      {has("clients:write") && (
+      {has("documents:write") && (
         <button
           type="button"
           onClick={() =>

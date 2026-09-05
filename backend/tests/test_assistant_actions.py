@@ -115,5 +115,7 @@ class TestDraftingTheRequest:
 
         assert body["used"] == ["draft_request"]
         assert "documente lipsă" in body["text"] or "Bună ziua" in body["text"]
-        # Un draft nu este o acțiune: nu are ce confirma nimeni, textul se copiază.
+        # Fără goluri nu are ce cere, deci nu propune nici deschiderea unui link
+        # de trimitere. Când sunt goluri o face — vezi `test_document_request.py`,
+        # unde există o lună începută și neterminată.
         assert body["actions"] == []

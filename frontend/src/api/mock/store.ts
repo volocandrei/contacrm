@@ -38,6 +38,7 @@ import type {
   AuditLogEntry,
   Client,
   ClientAlias,
+  DocumentRequest,
   IssuedUploadLink,
   ClientStatus,
   ClientExpectation,
@@ -2430,6 +2431,17 @@ let uploadLinkCounter = 0;
 /** Aceeași valabilitate implicită ca pe server: o lună plus marja de depunere. */
 const MOCK_LINK_VALIDITY_DAYS = 45;
 
+/**
+ * Adresa de la care se compune linkul — oglinda lui `PUBLIC_BASE_URL`.
+ *
+ * În browser este chiar originul paginii. `window` nu există însă peste tot unde
+ * rulează codul ăsta: testele backendului simulat rulează în Node, iar o citire
+ * directă ar arunca acolo, nu în producție — adică exact unde nu se vede.
+ */
+function mockPublicOrigin(): string {
+  return typeof window === "undefined" ? "http://localhost:5173" : window.location.origin;
+}
+
 export function listUploadLinks(clientId: string): UploadLink[] {
   requirePermission("clients:read");
   return uploadLinks
@@ -2438,7 +2450,7 @@ export function listUploadLinks(clientId: string): UploadLink[] {
 }
 
 export function createUploadLink(clientId: string): IssuedUploadLink {
-  requirePermission("clients:write");
+  requirePermission("documents:write");
   getClient(clientId);
 
   uploadLinkCounter += 1;
@@ -2458,12 +2470,12 @@ export function createUploadLink(clientId: string): IssuedUploadLink {
   const { clientId: _clientId, ...rest } = link;
   return {
     ...rest,
-    url: `${window.location.origin}/incarca/token-simulat-${uploadLinkCounter}`,
+    url: `${mockPublicOrigin()}/incarca/token-simulat-${uploadLinkCounter}`,
   };
 }
 
 export function revokeUploadLink(linkId: string): void {
-  requirePermission("clients:write");
+  requirePermission("documents:write");
   const link = uploadLinks.find((row) => row.id === linkId);
   if (!link) notFound("Link", linkId);
   // Nu se șterge rândul: urma că a existat rămâne, ca pe server.
@@ -2559,7 +2571,16 @@ const MONTH_NAMES = [
  * asistentul îl cer din același loc — două formulări ar însemna că doi clienți
  * primesc, în aceeași zi, mesaje diferite de la același cabinet.
  */
-export function buildDocumentRequest(clientId: string, referenceMonth: string): string {
+/** „2026-10-20T09:00:00Z" → „20.10.2026". Un client nu citește date ISO. */
+function dayMonthYear(iso: string): string {
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+}
+
+export function buildDocumentRequest(
+  clientId: string,
+  referenceMonth: string,
+  upload?: { url: string; expiresAt: string },
+): string {
   const client = state.clients.find((row) => row.id === clientId);
   if (!client) notFound("Client", clientId);
 
@@ -2598,12 +2619,48 @@ export function buildDocumentRequest(clientId: string, referenceMonth: string): 
     "",
     ...lines,
     "",
-    `Vă rugăm să ni le transmiteți până la ${deadline.slice(8)}.${deadline.slice(5, 7)}.` +
-      `${deadline.slice(0, 4)}, ca declarațiile să poată fi depuse la timp.`,
+    `Vă rugăm să ni le transmiteți până la ${dayMonthYear(deadline)}, ` +
+      "ca declarațiile să poată fi depuse la timp.",
+    // Cererea și drumul pe care sosește răspunsul pleacă împreună: o listă de ce
+    // lipsește îi spune clientului *ce* să caute, dar îl lasă singur cu *cum*.
+    ...(upload
+      ? [
+          "",
+          "Cel mai simplu este să le încărcați direct aici, fără cont și fără parolă:",
+          upload.url,
+          `Linkul este valabil până la ${dayMonthYear(upload.expiresAt)}.`,
+        ]
+      : []),
     "",
     "Vă mulțumim,",
     currentUser.organizationName,
   ].join("\n");
+}
+
+/**
+ * Solicitarea de documente, cu link cu tot.
+ *
+ * Ordinea contează și aici: mai întâi se verifică dacă e ceva de cerut, abia
+ * apoi se deschide linkul. Un drum public deschis pentru un mesaj care oricum
+ * nu pleacă ar rămâne deschis degeaba 45 de zile.
+ */
+export function composeDocumentRequest(
+  clientId: string,
+  referenceMonth: string,
+): DocumentRequest {
+  requirePermission("documents:write");
+  // Aruncă înainte de a deschide ceva, dacă nu lipsește nimic.
+  buildDocumentRequest(clientId, referenceMonth);
+
+  const link = createUploadLink(clientId);
+  return {
+    message: buildDocumentRequest(clientId, referenceMonth, {
+      url: link.url,
+      expiresAt: link.expiresAt,
+    }),
+    uploadUrl: link.url,
+    uploadExpiresAt: link.expiresAt,
+  };
 }
 
 /* ─── Asistentul (M13) ─────────────────────────────────────────────────────── */
@@ -2802,8 +2859,22 @@ function assistantTools(): AssistantTool[] {
         const client = page.items[0]!;
         const month = assistantPreviousMonth();
         try {
+          // Fără link în text: deschiderea unui link scrie, iar asistentul nu
+          // execută nimic care schimbă date. Îl propune, omul apasă.
           return {
             text: buildDocumentRequest(client.id, month),
+            actions: currentUser.permissions.includes("documents:write")
+              ? [
+                  {
+                    kind: "request_documents" as const,
+                    label: "Deschide un link și copiază cererea",
+                    summary:
+                      `Se deschide un link de trimitere pentru ${client.name}, iar textul ` +
+                      "de mai sus îl primești cu linkul în el, gata de copiat.",
+                    payload: { clientId: client.id, referenceMonth: month },
+                  },
+                ]
+              : [],
             links: [
               { label: "Documente lipsă", path: `/contabilitate/lipsa?referenceMonth=${month}` },
             ],
