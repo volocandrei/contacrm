@@ -28,6 +28,7 @@ from pydantic import Field
 from sqlalchemy import select
 
 from app.api.deps import DbSession, StorageDep, client_ip, require_permission
+from app.api.route import CommittingRoute
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode, ForbiddenError, NotFoundError, ValidationError
 from app.core.logging import get_logger
@@ -72,7 +73,7 @@ from app.services.storage import ObjectNotFoundError
 
 logger = get_logger(__name__)
 
-router = APIRouter(tags=["documente"])
+router = APIRouter(route_class=CommittingRoute, tags=["documente"])
 
 DocumentReader = Annotated[User, require_permission(Permission.DOCUMENTS_READ)]
 DocumentWriter = Annotated[User, require_permission(Permission.DOCUMENTS_WRITE)]

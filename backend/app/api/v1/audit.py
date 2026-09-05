@@ -20,13 +20,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import Select, func, select
 
 from app.api.deps import DbSession, require_permission
+from app.api.route import CommittingRoute
 from app.domain.permissions import Permission
 from app.models.audit import AuditLog
 from app.models.user import User
 from app.repositories.document import escape_like
 from app.schemas.common import ApiModel, PageParams, Paginated
 
-router = APIRouter(tags=["administrare"])
+router = APIRouter(route_class=CommittingRoute, tags=["administrare"])
 
 AuditReader = Annotated[User, require_permission(Permission.AUDIT_READ)]
 

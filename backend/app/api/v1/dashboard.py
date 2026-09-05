@@ -22,6 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import DbSession, require_permission
+from app.api.route import CommittingRoute
 from app.api.v1.periods import AccountingPeriodOut, to_period
 from app.core.config import settings
 from app.domain.enums import ClientStatus, DocumentStatus, PeriodStatus, TaskStatus
@@ -39,7 +40,7 @@ from app.services import processing_queue as queue
 from app.services.period_service import PeriodService, PeriodView
 from app.services.upload_links import UploadLinkService
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+router = APIRouter(route_class=CommittingRoute, prefix="/dashboard", tags=["dashboard"])
 
 DashboardReader = Annotated[User, require_permission(Permission.DOCUMENTS_READ)]
 

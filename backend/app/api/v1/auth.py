@@ -20,6 +20,7 @@ from app.api.deps import (
     client_ip,
     refresh_token_from,
 )
+from app.api.route import CommittingRoute
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
@@ -29,7 +30,7 @@ from app.services.auth import AuthService, IssuedTokens
 
 logger = get_logger(__name__)
 
-router = APIRouter(tags=["auth"])
+router = APIRouter(route_class=CommittingRoute, tags=["auth"])
 
 #: Contoare per proces. Vezi `app/core/rate_limit.py` pentru ce acoperă (o
 #: instalare cu un proces de API) și ce nu (mai multe procese, sau o platformă

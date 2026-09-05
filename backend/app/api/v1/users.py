@@ -21,6 +21,7 @@ from fastapi import APIRouter, Request, status
 from pydantic import Field
 
 from app.api.deps import DbSession, client_ip, require_permission
+from app.api.route import CommittingRoute
 from app.domain.permissions import ROLE_LABEL, Permission, RoleCode, sorted_permissions
 from app.models.user import User
 from app.repositories.user import UserRepository
@@ -29,7 +30,7 @@ from app.schemas.common import ApiModel
 from app.schemas.email import EmailAddress
 from app.services.user_service import MIN_PASSWORD_LENGTH, ActorContext, UserService
 
-router = APIRouter(tags=["administrare"])
+router = APIRouter(route_class=CommittingRoute, tags=["administrare"])
 
 UserAdmin = Annotated[User, require_permission(Permission.ADMIN_USERS)]
 

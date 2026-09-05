@@ -11,11 +11,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Response, status
 
+from app.api.route import CommittingRoute
 from app.core.config import settings
 from app.core.db import check_database
 from app.schemas.common import ApiModel
 
-router = APIRouter(prefix="/health", tags=["health"])
+router = APIRouter(route_class=CommittingRoute, prefix="/health", tags=["health"])
 
 
 class LivenessResponse(ApiModel):

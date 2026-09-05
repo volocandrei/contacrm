@@ -29,13 +29,14 @@ from typing import Annotated, Final
 from fastapi import APIRouter
 
 from app.api.deps import require_permission
+from app.api.route import CommittingRoute
 from app.core.config import Settings, settings
 from app.domain.filenames import ARCHIVE_ROOT
 from app.domain.permissions import Permission
 from app.models.user import User
 from app.schemas.common import ApiModel
 
-router = APIRouter(prefix="/settings", tags=["admin"])
+router = APIRouter(route_class=CommittingRoute, prefix="/settings", tags=["admin"])
 
 SettingsReader = Annotated[User, require_permission(Permission.ADMIN_SETTINGS)]
 

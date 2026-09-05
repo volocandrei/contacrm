@@ -18,6 +18,7 @@ from fastapi import APIRouter, Query, Response
 from pydantic import Field
 
 from app.api.deps import DbSession, require_permission
+from app.api.route import CommittingRoute
 from app.api.v1.periods import REFERENCE_MONTH
 from app.core.errors import ValidationError
 from app.domain.permissions import Permission
@@ -26,7 +27,7 @@ from app.schemas.common import ApiModel
 from app.services import report_export
 from app.services.report_service import Bucket, ReportService, ReportSummary
 
-router = APIRouter(prefix="/reports", tags=["reports"])
+router = APIRouter(route_class=CommittingRoute, prefix="/reports", tags=["reports"])
 
 ReportReader = Annotated[User, require_permission(Permission.DOCUMENTS_READ)]
 

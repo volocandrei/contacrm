@@ -32,6 +32,7 @@ from pydantic import Field
 from sqlalchemy import select
 
 from app.api.deps import DbSession, StorageDep, client_ip, require_permission
+from app.api.route import CommittingRoute
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt, encryption_available
 from app.core.errors import AppError, ErrorCode
@@ -50,7 +51,7 @@ from app.services.microsoft.mail_sync import MailSyncService
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/integrations", tags=["admin"])
+router = APIRouter(route_class=CommittingRoute, prefix="/integrations", tags=["admin"])
 
 SettingsAdmin = Annotated[User, require_permission(Permission.ADMIN_SETTINGS)]
 

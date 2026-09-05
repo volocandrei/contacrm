@@ -13,6 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from app.api.deps import DbSession, client_ip, require_permission
+from app.api.route import CommittingRoute
 from app.core.errors import NotFoundError, ValidationError
 from app.domain.enums import TaskStatus
 from app.domain.permissions import Permission
@@ -22,7 +23,7 @@ from app.repositories.task import TaskRepository, TaskRow
 from app.schemas.task import TaskCreate, TaskFilters, TaskOut, TaskStatusUpdate
 from app.services.audit import AuditService
 
-router = APIRouter(prefix="/tasks", tags=["crm"])
+router = APIRouter(route_class=CommittingRoute, prefix="/tasks", tags=["crm"])
 
 TaskReader = Annotated[User, require_permission(Permission.TASKS_READ)]
 TaskWriter = Annotated[User, require_permission(Permission.TASKS_WRITE)]

@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 
+from fastapi import Request
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
@@ -110,12 +111,22 @@ def session_scope() -> Iterator[Session]:
         session.close()
 
 
-def get_db() -> Generator[Session, None, None]:
-    """Dependența FastAPI. O cerere = o tranzacție."""
+def get_db(request: Request) -> Generator[Session, None, None]:
+    """Dependența FastAPI. O cerere = o tranzacție.
+
+    **`commit` nu se face aici.** Blocul de după `yield` al unei dependențe se
+    execută, în FastAPI, după ce răspunsul a plecat spre client — deci o cerere
+    imediat următoare putea citi starea de dinainte de confirmare. Confirmarea o
+    face `CommittingRoute`, în interiorul apelului de endpoint; sesiunea i se
+    lasă la îndemână pe `request.state`.
+
+    `rollback` și `close` rămân aici: ele au voie să se întâmple după răspuns,
+    fiindcă nu schimbă ce vede clientul.
+    """
     session = SessionFactory()
+    request.state.db = session
     try:
         yield session
-        session.commit()
     except Exception:
         session.rollback()
         raise

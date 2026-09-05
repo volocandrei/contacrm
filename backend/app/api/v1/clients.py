@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request, status
 
 from app.api.deps import DbSession, client_ip, require_permission
+from app.api.route import CommittingRoute
 from app.api.v1.documents import to_list_item
 from app.api.v1.periods import MissingFilters
 from app.core.config import settings
@@ -45,7 +46,7 @@ from app.services.document_request import build_request_message
 from app.services.period_service import PeriodService
 from app.services.upload_links import UploadLinkService
 
-router = APIRouter(prefix="/clients", tags=["crm"])
+router = APIRouter(route_class=CommittingRoute, prefix="/clients", tags=["crm"])
 
 ClientReader = Annotated[User, require_permission(Permission.CLIENTS_READ)]
 ClientWriter = Annotated[User, require_permission(Permission.CLIENTS_WRITE)]

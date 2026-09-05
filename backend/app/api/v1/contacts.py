@@ -23,13 +23,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from app.api.deps import DbSession, require_permission
+from app.api.route import CommittingRoute
 from app.domain.permissions import Permission
 from app.models.user import User
 from app.repositories.client import ClientRepository
 from app.schemas.client import ContactFilters, ContactListItemOut
 from app.schemas.common import PageParams, Paginated
 
-router = APIRouter(tags=["crm"])
+router = APIRouter(route_class=CommittingRoute, tags=["crm"])
 
 ContactReader = Annotated[User, require_permission(Permission.CLIENTS_READ)]
 

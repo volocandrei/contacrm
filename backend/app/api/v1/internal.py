@@ -32,6 +32,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header
 
 from app.api.deps import StorageDep
+from app.api.route import CommittingRoute
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
@@ -43,7 +44,9 @@ from app.worker import run_once
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/internal", tags=["internal"], include_in_schema=False)
+router = APIRouter(
+    route_class=CommittingRoute, prefix="/internal", tags=["internal"], include_in_schema=False
+)
 
 # Cât ia o singură bătaie. Sub limita de timp a oricărei platforme rezonabile,
 # chiar dacă fiecare document merge prost.

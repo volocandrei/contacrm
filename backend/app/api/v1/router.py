@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.api.route import CommittingRoute
 from app.api.v1 import (
     anaf,
     assistant,
@@ -30,7 +31,7 @@ from app.api.v1 import (
     users,
 )
 
-api_router = APIRouter()
+api_router = APIRouter(route_class=CommittingRoute)
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(clients.router)

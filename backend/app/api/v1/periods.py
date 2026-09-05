@@ -20,6 +20,7 @@ from pydantic import Field, StringConstraints
 from sqlalchemy import select
 
 from app.api.deps import DbSession, client_ip, require_permission
+from app.api.route import CommittingRoute
 from app.core.config import settings
 from app.core.errors import NotFoundError, ValidationError
 from app.domain.enums import PeriodStatus
@@ -39,7 +40,7 @@ from app.services.expectation_templates import (
 from app.services.period_service import PeriodService, PeriodView
 from app.services.upload_links import RequestTrace, UploadLinkService
 
-router = APIRouter(tags=["contabilitate"])
+router = APIRouter(route_class=CommittingRoute, tags=["contabilitate"])
 
 PeriodReader = Annotated[User, require_permission(Permission.DOCUMENTS_READ)]
 PeriodManager = Annotated[User, require_permission(Permission.PERIODS_MANAGE)]

@@ -19,6 +19,7 @@ from fastapi import APIRouter
 from pydantic import Field
 
 from app.api.deps import CurrentUser, DbSession
+from app.api.route import CommittingRoute
 from app.core.logging import get_logger
 from app.domain.permissions import permissions_for
 from app.models.user import User
@@ -30,7 +31,7 @@ from app.services.audit import AuditService
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/assistant", tags=["asistent"])
+router = APIRouter(route_class=CommittingRoute, prefix="/assistant", tags=["asistent"])
 
 #: Un mesaj de chat, nu un document. Peste atât, nu mai este o întrebare.
 MAX_MESSAGE = 1000

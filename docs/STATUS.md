@@ -118,12 +118,12 @@ placeholdere evidente din `.env.example`.
 
 ```
 frontend  19.164 linii sursă +  2.966 linii teste  →   229 teste
-backend   24.286 linii sursă + 20.962 linii teste  → 1.386 teste
+backend   24.373 linii sursă + 21.031 linii teste  → 1.389 teste
 end-to-end 1.819 linii                             →    68 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.683 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.686 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -833,6 +833,47 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 | Prima variantă a limitării număra **toate** încercările, nu doar eșecurile: al unsprezecelea login cu parola corectă dintr-un minut era refuzat | **două teste E2E căzute departe de cauză**, în mijlocul unui flux de documente |
 | Pe un ecran de 390px, fiecare pagină depășea cu 50px, iar titlul din antet se strângea la lățime zero | măsurând lățimea reală pe trei viewporturi |
 | Prima variantă a verificării de accesibilitate raporta opt câmpuri „fără etichetă”; erau toate corecte — verificarea nu cunoștea eticheta implicită | citind ce anume raportase |
+
+### Tranzacția se confirma după ce răspunsul plecase (5 septembrie 2026)
+
+Cel mai scump defect de până acum, pentru că timp de două runde a arătat ca
+instabilitate de teste.
+
+`get_db` era o dependență FastAPI cu `yield`, iar `session.commit()` stătea în
+blocul de după `yield`. În FastAPI acel bloc se închide în `request_stack` — un
+`AsyncExitStack` care se închide **după** `await response(scope, receive, send)`.
+Cu alte cuvinte, confirmarea în baza de date se făcea după ce browserul avea deja
+`200`.
+
+Interfața face exact ce trebuie: după o scriere reușită invalidează listele
+atinse și le cere din nou, la 20-30 ms. Uneori cererea aceea ajungea **înaintea**
+commit-ului și primea starea de dinainte. Omul apăsa „Copiază linkul", vedea
+confirmarea, iar rândul de sub ea scria mai departe „Necerut".
+
+Pe Windows commit-ul câștiga cursa aproape mereu. În CI, pe Linux, a pierdut-o de
+două ori, la teste fără nicio legătură între ele: o sarcină creată care nu apărea
+pe kanban și cererea de documente de mai sus. Ambele au fost catalogate „flaky"
+înainte să se vadă cauza.
+
+Ce a făcut diferența: **artefactele din CI**. Ecranele salvate arătau rândurile
+„Necerut" după o copiere reușită, iar jurnalul serverului avea `POST … 200` la
+18:22:18.410 și `GET /periods/missing 200` la 18:22:18.437 — 27 ms mai târziu, tot
+cu `requestedAt: null`. Fără ele, defectul rămânea o repornire de job.
+
+Reparat cu `app/api/route.py`: un `APIRoute` care confirmă tranzacția în
+interiorul apelului de endpoint, deci înainte ca octeții să plece. Dacă `commit`
+eșuează, eroarea se ridică *înainte* de a fi trimis un `200` mincinos.
+`rollback` și `close` au rămas în `get_db` — acelea n-au ce strica după răspuns.
+
+`test_commit_before_response.py` cade dacă un router nou uită
+`route_class=CommittingRoute`, fiindcă cursa nu s-ar vedea altfel decât peste
+luni, într-un test aparent fără legătură.
+
+**De ce nu există un test care să reproducă cursa:** `TestClient` așteaptă
+terminarea completă a apelului ASGI, închiderea dependențelor inclusiv, înainte
+să întoarcă răspunsul. Cursa are nevoie de un server adevărat și de doi clienți
+care se succed rapid — adică exact de un browser. Testul verifică montajul, nu
+sincronizarea.
 
 ---
 

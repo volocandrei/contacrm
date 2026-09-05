@@ -34,6 +34,7 @@ from fastapi import APIRouter, File, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import DbSession, StorageDep, client_ip
+from app.api.route import CommittingRoute
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode, NotFoundError
 from app.core.logging import get_logger
@@ -48,7 +49,7 @@ from app.services.upload_links import LinkTarget, UploadLinkService
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/portal", tags=["portal"])
+router = APIRouter(route_class=CommittingRoute, prefix="/portal", tags=["portal"])
 
 #: Câte fișiere poate trimite un link într-un minut. Generos: un client care
 #: scanează un teanc trimite treizeci de bucăți una după alta, iar a-l opri exact
