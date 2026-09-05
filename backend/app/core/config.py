@@ -261,7 +261,37 @@ class Settings(BaseSettings):
     assistant_max_tool_rounds: int = 3
 
     # ── Notificări ───────────────────────────────────────────────────────────
+    #: Comutatorul principal. Oprit, nimic nu pleacă din aplicație — nici măcar
+    #: dacă SMTP-ul este configurat corect. Un cabinet care importă o bază de
+    #: test nu are voie să scrie clienților adevărați.
     notifications_enabled: bool = False
+
+    #: Serverul prin care pleacă emailurile. Gol = trimiterea nu este configurată,
+    #: iar butonul spune asta în loc să eșueze.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    #: Adresa expeditor. Goală, se folosește `smtp_user` — care la aproape toate
+    #: serverele este chiar adresa contului.
+    smtp_from: str = ""
+    #: `STARTTLS` pe portul 587, care este cazul obișnuit. Pentru 465 (SMTPS)
+    #: pune-l pe `false`: acolo conexiunea este criptată de la început.
+    smtp_starttls: bool = True
+
+    @property
+    def mail_is_configured(self) -> bool:
+        """Se poate trimite ceva, cu adevărat?
+
+        Comutatorul singur nu ajunge, și nici serverul singur: unul fără celălalt
+        ar produce un buton care eșuează la apăsare, în loc de unul care spune
+        dinainte ce lipsește.
+        """
+        return self.notifications_enabled and bool(self.smtp_host)
+
+    @property
+    def mail_sender_address(self) -> str:
+        return self.smtp_from or self.smtp_user
 
     # ── Retenție (§64) ───────────────────────────────────────────────────────
     # Nicio ștergere automată nu rulează fără o regulă explicit activată (R8).

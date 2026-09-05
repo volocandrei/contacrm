@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  20.248 linii sursă +  3.285 linii teste  →   250 teste
-backend   25.976 linii sursă + 22.340 linii teste  → 1.462 teste
-end-to-end 1.987 linii                             →    74 teste (browser real)
+frontend  20.443 linii sursă +  3.311 linii teste  →   252 teste
+backend   26.447 linii sursă + 22.801 linii teste  → 1.483 teste
+end-to-end 2.010 linii                             →    75 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.786 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.810 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -268,6 +268,50 @@ Ecranul spune **„Pregătit"**, nu „Trimis". Aplicația nu trimite (Faza 2): 
 se copiază și pleacă din clientul de email al contabilului, deci tot ce știe
 sigur este că cererea a fost compusă. „Trimis" ar fi o promisiune pe care nimic
 din spate nu o acoperă.
+
+### Solicitarea pleacă din aplicație
+
+Până acum, aplicația compunea textul și îl punea în clipboard; contabilul îl
+lipea în clientul lui de email. Ecranul scria **„Pregătit"**, nu „Trimis", și
+avea dreptate: tot ce știa sigur era că cererea fusese compusă.
+
+`POST /clients/{id}/document-request/send` trimite. Providerul este SMTP, ales
+înaintea altor drumuri fiindcă orice cabinet are deja un cont de email: fără
+consimțământ OAuth, fără aplicație înregistrată, fără nimic de aprobat de un
+administrator. Microsoft Graph ar refolosi conexiunea existentă pentru OneDrive
+și inbox, dar cere un scope nou și o reautorizare — deci este al doilea provider,
+nu primul.
+
+*NEVERIFICAT — NECESITĂ CREDENȚIALE EXTERNE.* Testele înlocuiesc `smtplib.SMTP`,
+deci verifică **ce** se trimite, în ce ordine se fac pașii și ce se întâmplă la
+fiecare fel de eșec. Că un server de mail adevărat acceptă mesajul se poate ști
+doar cu un server de mail adevărat.
+
+**Ce s-a construit cu grijă, și de ce.**
+
+- **Ordinea.** Se trimite întâi, se scrie „trimis" după. Invers, un server căzut
+  ar fi lăsat pe ecran „Trimis" pentru un mesaj care n-a plecat niciodată — exact
+  minciuna pe care coloana `notified_at` există ca s-o evite. Are test propriu.
+- **Un singur text.** Ruta care copiază și cea care trimite trec prin același
+  helper. Două implementări ar fi însemnat că doi clienți primesc, în aceeași zi,
+  două scrisori diferite de la același cabinet.
+- **Implicit nu trimite nimic.** Trebuie **amândouă**: comutatorul și un server
+  configurat. Un cabinet care importă o bază de test cu adrese reale ar scrie
+  altfel clienților adevărați.
+- **Neconfigurat nu este o defecțiune.** Providerul implicit spune ce lipsește,
+  iar textul acela ajunge pe ecran neschimbat. „A eșuat trimiterea" ar fi trimis
+  pe cineva să caute defectul în altă parte.
+- **Parola nu ajunge în niciun mesaj de eroare.** `smtplib` pune uneori răspunsul
+  serverului în excepție; ce citește omul este scris de noi. Are test.
+
+**Ce a devenit adevărat.** „Trimis" apare acum doar când mesajul chiar a plecat
+din aplicație. Copiat, rândul scrie mai departe „Pregătit" — aplicația nu are de
+unde ști dacă omul l-a și lipit într-un email.
+
+**Defectul pe care l-am reintrodus și l-au prins testele.** Am tipizat adresa cu
+`pydantic.EmailStr`, care respinge domeniile `.test` — exact greșeala pe care
+proiectul o mai făcuse o dată, la autentificare, și pentru care există deja
+`app/schemas/email.py`. Testele au căzut la prima rulare.
 
 ### Termenele, per client (§18)
 

@@ -1,7 +1,21 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Check, CircleCheck, Copy, TriangleAlert } from "lucide-react";
-import { useDocumentRequest, useMissingDocuments, usePeriods } from "@/api/hooks";
+import {
+  ArrowRight,
+  Check,
+  CircleCheck,
+  Copy,
+  LoaderCircle,
+  Send,
+  TriangleAlert,
+} from "lucide-react";
+import {
+  useDocumentRequest,
+  useMissingDocuments,
+  usePeriods,
+  useSendDocumentRequest,
+} from "@/api/hooks";
+import { ApiError } from "@/api/types";
 import { MonthFilter, SelectFilter } from "@/components/form-controls";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { ProgressRing } from "@/components/charts";
@@ -144,7 +158,7 @@ export function MissingDocumentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {rows.map(({ period, missing, requestedAt, receivedThroughLink }) => (
+                {rows.map(({ period, missing, requestedAt, notifiedAt, receivedThroughLink }) => (
                   <tr key={period.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                     <td className="px-4 py-3">
                       <Link
@@ -182,7 +196,11 @@ export function MissingDocumentsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <RequestState requestedAt={requestedAt} received={receivedThroughLink} />
+                      <RequestState
+                        requestedAt={requestedAt}
+                        notifiedAt={notifiedAt}
+                        received={receivedThroughLink}
+                      />
                     </td>
                     <td className="px-4 py-3 text-right">
                       {canRequest && (
@@ -388,7 +406,83 @@ function CopyRequestButton({
           Browserul nu a permis copierea.
         </span>
       )}
+
+      <SendRequestButton
+        clientId={clientId}
+        clientName={clientName}
+        referenceMonth={referenceMonth}
+      />
     </div>
+  );
+}
+
+/**
+ * Trimite solicitarea din aplicație, în loc s-o copieze.
+ *
+ * **De ce stă lângă „Copiază", nu în locul lui.** Un cabinet fără SMTP
+ * configurat — cazul până când cineva pune setările — trebuie să poată lucra
+ * exact ca înainte. Iar unul cu SMTP configurat are zile în care vrea să scrie
+ * altceva în mesaj și îl copiază oricum.
+ *
+ * **Ce se întâmplă când nu este configurat.** Serverul răspunde cu ce lipsește,
+ * iar textul acela ajunge pe ecran neschimbat. Nu „a eșuat trimiterea": nimic nu
+ * s-a stricat, doar nu i s-a spus aplicației prin ce să trimită.
+ */
+function SendRequestButton({
+  clientId,
+  clientName,
+  referenceMonth,
+}: {
+  clientId: string;
+  clientName: string;
+  referenceMonth: string;
+}) {
+  const send = useSendDocumentRequest();
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  function submit() {
+    setProblem(null);
+    send.mutate(
+      { clientId, referenceMonth },
+      {
+        onSuccess: (result) => setSentTo(result.sentTo),
+        onError: (caught) =>
+          setProblem(
+            caught instanceof ApiError ? caught.message : "Solicitarea nu a putut fi trimisă.",
+          ),
+      },
+    );
+  }
+
+  if (sentTo) {
+    return (
+      <span className="text-xs text-emerald-700 dark:text-emerald-400">Trimis la {sentTo}</span>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={submit}
+        disabled={send.isPending}
+        className={cn(buttonSecondary, "h-8 px-3 text-xs")}
+        title={`Trimite solicitarea prin email către ${clientName}`}
+      >
+        {send.isPending ? (
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        ) : (
+          <Send className="h-3.5 w-3.5" aria-hidden="true" />
+        )}
+        Trimite pe email
+      </button>
+      {problem && (
+        <span role="alert" className="max-w-64 text-right text-xs text-red-600 dark:text-red-400">
+          {problem}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -404,12 +498,21 @@ const SILENT_AFTER_DAYS = 3;
  * cere de două ori unuia și îl uită complet pe altul — iar uitatul nu costă timp,
  * costă o lună întârziată.
  *
- * **Ce nu spune.** Nu spune „trimis". Aplicația nu trimite (Faza 2): textul se
- * copiază și pleacă din clientul de email al contabilului, deci tot ce știe
- * sigur este că cererea a fost **pregătită**. „Cerut" ar fi o promisiune pe care
+ * **De ce două cuvinte diferite.** „Trimis" apare doar când mesajul chiar a
+ * plecat din aplicație — ceea ce serverul știe, fiindcă el l-a trimis. Când a
+ * fost doar copiat, scrie „Pregătit": aplicația nu are de unde ști dacă omul
+ * l-a și lipit într-un email, iar „Trimis" ar fi acolo o promisiune pe care
  * nimic din spate nu o acoperă.
  */
-function RequestState({ requestedAt, received }: { requestedAt: string | null; received: number }) {
+function RequestState({
+  requestedAt,
+  notifiedAt,
+  received,
+}: {
+  requestedAt: string | null;
+  notifiedAt: string | null;
+  received: number;
+}) {
   if (requestedAt === null) {
     return <span className={cn("text-xs", mutedText)}>Necerut</span>;
   }
@@ -422,10 +525,12 @@ function RequestState({ requestedAt, received }: { requestedAt: string | null; r
     );
   }
 
-  const days = daysSince(requestedAt);
+  const days = daysSince(notifiedAt ?? requestedAt);
   return (
     <span className="flex flex-col text-xs">
-      <span className="text-slate-700 dark:text-slate-300">Pregătit {dayLabel(requestedAt)}</span>
+      <span className="text-slate-700 dark:text-slate-300">
+        {notifiedAt ? `Trimis ${dayLabel(notifiedAt)}` : `Pregătit ${dayLabel(requestedAt)}`}
+      </span>
       {days >= SILENT_AFTER_DAYS && (
         <span className="text-amber-700 dark:text-amber-500">fără răspuns de {days} zile</span>
       )}

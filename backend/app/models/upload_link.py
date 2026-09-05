@@ -69,6 +69,18 @@ class ClientUploadLink(Base, OrganizationMixin, TimestampMixin):
     #: rândul devine urma întrebării: cui i s-a cerut, pentru ce lună, când, și
     #: dacă a trimis ceva pe drumul acela.
     reference_month: Mapped[str | None] = mapped_column(String(7), default=None)
+    #: Când a plecat efectiv mesajul către client, dacă a plecat.
+    #:
+    #: **Diferența dintre „Pregătit" și „Trimis".** Până acum ecranul scria
+    #: „Pregătit" și avea dreptate: aplicația compunea textul, iar contabilul îl
+    #: trimitea din clientul lui de email, deci tot ce știa sigur era că cererea
+    #: fusese compusă. Coloana asta este singurul lucru care poate transforma
+    #: cuvântul în „Trimis" fără să mintă — și rămâne nulă exact atunci când
+    #: mesajul a fost doar copiat.
+    notified_at: Mapped[datetime | None] = mapped_column(default=None)
+    #: Cui i-a plecat. Adresa, nu contactul: contactul se poate schimba, iar urma
+    #: trebuie să spună unde a ajuns mesajul atunci.
+    notified_to: Mapped[str | None] = mapped_column(String(320), default=None)
     #: Câte documente au intrat pe aici. Spune dacă drumul chiar este folosit.
     upload_count: Mapped[int] = mapped_column(default=0, nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(default=None)

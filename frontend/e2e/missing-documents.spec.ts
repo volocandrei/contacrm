@@ -72,3 +72,26 @@ test("linkul din mesajul copiat chiar duce undeva", async ({ page, context }) =>
   await expect(clientPage.getByRole("heading", { name: "Trimite documentele" })).toBeVisible();
   await guest.close();
 });
+
+test("trimiterea neconfigurată spune ce lipsește, nu că a eșuat", async ({ page }) => {
+  // Fără `SMTP_*`, aplicația nu poate trimite. Ce contează este **cum** o spune:
+  // nimic nu s-a stricat, doar nu i s-a spus prin ce să trimită. Un „a eșuat
+  // trimiterea" ar trimite pe cineva să caute defectul în altă parte.
+  await loginAs(page, ACCOUNTS.admin);
+  // Ca la celelalte teste din fișier: perioada se **derivă** din documente, deci
+  // fără unul urcat luna nu există și rândul n-ar avea ce cere.
+  await uploadAndOpen(
+    page,
+    "factura-trimitere.pdf",
+    incomingInvoice({ number: unique(), total: "1.190,00" }),
+  );
+  await page.goto(`/contabilitate/lipsa?referenceMonth=${MONTH}`);
+
+  const send = page.getByRole("button", { name: "Trimite pe email" }).first();
+  await expect(send).toBeVisible();
+  await send.click();
+
+  const alert = page.getByRole("alert").first();
+  await expect(alert).toBeVisible();
+  await expect(alert).toContainText(/NOTIFICATIONS_ENABLED|SMTP/);
+});

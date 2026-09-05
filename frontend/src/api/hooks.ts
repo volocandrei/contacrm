@@ -167,6 +167,34 @@ export function useDocumentRequest() {
   });
 }
 
+/**
+ * Trimite solicitarea din aplicație.
+ *
+ * Invalidează aceleași liste ca `useDocumentRequest`: rândul de sub buton trece
+ * din „Necerut" în „Trimis", iar un ecran care arată contrariul a ceea ce tocmai
+ * ai făcut te face să o faci a doua oară.
+ */
+export function useSendDocumentRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      clientId,
+      referenceMonth,
+      to,
+    }: {
+      clientId: string;
+      referenceMonth: string;
+      to?: string;
+    }) => clients.sendDocumentRequest(clientId, referenceMonth, to),
+    onSuccess: (_data, { clientId, referenceMonth }) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.missingDocuments(referenceMonth),
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.clientUploadLinks(clientId) });
+    },
+  });
+}
+
 export function useRevokeUploadLink(clientId: string) {
   const queryClient = useQueryClient();
   return useMutation({

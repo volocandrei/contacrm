@@ -37,13 +37,14 @@ from app.core.config import settings
 from app.domain.periods import filing_deadline
 from app.domain.permissions import RoleCode
 from app.models.audit import AuditLog
-from app.models.client import Client
+from app.models.client import Client, Contact
 from app.models.document import Document, DocumentType
 from app.models.organization import Organization
 from app.models.period import ClientExpectation
 from app.models.upload_link import ClientUploadLink
 from app.models.user import Role, User
 from app.services.assistant.tools import previous_month
+from app.services.mail import DisabledEmailSender, EmailError, EmailMessage
 from tests.conftest import requires_db
 from tests.test_periods_api import MONTH, PDF, add_document, login, make_user
 
@@ -68,6 +69,26 @@ def gaps(
     """
     add_document(db, org, client_row, types["FACTURA_INTRARE"])
     db.commit()
+
+
+@pytest.fixture
+def outbox(monkeypatch: pytest.MonkeyPatch) -> list[EmailMessage]:
+    """Providerul de email, înlocuit cu unul care reține.
+
+    Nu pleacă nimic nicăieri, dar se poate verifica **ce** ar fi plecat — care
+    este singurul lucru pe care un test are cum să-l verifice fără un server de
+    mail adevărat.
+    """
+    sent: list[EmailMessage] = []
+
+    class Collecting:
+        name = "test"
+
+        def send(self, message: EmailMessage) -> None:
+            sent.append(message)
+
+    monkeypatch.setattr("app.api.v1.clients.build_email_sender", lambda: Collecting())
+    return sent
 
 
 def compose(api: TestClient, client_row: Client, month: str = MONTH):
@@ -450,3 +471,228 @@ class TestFollowUp:
         other = [row for row in report(api_storage, "2026-07")]
 
         assert all(row["requestedAt"] is None for row in other)
+
+
+def _notified(db: Session) -> list[ClientUploadLink]:
+    """Linkurile pentru care mesajul chiar a plecat."""
+    return list(
+        db.scalars(select(ClientUploadLink).where(ClientUploadLink.notified_at.is_not(None)))
+    )
+
+
+class TestSendingIt:
+    """Trimiterea, cu providerul înlocuit.
+
+    Ce contează cel mai mult nu este că mesajul pleacă, ci **ordinea**: se scrie
+    „trimis" numai după ce providerul a confirmat. Invers, un server de mail
+    căzut ar fi lăsat pe ecran „Trimis" pentru un mesaj care n-a plecat.
+    """
+
+    def _send(
+        self, api: TestClient, client_row: Client, month: str = MONTH, **body: object
+    ) -> object:
+        return api.post(
+            f"/api/v1/clients/{client_row.id}/document-request/send?referenceMonth={month}",
+            json=body,
+        )
+
+    def test_it_goes_to_the_client_contact(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        login(api_storage, admin.email)
+        db.add(
+            Contact(
+                client_id=client_row.id,
+                full_name="Maria Ionescu",
+                email="maria@alfaconta.test",
+            )
+        )
+        db.commit()
+
+        response = self._send(api_storage, client_row)
+
+        assert response.status_code == 201, response.text
+        assert response.json()["sentTo"] == "maria@alfaconta.test"
+        assert len(outbox) == 1
+        assert outbox[0].to == "maria@alfaconta.test"
+
+    def test_the_body_is_the_same_text_the_copy_button_gives(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        """Două implementări ar însemna că doi clienți primesc, în aceeași zi,
+        două scrisori diferite de la același cabinet."""
+        login(api_storage, admin.email)
+        db.add(
+            Contact(
+                client_id=client_row.id,
+                full_name="Maria Ionescu",
+                email="maria@alfaconta.test",
+            )
+        )
+        db.commit()
+        copied = compose(api_storage, client_row).json()["message"]
+
+        self._send(api_storage, client_row)
+
+        # Linkul diferă — fiecare cerere deschide unul nou —, restul textului nu.
+        without_link = lambda text: "\n".join(  # noqa: E731
+            line for line in text.splitlines() if "/incarca/" not in line
+        )
+        assert without_link(outbox[0].body) == without_link(copied)
+
+    def test_an_explicit_address_wins(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        """Cineva a ales alt contact, sau a corectat o adresă greșită."""
+        login(api_storage, admin.email)
+        response = self._send(api_storage, client_row, to="altcineva@exemplu.test")
+
+        assert response.status_code == 201, response.text
+        assert outbox[0].to == "altcineva@exemplu.test"
+
+    def test_a_client_without_an_address_is_refused_with_what_to_do(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        login(api_storage, admin.email)
+        response = self._send(api_storage, client_row)
+
+        assert response.status_code == 422
+        assert "email" in response.json()["message"].lower()
+        assert outbox == []
+
+    def test_the_trace_says_sent_only_after_it_left(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        """Diferența dintre „Pregătit" și „Trimis", verificată pe ambele drumuri."""
+        login(api_storage, admin.email)
+        compose(api_storage, client_row)
+
+        # Ordonarea după `created_at` nu ar deosebi cele două linkuri: `now()`
+        # dă în Postgres ora de **început a tranzacției**, deci amândouă pot avea
+        # exact aceeași valoare. Se caută după fapt, care este chiar ce apără
+        # testul.
+        assert _notified(db) == []
+
+        self._send(api_storage, client_row, to="cineva@exemplu.test")
+        db.expire_all()
+
+        sent = _notified(db)
+        assert len(sent) == 1
+        assert sent[0].notified_to == "cineva@exemplu.test"
+
+    def test_a_failed_send_does_not_claim_it_was_sent(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Ordinea, apărată direct.
+
+        Scrisă înainte de trimitere, coloana ar fi spus „Trimis" pentru un mesaj
+        pe care serverul de mail l-a refuzat.
+        """
+        login(api_storage, admin.email)
+
+        class Broken:
+            name = "broken"
+
+            def send(self, message: EmailMessage) -> None:
+                del message
+                raise EmailError("serverul a refuzat")
+
+        monkeypatch.setattr("app.api.v1.clients.build_email_sender", lambda: Broken())
+
+        response = self._send(api_storage, client_row, to="cineva@exemplu.test")
+
+        assert response.status_code == 502
+        db.expire_all()
+        link = db.scalars(
+            select(ClientUploadLink).order_by(ClientUploadLink.created_at.desc())
+        ).first()
+        assert link is not None
+        assert link.notified_at is None
+
+    def test_without_configuration_it_says_what_is_missing(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Nu o defecțiune: cineva încă nu a pus setările."""
+        login(api_storage, admin.email)
+        monkeypatch.setattr("app.api.v1.clients.build_email_sender", lambda: DisabledEmailSender())
+
+        response = self._send(api_storage, client_row, to="cineva@exemplu.test")
+
+        assert response.status_code == 422
+        assert "NOTIFICATIONS_ENABLED" in response.json()["message"]
+
+    def test_the_log_says_who_and_to_whom_never_the_text(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        login(api_storage, admin.email)
+        self._send(api_storage, client_row, to="cineva@exemplu.test")
+
+        entry = db.scalars(
+            select(AuditLog)
+            .where(AuditLog.action == "DOCUMENT_REQUEST_SENT")
+            .order_by(AuditLog.created_at.desc())
+        ).first()
+        assert entry is not None
+        assert "cineva@exemplu.test" in (entry.detail or "")
+        # §33: jurnalul spune cine a făcut ce, nu ce scria în mesaj.
+        assert "Bună ziua" not in (entry.detail or "")
+
+    def test_nothing_is_sent_when_nothing_is_missing(
+        self,
+        api_storage: TestClient,
+        admin: User,
+        client_row: Client,
+        outbox: list[EmailMessage],
+    ) -> None:
+        """Fără `gaps`: luna nu are ce cere, deci nu pleacă nimic și nu se
+        deschide niciun drum public."""
+        login(api_storage, admin.email)
+        response = self._send(api_storage, client_row)
+
+        assert response.status_code == 422
+        assert outbox == []

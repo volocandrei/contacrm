@@ -876,3 +876,11 @@ export interface ObligationFiling {
   filedByName: string | null;
   note: string | null;
 }
+
+/** Ce întoarce trimiterea unei solicitări: ce s-a întâmplat, nimic altceva. */
+export interface DocumentRequestSent {
+  sentTo: string;
+  sentAt: string;
+  uploadUrl: string;
+  uploadExpiresAt: string;
+}

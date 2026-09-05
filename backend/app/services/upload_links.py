@@ -79,6 +79,12 @@ class RequestTrace:
 
     requested_at: datetime
     received_through_link: int
+    #: Când a plecat efectiv mesajul, dacă a plecat.
+    #:
+    #: Nul înseamnă „compus, nu trimis" — cazul în care contabilul copiază textul
+    #: și îl trimite din clientul lui de email. Este singura informație care poate
+    #: face diferența dintre „Pregătit" și „Trimis" fără să mintă.
+    notified_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +95,15 @@ class LinkTarget:
     organization_id: uuid.UUID
     organization_name: str
     client_id: uuid.UUID
+
+
+def _latest(left: datetime | None, right: datetime | None) -> datetime | None:
+    """Cel mai recent dintre două momente care pot lipsi amândouă."""
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return max(left, right)
 
 
 class UploadLinkService:
@@ -194,6 +209,7 @@ class UploadLinkService:
                 ClientUploadLink.client_id,
                 ClientUploadLink.created_at,
                 ClientUploadLink.upload_count,
+                ClientUploadLink.notified_at,
             )
             .where(
                 ClientUploadLink.organization_id == organization_id,
@@ -203,11 +219,15 @@ class UploadLinkService:
         ).all()
 
         traces: dict[uuid.UUID, RequestTrace] = {}
-        for client_id, created_at, upload_count in rows:
+        for client_id, created_at, upload_count, notified_at in rows:
             previous = traces.get(client_id)
             traces[client_id] = RequestTrace(
                 # Prima apariție este cea mai recentă — lista vine deja sortată.
                 requested_at=previous.requested_at if previous else created_at,
+                # Cea mai recentă trimitere, peste toate cererile lunii: dacă
+                # prima a plecat pe email și a doua a fost doar copiată, clientul
+                # tot a primit un mesaj. „Trimis" nu se retrage.
+                notified_at=_latest(previous.notified_at if previous else None, notified_at),
                 # Documentele se **adună** peste toate cererile lunii. Dacă am
                 # numărat doar ultimul link, o a doua cerere ar fi șters de pe
                 # ecran ce trimisese omul după prima — și l-am fi sunat degeaba.
@@ -215,6 +235,20 @@ class UploadLinkService:
                 + upload_count,
             )
         return traces
+
+    def mark_notified(self, link_id: uuid.UUID, *, to: str) -> None:
+        """Mesajul a plecat, către adresa asta.
+
+        Se scrie **după** ce providerul a confirmat trimiterea. Scris înainte, un
+        server de mail căzut ar fi lăsat pe ecran „Trimis" pentru un mesaj care
+        n-a plecat niciodată — exact minciuna pe care coloana există ca s-o evite.
+        """
+        link = self.session.get(ClientUploadLink, link_id)
+        if link is None:
+            return
+        link.notified_at = datetime.now(UTC)
+        link.notified_to = to
+        self.session.flush()
 
     def for_client(
         self, organization_id: uuid.UUID, client_id: uuid.UUID

@@ -177,10 +177,17 @@ class MissingDocumentsEntryOut(ApiModel):
     #: de pe rând: dintr-o listă de treizeci de clienți, aceia sunt cei la care
     #: mai e ceva de făcut; restul așteaptă răspuns.
     #:
-    #: Spune că textul a fost **compus și copiat**, nu că a plecat: aplicația nu
-    #: trimite (Faza 2), deci nu are de unde ști dacă omul l-a și lipit în email.
-    #: Interfața nu are voie să promită mai mult decât atât.
+    #: Spune că textul a fost **compus**. Dacă a și plecat din aplicație o spune
+    #: `notified_at`; când acela este nul, mesajul a fost copiat, iar aplicația
+    #: nu are de unde ști dacă omul l-a lipit într-un email. Interfața nu are
+    #: voie să promită mai mult decât știe.
     requested_at: datetime | None
+    #: Când a plecat mesajul din aplicație, dacă a plecat.
+    #:
+    #: Este singura diferență între „Pregătit" și „Trimis" care nu este o
+    #: presupunere. Nul la o cerere doar copiată — cazul obișnuit până când
+    #: cabinetul configurează trimiterea.
+    notified_at: datetime | None
     #: Câte documente au intrat prin linkul acelei cereri.
     #:
     #: Zero, la o cerere veche, este semnalul de urmărire: clientul n-a atins
@@ -300,6 +307,7 @@ def _to_missing_entry(
         missing=[_to_item(item) for item in gaps],
         deadline=deadline,
         requested_at=trace.requested_at if trace else None,
+        notified_at=trace.notified_at if trace else None,
         received_through_link=trace.received_through_link if trace else 0,
     )
 

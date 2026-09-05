@@ -128,13 +128,43 @@ Doar dacă documentele nu stau pe discul serverului.
 
 ---
 
+## Trimiterea solicitărilor pe email (SMTP)
+
+**Ce deblochează.** Solicitarea de documente pleacă din aplicație, cu un clic, în
+loc să fie copiată și lipită în clientul de email. Ecranul poate scrie „Trimis"
+fiindcă chiar știe că a plecat.
+
+**De unde le iei.** Din contul de email pe care îl folosește deja cabinetul.
+Aproape orice furnizor le are în setări sub „SMTP" sau „server de trimitere":
+
+```
+NOTIFICATIONS_ENABLED=true
+SMTP_HOST=              # ex.: smtp.gmail.com, smtp.office365.com, mail.firma.ro
+SMTP_PORT=587           # 587 cu STARTTLS; 465 înseamnă SMTP_STARTTLS=false
+SMTP_USER=              # adresa contului
+SMTP_PASSWORD=          # la Gmail și Microsoft: parolă de aplicație, nu cea de cont
+SMTP_FROM=              # gol = se folosește SMTP_USER
+```
+
+**Amândouă sunt necesare.** Comutatorul fără server, sau serverul fără comutator,
+înseamnă că nu se trimite — și butonul spune asta dinainte, în loc să eșueze la
+apăsare.
+
+**Atenție la un lucru.** Implicit este oprit, și nu din prudență abstractă: un
+cabinet care importă o bază de test cu adrese reale ar scrie clienților adevărați.
+Pornește-l abia când baza conține clienții adevărați.
+
+*NEVERIFICAT — NECESITĂ CREDENȚIALE EXTERNE:* codul este acoperit de teste care
+înlocuiesc serverul de mail, deci se știe **ce** trimite și cum se poartă la
+eroare. Că un server real acceptă mesajul se vede la prima trimitere adevărată.
+
+---
+
 ## Ce NU trebuie adunat încă
 
 Variabilele astea există în `.env.example` ca plan, dar **niciun cod nu le
 citește**. Nu pierde timp cu ele:
 
-- `SMTP_*` — trimiterea de email nu e implementată. Solicitările de documente se
-  copiază și pleacă din clientul de email al contabilului.
 - `WHATSAPP_*` — trimiterea pe WhatsApp nu e implementată.
 - `SENTRY_DSN`, `OTEL_EXPORTER_OTLP_ENDPOINT` — logurile sunt structurate și merg
   la stdout; nu există încă export.

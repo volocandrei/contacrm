@@ -27,6 +27,7 @@ import {
   listMissingDocuments,
   listUploadLinks,
   mockLogin,
+  sendDocumentRequest,
 } from "@/api/mock/store";
 
 const ADMIN = "admin@contacrm.test";
@@ -161,5 +162,30 @@ describe("asistentul", () => {
     for (const action of reply.actions) {
       expect(action.kind).toBe("request_documents");
     }
+  });
+});
+
+describe("trimiterea din aplicație", () => {
+  it("nu pretinde că a trimis, în modul simulat", () => {
+    // Un succes inventat ar scrie „Trimis" pe rând pentru un mesaj care n-a
+    // plecat nicăieri — exact minciuna împotriva căreia există coloana.
+    mockLogin(ADMIN);
+    const { clientId, referenceMonth } = aClientWithGaps();
+
+    expect(() => sendDocumentRequest(clientId, referenceMonth)).toThrow(/simulat/i);
+  });
+
+  it("o cerere doar compusă rămâne nemarcată ca trimisă", () => {
+    mockLogin(ADMIN);
+    const { clientId, referenceMonth } = aClientWithGaps();
+
+    composeDocumentRequest(clientId, referenceMonth);
+
+    const after = listMissingDocuments(referenceMonth).find(
+      (row) => row.period.clientId === clientId,
+    );
+    expect(after?.requestedAt ?? null).not.toBeNull();
+    // Compus, nu trimis: diferența pe care ecranul o arată în cuvinte.
+    expect(after?.notifiedAt ?? null).toBeNull();
   });
 });

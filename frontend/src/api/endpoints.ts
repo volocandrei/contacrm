@@ -12,6 +12,7 @@ import type {
   Client,
   ClientAlias,
   DocumentRequest,
+  DocumentRequestSent,
   IssuedUploadLink,
   ClientExpectation,
   ExpectationTemplate,
@@ -155,6 +156,20 @@ export const clients = {
    * Este POST fiindcă **creează** un link de trimitere. Un GET care creează ceva
    * s-ar executa din nou la fiecare reîncărcare de pagină și la fiecare retry.
    */
+  /**
+   * Aceeași solicitare, dar **trimisă** din aplicație.
+   *
+   * Rută separată de cea care compune: compunerea se face și când omul vrea doar
+   * să copieze textul, iar a trimite este o acțiune cu efect în afara aplicației.
+   * Efectele acelea nu se produc ca efect secundar al unei citiri.
+   */
+  sendDocumentRequest: (id: string, referenceMonth: string, to?: string) =>
+    // `request` direct, ca la ruta care compune: luna merge prin `params`, iar
+    // lipită în cale backendul simulat n-ar mai potrivi tiparul.
+    request<DocumentRequestSent>("POST", `/clients/${id}/document-request/send`, {
+      params: { referenceMonth },
+      body: { to: to ?? null },
+    }),
   documentRequest: (id: string, referenceMonth: string) =>
     // `request` direct, nu `api.post`: interogarea trebuie să meargă prin
     // `params`, iar `api.post` ia doar corpul. Lipită în cale, backendul simulat
@@ -213,10 +228,17 @@ export type MissingDocumentsEntry = {
    * dintr-o listă de treizeci de clienți, aceia sunt cei la care mai e ceva de
    * făcut; restul așteaptă răspuns.
    *
-   * Spune că textul a fost compus și copiat, nu că a plecat: aplicația nu trimite
-   * (Faza 2), deci interfața nu are voie să promită mai mult.
+   * Spune că textul a fost **compus**. Dacă a și plecat din aplicație o spune
+   * `notifiedAt`; când acela lipsește, mesajul a fost copiat, iar aplicația nu
+   * are de unde ști dacă omul l-a lipit într-un email.
    */
   requestedAt: string | null;
+  /**
+   * Când a plecat mesajul din aplicație, dacă a plecat.
+   *
+   * Singura diferență între „Pregătit" și „Trimis" care nu este o presupunere.
+   */
+  notifiedAt: string | null;
   /** Câte documente au intrat prin linkul acelei cereri. Zero = n-a atins drumul. */
   receivedThroughLink: number;
 };

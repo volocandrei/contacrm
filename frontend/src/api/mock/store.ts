@@ -1289,6 +1289,14 @@ export function listMissingDocuments(referenceMonth: string) {
         missing: period.checklist.filter((item) => !item.isSatisfied),
         deadline,
         requestedAt: requests[0]?.createdAt ?? null,
+        // Cea mai recentă trimitere, peste toate cererile lunii: „Trimis" nu se
+        // retrage dacă a doua cerere a fost doar copiată.
+        notifiedAt:
+          requests
+            .map((link) => link.notifiedAt)
+            .filter((at): at is string => at !== null)
+            .sort()
+            .at(-1) ?? null,
         // Documentele se adună peste toate cererile lunii: o a doua cerere nu
         // șterge de pe ecran ce trimisese omul după prima.
         receivedThroughLink: requests.reduce((total, link) => total + link.uploadCount, 0),
@@ -2610,7 +2618,7 @@ export function applyExpectationTemplate(id: string, clientIds: string[]): { app
  * linkul ar fi scris altfel decât cel real, iar diferența s-ar vedea abia în
  * producție.
  */
-const uploadLinks: Array<UploadLink & { clientId: string }> = [];
+const uploadLinks: Array<UploadLink & { clientId: string; notifiedAt: string | null }> = [];
 let uploadLinkCounter = 0;
 
 /** Aceeași valabilitate implicită ca pe server: o lună plus marja de depunere. */
@@ -2640,9 +2648,12 @@ export function createUploadLink(clientId: string, referenceMonth?: string): Iss
 
   uploadLinkCounter += 1;
   const expires = new Date(Date.now() + MOCK_LINK_VALIDITY_DAYS * 86_400_000).toISOString();
-  const link: UploadLink & { clientId: string } = {
+  const link: UploadLink & { clientId: string; notifiedAt: string | null } = {
     id: `link-${uploadLinkCounter}`,
     clientId,
+    // Nul: linkul se deschide, mesajul nu pleacă de la sine. Diferența dintre
+    // „Pregătit" și „Trimis" trăiește aici.
+    notifiedAt: null,
     expiresAt: expires,
     revokedAt: null,
     uploadCount: 0,
@@ -2655,11 +2666,26 @@ export function createUploadLink(clientId: string, referenceMonth?: string): Iss
   uploadLinks.unshift(link);
   recordAudit("UPLOAD_LINK_ISSUED", "ClientUploadLink", link.id, getClient(clientId).name);
 
-  const { clientId: _clientId, ...rest } = link;
+  const { clientId: _clientId, notifiedAt: _notifiedAt, ...rest } = link;
   return {
     ...rest,
     url: `${mockPublicOrigin()}/incarca/token-simulat-${uploadLinkCounter}`,
   };
+}
+
+export function sendDocumentRequest(clientId: string, referenceMonth: string): never {
+  requirePermission("documents:write");
+  getClient(clientId);
+  void referenceMonth;
+  // În modul simulat nu există server de email, iar un succes inventat ar scrie
+  // „Trimis" pe un rând pentru un mesaj care n-a plecat nicăieri — exact
+  // minciuna împotriva căreia există coloana.
+  throw new ApiError(
+    "VALIDATION_ERROR",
+    "În modul simulat nu există server de email. Configurează SMTP_* pe un backend real.",
+    422,
+    { to: ["Trimiterea nu este disponibilă în modul simulat."] },
+  );
 }
 
 export function revokeUploadLink(linkId: string): void {

@@ -149,6 +149,12 @@ const routes: Route[] = [
   },
   {
     method: "POST",
+    pattern: "/clients/:id/document-request/send",
+    handler: ({ params, query }) =>
+      store.sendDocumentRequest(params.id!, query.referenceMonth ?? ""),
+  },
+  {
+    method: "POST",
     pattern: "/clients/:id/document-request",
     handler: ({ params, query }) =>
       store.composeDocumentRequest(params.id!, query.referenceMonth ?? ""),
