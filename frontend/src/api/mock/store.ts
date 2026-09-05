@@ -1249,6 +1249,25 @@ export function filingDeadline(referenceMonth: string): string {
 }
 
 /** Documentele așteptate care încă lipsesc, per client (§19). */
+/**
+ * Câți clienți n-au fost întrebați, și câți au fost dar tac.
+ *
+ * Oglinda lui `_collection_state`. Ia exact rândurile raportului „Documente
+ * lipsă", ca panoul și ecranul să nu poată spune cifre diferite.
+ */
+export function collectionState(referenceMonth: string): {
+  notAsked: number;
+  awaitingReply: number;
+} {
+  let notAsked = 0;
+  let awaitingReply = 0;
+  for (const entry of listMissingDocuments(referenceMonth)) {
+    if (entry.requestedAt === null) notAsked += 1;
+    else if (entry.receivedThroughLink === 0) awaitingReply += 1;
+  }
+  return { notAsked, awaitingReply };
+}
+
 export function listMissingDocuments(referenceMonth: string) {
   const deadline = filingDeadline(referenceMonth);
   return listPeriods({ referenceMonth })
@@ -2296,6 +2315,8 @@ export function getDashboard(): DashboardData {
       })),
   ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 
+  const collection = collectionState(CURRENT_MONTH);
+
   return {
     // Luna pe care o descriu cifrele. Aici este cea a setului sintetic; pe
     // serverul real o dă `latest_active_month`, derivată din date.
@@ -2311,6 +2332,11 @@ export function getDashboard(): DashboardData {
       documentsNeedReview: countByStatus("REVIEW_REQUIRED"),
       documentsDuplicate: countByStatus("DUPLICATE"),
       documentsUnmatched: countByStatus("UNMATCHED"),
+      // Aceeași sursă ca ecranul „Documente lipsă": două moduri de a le număra
+      // ar fi dat, într-o zi, două răspunsuri — iar cel de pe panou ar fi fost
+      // cel crezut.
+      clientsNotAsked: collection.notAsked,
+      clientsAwaitingReply: collection.awaitingReply,
     },
     attention: attention.slice(0, 8),
     recentDocuments: docs.slice(0, 8).map(toListItem),

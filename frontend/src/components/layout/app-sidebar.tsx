@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { ChevronDown, ChevronsRight } from "lucide-react";
-import { divider, pillClass } from "@/lib/ui";
+import { divider, pillClass, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS, NAV_ROOT, type BadgeKey, type NavItem } from "@/lib/navigation";
 import { usePermissionCheck } from "@/features/auth/use-auth";
@@ -45,7 +45,12 @@ export function AppSidebar({ open, onToggle, badges = {} }: AppSidebarProps) {
           group.items.length === 1 && group.items[0] ? (
             <SidebarLink key={group.label} item={group.items[0]} open={open} badges={badges} />
           ) : (
-            <SidebarGroup key={group.label} label={group.label} open={open}>
+            <SidebarGroup
+              key={group.label}
+              label={group.label}
+              open={open}
+              pending={pendingIn(group.items, badges)}
+            >
               {group.items.map((item) => (
                 <SidebarLink key={item.path} item={item} open={open} badges={badges} nested />
               ))}
@@ -59,16 +64,59 @@ export function AppSidebar({ open, onToggle, badges = {} }: AppSidebarProps) {
   );
 }
 
+/**
+ * Câtă muncă așteaptă în intrările unui grup.
+ *
+ * Se adună pentru antetul grupului: un grup **închis** ascundea până acum, fără
+ * să spună nimic, unsprezece documente neatribuite. Meniul devenea mai curat și
+ * mai mincinos în același timp.
+ */
+function pendingIn(items: NavItem[], badges: SidebarBadges): number {
+  return items.reduce((total, item) => total + (item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0), 0);
+}
+
+/** Cheia sub care se ține minte ce grupuri sunt strânse. */
+const COLLAPSED_KEY = "contacrm.sidebar.collapsed";
+
+function readCollapsed(): string[] {
+  // `localStorage` poate lipsi sau arunca: fereastră privată, date de sit
+  // blocate, randare fără browser. Meniul trebuie să meargă oricum.
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function SidebarGroup({
   label,
   open,
+  pending,
   children,
 }: {
   label: string;
   open: boolean;
+  pending: number;
   children: React.ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  // Strâns sau nu, ținut minte între sesiuni: cine lucrează numai în documente
+  // strângea aceleași patru grupuri la fiecare reîncărcare.
+  const [expanded, setExpanded] = useState(() => !readCollapsed().includes(label));
+
+  function toggle() {
+    const next = !expanded;
+    setExpanded(next);
+    try {
+      const collapsed = new Set(readCollapsed());
+      if (next) collapsed.delete(label);
+      else collapsed.add(label);
+      window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
+    } catch {
+      // Preferința nu se poate păstra. Meniul funcționează la fel; doar uită.
+    }
+  }
 
   // În modul restrâns rămân vizibile doar iconurile, fără antetul grupului.
   if (!open) {
@@ -78,20 +126,42 @@ function SidebarGroup({
   return (
     <div className="pt-2">
       <button
-        onClick={() => setExpanded((value) => !value)}
+        onClick={toggle}
         aria-expanded={expanded}
-        className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[11px] font-semibold tracking-wide text-slate-400 uppercase transition-colors hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300"
+        className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-1.5 text-[11px] font-semibold tracking-wide text-slate-400 uppercase transition-colors hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300"
       >
-        {label}
-        <ChevronDown
-          className={cn("h-3.5 w-3.5 transition-transform duration-200", !expanded && "-rotate-90")}
-          aria-hidden="true"
-        />
+        <span className="truncate">{label}</span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          {/* Numai când grupul e strâns: deschis, cifrele stau pe rândurile lor,
+              iar totalul de aici ar fi doar zgomot. */}
+          {!expanded && pending > 0 && (
+            <span className={pillClass("blue")} title={`${pending} în așteptare`}>
+              {pending}
+            </span>
+          )}
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 transition-transform duration-200",
+              !expanded && "-rotate-90",
+            )}
+            aria-hidden="true"
+          />
+        </span>
       </button>
       {expanded && <div className="space-y-1">{children}</div>}
     </div>
   );
 }
+
+/** Punctul din meniul restrâns, în aceleași culori ca insigna din cel deschis. */
+const DOT_TONE: Record<Tone, string> = {
+  blue: "bg-blue-500 dark:bg-blue-400",
+  red: "bg-red-500 dark:bg-red-400",
+  amber: "bg-amber-500 dark:bg-amber-400",
+  green: "bg-emerald-500 dark:bg-emerald-400",
+  purple: "bg-violet-500 dark:bg-violet-400",
+  slate: "bg-slate-400 dark:bg-slate-500",
+};
 
 function SidebarLink({
   item,
@@ -104,7 +174,7 @@ function SidebarLink({
   badges?: SidebarBadges;
   nested?: boolean;
 }) {
-  const { Icon, label, path, badgeKey } = item;
+  const { Icon, label, path, badgeKey, badgeTone = "blue" } = item;
   const count = badgeKey ? badges[badgeKey] : undefined;
 
   return (
@@ -136,11 +206,11 @@ function SidebarLink({
       )}
 
       {count !== undefined && count > 0 && open && (
-        <span className={cn("absolute right-2.5", pillClass("blue"))}>{count}</span>
+        <span className={cn("absolute right-2.5", pillClass(badgeTone))}>{count}</span>
       )}
       {count !== undefined && count > 0 && !open && (
         <span
-          className="absolute top-1.5 right-2 h-2 w-2 rounded-full bg-blue-500 dark:bg-blue-400"
+          className={cn("absolute top-1.5 right-2 h-2 w-2 rounded-full", DOT_TONE[badgeTone])}
           aria-hidden="true"
         />
       )}

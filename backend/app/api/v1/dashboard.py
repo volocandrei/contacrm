@@ -37,6 +37,7 @@ from app.schemas.common import ApiModel
 from app.schemas.document import DocumentListItemOut
 from app.services import processing_queue as queue
 from app.services.period_service import PeriodService, PeriodView
+from app.services.upload_links import UploadLinkService
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -83,6 +84,17 @@ class DashboardKpisOut(ApiModel):
     documents_need_review: int
     documents_duplicate: int
     documents_unmatched: int
+    #: Clienți cu documente lipsă cărora **nu li s-a cerut încă** nimic, luna asta.
+    #:
+    #: Este singura cifră de pe panou care spune ce mai are cabinetul de **făcut**,
+    #: nu ce s-a întâmplat. Restul numără documente sosite; asta numără oameni pe
+    #: care nu i-a întrebat nimeni — iar aceia nu trimit din senin.
+    clients_not_asked: int
+    #: Clienților li s-a cerut, dar n-a intrat nimic prin linkul cererii.
+    #:
+    #: Cifra de urmărire: nu „cine n-a trimis", ci „cine nu a răspuns la o
+    #: întrebare pusă". Diferența decide dacă mai ceri o dată sau ridici telefonul.
+    clients_awaiting_reply: int
 
 
 AttentionReason = Literal[
@@ -209,7 +221,7 @@ def dashboard(session: DbSession, user: DashboardReader) -> DashboardOut:
 
     return DashboardOut(
         reference_month=current,
-        kpis=_kpis(session, organization_id, by_status, periods),
+        kpis=_kpis(session, organization_id, by_status, periods, current),
         attention=_attention(session, organization_id, periods),
         recent_documents=[
             _to_list_item(row) for row in _recent(session, organization_id, RECENT_DOCUMENTS)
@@ -283,6 +295,7 @@ def _kpis(
     organization_id: uuid.UUID,
     by_status: dict[DocumentStatus, int],
     periods: list[PeriodView],
+    reference_month: str | None,
 ) -> DashboardKpisOut:
     clients_total = (
         session.scalar(
@@ -323,6 +336,8 @@ def _kpis(
         1 for p in periods if p.status in {PeriodStatus.COMPLETE, PeriodStatus.FINALIZED}
     )
 
+    not_asked, awaiting_reply = _collection_state(session, organization_id, reference_month)
+
     return DashboardKpisOut(
         clients_total=clients_total,
         clients_active=clients_active,
@@ -334,7 +349,41 @@ def _kpis(
         documents_need_review=by_status.get(DocumentStatus.REVIEW_REQUIRED, 0),
         documents_duplicate=by_status.get(DocumentStatus.DUPLICATE, 0),
         documents_unmatched=by_status.get(DocumentStatus.UNMATCHED, 0),
+        clients_not_asked=not_asked,
+        clients_awaiting_reply=awaiting_reply,
     )
+
+
+def _collection_state(
+    session: Session, organization_id: uuid.UUID, reference_month: str | None
+) -> tuple[int, int]:
+    """Câți clienți n-au fost întrebați, și câți au fost dar tac.
+
+    Aceleași două întrebări pe care le pune ecranul „Documente lipsă", puse aici
+    ca panoul să deschidă ziua cu ele. Un cabinet nu începe dimineața uitându-se
+    la câte documente au intrat, ci la ce mai are de recuperat.
+
+    Sursa este aceeași: perioadele cu goluri, încrucișate cu cererile lunii. Un al
+    doilea mod de a le număra ar fi produs, într-o zi, alte cifre decât ecranul.
+    """
+    if reference_month is None:
+        return 0, 0
+
+    entries = PeriodService(session).missing(organization_id, reference_month)
+    if not entries:
+        return 0, 0
+
+    traces = UploadLinkService(session).requests_for(organization_id, reference_month)
+
+    not_asked = 0
+    awaiting = 0
+    for view, _gaps in entries:
+        trace = traces.get(view.client_id)
+        if trace is None:
+            not_asked += 1
+        elif trace.received_through_link == 0:
+            awaiting += 1
+    return not_asked, awaiting
 
 
 def _trend(session: Session, organization_id: uuid.UUID) -> list[DayCountOut]:

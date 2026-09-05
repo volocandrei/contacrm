@@ -20,7 +20,13 @@ test.describe("paleta de comenzi", () => {
     // CUI-ul este exact ce câmpul vechi din antet nu putea găsi: orice se scria
     // acolo ducea în inboxul de documente.
     await page.keyboard.type(SEED_CLIENT.taxId);
-    await expect(palette.getByRole("option", { name: new RegExp(SEED_CLIENT.name) })).toBeVisible();
+    // Rândul **clientului**, nu orice rând care îi poartă numele: paleta caută și
+    // în documente, iar fiecare document al lui Alfa îl are pe etichetă. Cu cât
+    // suita încarcă mai multe documente înainte, cu atât un tipar larg prinde mai
+    // multe — a trecut mult timp din noroc, nu din precizie.
+    await expect(
+      palette.getByRole("option", { name: new RegExp(`${SEED_CLIENT.name} CUI`) }),
+    ).toBeVisible();
 
     // Primul rezultat este selectat din start — Enter îl deschide.
     await page.keyboard.press("Enter");

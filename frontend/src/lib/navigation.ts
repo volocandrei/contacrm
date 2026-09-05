@@ -22,6 +22,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import type { Tone } from "@/lib/ui";
 import type { Permission } from "@/types/domain";
 
 export type NavItem = {
@@ -30,6 +31,14 @@ export type NavItem = {
   Icon: LucideIcon;
   /** Contor afișat ca badge; se va alimenta din API. */
   badgeKey?: BadgeKey;
+  /**
+   * Ce culoare are contorul.
+   *
+   * Nu decor: toate insignele erau albastre, deci „11 neatribuite" și „3 în
+   * inbox" arătau la fel de liniștitor. Culoarea spune cât costă să le lași
+   * acolo — roșu pentru ce nu intră nicăieri până nu decide un om.
+   */
+  badgeTone?: Tone;
   /**
    * Permisiunea fără de care intrarea nu se arată deloc.
    *
@@ -102,6 +111,8 @@ export const NAV_GROUPS: NavGroup[] = [
         path: "/documente/verificare",
         Icon: ShieldCheck,
         badgeKey: "review",
+        // Chihlimbar: cineva trebuie să se uite, dar documentul este întreg.
+        badgeTone: "amber",
         permission: "documents:read",
       },
       {
@@ -112,6 +123,9 @@ export const NAV_GROUPS: NavGroup[] = [
         path: "/documente/neatribuite",
         Icon: FileQuestionMark,
         badgeKey: "unmatched",
+        // Roșu: documentul a sosit, dar nu este al nimănui. Până îl atribuie un
+        // om, nu intră în nicio lună și nu apare în niciun raport.
+        badgeTone: "red",
         permission: "documents:read",
       },
       {

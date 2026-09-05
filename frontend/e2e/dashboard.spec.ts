@@ -20,14 +20,18 @@ test("panoul spune până când trebuie depus și cine încă nu a trimis", asyn
   await uploadAndOpen(page, "pentru-panou.pdf", incomingInvoice({ number: unique(), total: "119,00" }));
 
   await page.goto("/");
-  const band = page.getByRole("region", { name: "Termenul lunii" });
+  const band = page.getByRole("region", { name: "Închiderea lunii" });
 
   await expect(band).toBeVisible();
   // Termenul lunii august cade în septembrie — nu în august, nu în luna 13.
   await expect(band).toContainText("25.09.2026");
   await expect(band).toContainText("august 2026");
-  // Și spune cât mai e, nu doar data: numărul de zile schimbă ce faci azi.
-  await expect(band).toContainText(/până la termen|Termenul/);
+
+  // Și spune cât mai e, nu doar data: numărul de zile schimbă ce faci azi mai
+  // mult decât orice contor. Stă în antet, lângă luna la care se referă — era
+  // scris a doua oară în bandă, cu alte cuvinte.
+  const hero = page.getByRole("region", { name: "Luna în lucru" });
+  await expect(hero).toContainText(/până la termen|termenul este azi|termen depășit/);
 });
 
 test("clientul care nu a trimis tot are un drum direct din panou", async ({ page }) => {
@@ -35,7 +39,7 @@ test("clientul care nu a trimis tot are un drum direct din panou", async ({ page
   await uploadAndOpen(page, "pentru-restante.pdf", incomingInvoice({ number: unique(), total: "238,00" }));
 
   await page.goto("/");
-  const band = page.getByRole("region", { name: "Termenul lunii" });
+  const band = page.getByRole("region", { name: "Închiderea lunii" });
   await expect(band).toBeVisible();
 
   // Ori luna e strânsă, ori se spune **cine** lipsește — nu doar câți.
@@ -65,4 +69,26 @@ test("graficele spun în cuvinte ce arată desenul", async ({ page }) => {
   // Numele conține și cifrele: altfel desenul rămâne inaccesibil, oricât de
   // frumos ar fi.
   await expect(donut).toHaveAttribute("aria-label", /\d/);
+});
+
+test("panoul deschide cu ce ai de făcut, iar cardurile duc unde se face", async ({ page }) => {
+  // Panoul spunea, corect, ce s-a întâmplat: opt contoare de aceeași mărime. Nu
+  // răspundea la întrebarea cu care începe dimineața — „cu ce încep?".
+  await loginAs(page, ACCOUNTS.admin);
+  await page.goto("/");
+
+  const plan = page.getByRole("region", { name: "Ce ai de făcut" });
+  await expect(plan).toBeVisible();
+
+  const cards = plan.getByRole("link");
+  const count = await cards.count();
+  expect(count, "setul sintetic nu lasă nimic de făcut, deci testul ar fi vacuu").toBeGreaterThan(
+    0,
+  );
+
+  // Fiecare card este un drum, nu o cifră: duce în ecranul unde se face treaba.
+  const first = cards.first();
+  await expect(first).toContainText(/Vezi|Atribuie|Deschide|Cere/);
+  await first.click();
+  await expect(page).toHaveURL(/\/documente\/|\/contabilitate\//);
 });

@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  18.816 linii sursă +  2.896 linii teste  →   226 teste
-backend   24.237 linii sursă + 20.740 linii teste  → 1.379 teste
-end-to-end 1.793 linii                             →    67 teste (browser real)
+frontend  19.164 linii sursă +  2.966 linii teste  →   229 teste
+backend   24.286 linii sursă + 20.962 linii teste  → 1.386 teste
+end-to-end 1.819 linii                             →    68 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.672 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.683 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -318,6 +318,50 @@ răspunde la întrebări fără să trimită nicăieri documentele clienților.
 Microsoft Graph și asistent: ce i se trimite modelului, ce se face cu ce răspunde
 și ce se întâmplă când nu răspunde sunt exercitate în teste cu un transport fals.
 Prima cerere adevărată rămâne de făcut o dată, manual, la instalare.
+
+### Panoul deschide cu ce ai de făcut, nu cu ce s-a întâmplat
+
+Panoul spunea, corect, **starea**: câte documente au intrat, câte așteaptă
+verificare, câte au eșuat. Nimic nu răspundea la întrebarea cu care începe
+dimineața — „cu ce încep?". Cifrele erau acolo, dar împrăștiate în opt contoare de
+aceeași mărime, iar ce e la fel de mare se citește la fel de important.
+
+Primul lucru de pe ecran este acum **ce ai de făcut**, ordonat după cât costă să
+lași lucrul nefăcut:
+
+| | de ce în ordinea asta |
+|---|---|
+| documente eșuate | nu intră în evidență **deloc** |
+| fără client identificat | stau în nicăieri: nicio lună, niciun raport |
+| de verificat | așteaptă doar o confirmare |
+| **clienți neîntrebați** | nu trimit din senin |
+| **clienți care nu au răspuns** | acolo nu mai ceri, suni |
+
+Ultimele două nu se vedeau nicăieri până acum: sunt chiar bucla de colectare
+construită zilele astea, adusă pe primul ecran. Vin din aceeași sursă ca ecranul
+„Documente lipsă" — două moduri de a le număra ar fi dat, într-o zi, două
+răspunsuri, iar cel de pe panou ar fi fost cel crezut.
+
+**Ce nu are treabă nu apare.** Un rând cu „0" ocupă exact cât unul cu 12 și nu
+spune nimic; când nu e nimic de recuperat, panoul o spune într-o propoziție.
+
+Termenul lunii a urcat lângă luna la care se referă, ca etichetă colorată: roșu
+dacă a trecut, chihlimbar dacă se decide săptămâna asta. Era, până acum, într-o
+bandă separată mai jos — și scris a doua oară, cu alte cuvinte.
+
+### Meniul nu mai ascunde munca
+
+Trei lucruri, toate din aceeași observație: un meniu care arată bine dar tace
+despre ce ai de făcut este mai rău decât unul urât.
+
+- **Un grup strâns își arată totalul.** Închideai „Documente" și dispăreau, fără
+  niciun semn, unsprezece documente neatribuite. Meniul devenea mai curat și mai
+  mincinos în același timp.
+- **Insignele au culoarea a ceea ce numără.** Erau toate albastre, deci „11
+  neatribuite" și „3 în inbox" arătau la fel de liniștitor. Roșu este pentru ce nu
+  intră nicăieri până nu decide un om.
+- **Grupurile strânse rămân strânse** între sesiuni. Cine lucrează numai în
+  documente le strângea pe celelalte la fiecare reîncărcare.
 
 ### Profilurile de client, în loc de bifă cu bifă (M15)
 

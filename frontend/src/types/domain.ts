@@ -511,6 +511,16 @@ export type DashboardKpis = {
   documentsNeedReview: number;
   documentsDuplicate: number;
   documentsUnmatched: number;
+  /**
+   * Clienți cu documente lipsă cărora **nu li s-a cerut încă** nimic, luna asta.
+   *
+   * Singura cifră de pe panou care spune ce mai are cabinetul de *făcut*, nu ce
+   * s-a întâmplat. Restul numără documente sosite; asta numără oameni pe care
+   * nu i-a întrebat nimeni — iar aceia nu trimit din senin.
+   */
+  clientsNotAsked: number;
+  /** Li s-a cerut, dar n-a intrat nimic prin linkul cererii. Aici nu mai ceri, suni. */
+  clientsAwaitingReply: number;
 };
 
 export type DashboardData = {

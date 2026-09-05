@@ -11,6 +11,7 @@ import {
   Copy,
   FileStack,
   Inbox,
+  Send,
   ShieldCheck,
   TriangleAlert,
   UserX,
@@ -27,6 +28,7 @@ import {
   focusRing,
   iconChip,
   mutedText,
+  pillClass,
   scrollX,
   surface,
   surfaceInteractive,
@@ -81,7 +83,9 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <HeroHeader month={month} kpis={kpis} trend={data.trend} />
+      <HeroHeader month={month} kpis={kpis} trend={data.trend} closing={data.closing} />
+
+      <TodayPlan kpis={kpis} closing={data.closing} />
 
       {/* KPI (§20) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -367,6 +371,219 @@ export function DashboardPage() {
   );
 }
 
+
+
+/**
+ * Cât mai e până la depunere, ca etichetă colorată.
+ *
+ * Culoarea nu este decor: roșu înseamnă că termenul a trecut, chihlimbar că
+ * săptămâna asta se decide, iar restul rămâne neutru. Cine se uită o secundă la
+ * panou pleacă măcar cu asta.
+ */
+function DeadlineChip({ daysLeft }: { daysLeft: number }) {
+  const tone: Tone = daysLeft < 0 ? "red" : daysLeft <= URGENT_DAYS ? "amber" : "slate";
+  const text =
+    daysLeft < 0
+      ? `termen depășit cu ${Math.abs(daysLeft)} ${plural(Math.abs(daysLeft))}`
+      : daysLeft === 0
+        ? "termenul este azi"
+        : `${daysLeft} ${plural(daysLeft)} până la termen`;
+
+  return (
+    <span className={pillClass(tone)}>
+      <CalendarClock className="h-3 w-3" aria-hidden="true" />
+      {text}
+    </span>
+  );
+}
+
+/* ─── Ce ai de făcut ───────────────────────────────────────────────────────── */
+
+/** O treabă de făcut, cu drumul către locul unde se face. */
+type Todo = {
+  key: string;
+  count: number;
+  /** Ce sunt lucrurile numărate. */
+  label: string;
+  /** Ce ai de făcut cu ele — un verb, nu un substantiv. */
+  action: string;
+  to: string;
+  Icon: LucideIcon;
+  tone: Tone;
+};
+
+/**
+ * Primul lucru de pe panou: ce mai are cabinetul de făcut azi.
+ *
+ * **De ce era nevoie.** Panoul spunea, corect, ce **s-a întâmplat**: câte
+ * documente au intrat, câte așteaptă, câte au eșuat. Nimic nu răspundea la
+ * întrebarea cu care începe dimineața — „cu ce încep?". Cifrele erau acolo, dar
+ * împrăștiate în opt contoare de aceeași mărime, iar ce e la fel de mare se
+ * citește la fel de important.
+ *
+ * **Ordinea nu este alfabetică și nu este a mea.** Este a costului de a lăsa
+ * lucrul nefăcut: un document eșuat nu intră în evidență deloc; unul fără client
+ * stă în nicăieri; unul la verificare așteaptă doar o confirmare. Iar la capăt,
+ * cele două care nu se vedeau nicăieri până acum: **cui nu i-am cerut** (aceia
+ * nu trimit din senin) și **cine nu a răspuns** (acolo nu mai ceri, suni).
+ *
+ * **Ce nu are treabă nu apare.** Un rând cu „0" ocupă exact cât unul cu 12 și
+ * nu spune nimic. Când nu e nimic de făcut, panoul o spune într-o propoziție.
+ */
+function TodayPlan({
+  kpis,
+  closing,
+}: {
+  kpis: DashboardData["kpis"];
+  closing: DashboardClosing | null;
+}) {
+  const all: Todo[] = [
+    {
+      key: "errors",
+      count: kpis.documentsError,
+      label: kpis.documentsError === 1 ? "document eșuat" : "documente eșuate",
+      action: "Vezi ce s-a rupt",
+      to: "/documente/inbox?status=ERROR",
+      Icon: TriangleAlert,
+      tone: "red",
+    },
+    {
+      key: "unmatched",
+      count: kpis.documentsUnmatched,
+      label: "fără client identificat",
+      action: "Atribuie-le",
+      to: "/documente/neatribuite",
+      Icon: UserX,
+      tone: "red",
+    },
+    {
+      key: "review",
+      count: kpis.documentsNeedReview,
+      label: kpis.documentsNeedReview === 1 ? "document de verificat" : "documente de verificat",
+      action: "Deschide verificarea",
+      to: "/documente/verificare",
+      Icon: ShieldCheck,
+      tone: "amber",
+    },
+    {
+      key: "ask",
+      count: kpis.clientsNotAsked,
+      label: kpis.clientsNotAsked === 1 ? "client neîntrebat" : "clienți neîntrebați",
+      action: "Cere documentele",
+      to: "/contabilitate/lipsa?request=never",
+      Icon: Send,
+      tone: "purple",
+    },
+    {
+      key: "chase",
+      count: kpis.clientsAwaitingReply,
+      label: kpis.clientsAwaitingReply === 1 ? "client nu a răspuns" : "clienți nu au răspuns",
+      action: "Vezi cine tace",
+      to: "/contabilitate/lipsa?request=silent",
+      Icon: Clock,
+      tone: "blue",
+    },
+  ];
+  const todos = all.filter((todo) => todo.count > 0);
+
+  if (todos.length === 0) {
+    return (
+      <section
+        aria-label="Ce ai de făcut"
+        className={cn(
+          surface,
+          "rise-in flex items-center gap-3 border-emerald-200/70 p-5 dark:border-emerald-900/50",
+        )}
+      >
+        <span className={cn("grid h-10 w-10 place-content-center rounded-xl", iconChip.green)}>
+          <CircleCheck className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <div>
+          <p className="font-medium text-slate-900 dark:text-slate-100">Nimic de recuperat.</p>
+          <p className={cn("text-sm", mutedText)}>
+            Toate documentele sunt procesate, iar clienții au fost întrebați.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-label="Ce ai de făcut">
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+          Ce ai de făcut
+        </h2>
+        {closing && (
+          <span className={cn("text-xs", mutedText)}>
+            până pe {formatDate(closing.deadline)}
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {todos.map((todo, index) => (
+          <TodoCard key={todo.key} todo={todo} index={index} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Fâșia de culoare de sus, singura diferență vizuală între urgențe. */
+const TODO_ACCENT: Record<Tone, string> = {
+  red: "from-red-500 to-rose-400",
+  amber: "from-amber-500 to-orange-400",
+  purple: "from-violet-500 to-fuchsia-400",
+  blue: "from-blue-500 to-sky-400",
+  green: "from-emerald-500 to-teal-400",
+  slate: "from-slate-400 to-slate-300",
+};
+
+function TodoCard({ todo, index }: { todo: Todo; index: number }) {
+  const { Icon } = todo;
+  return (
+    <Link
+      to={todo.to}
+      className={cn(
+        surfaceInteractive,
+        "rise-in group relative flex items-center gap-4 overflow-hidden p-4",
+        focusRing,
+        index < 4 && `rise-delay-${index + 1}`,
+      )}
+    >
+      <span
+        className={cn(
+          "absolute inset-x-0 top-0 h-1 bg-gradient-to-r",
+          TODO_ACCENT[todo.tone],
+        )}
+        aria-hidden="true"
+      />
+      <span
+        className={cn("grid h-11 w-11 shrink-0 place-content-center rounded-xl", iconChip[todo.tone])}
+      >
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline gap-2">
+          <span className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+            {todo.count}
+          </span>
+          <span className="truncate text-sm text-slate-600 dark:text-slate-400">{todo.label}</span>
+        </span>
+        <span className="mt-0.5 flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400">
+          {todo.action}
+          <ArrowUpRight
+            className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+            aria-hidden="true"
+          />
+        </span>
+      </span>
+    </Link>
+  );
+}
+
 /**
  * Termenul lunii și cine încă nu a trimis.
  *
@@ -392,21 +609,21 @@ function ClosingBand({ closing }: { closing: DashboardClosing }) {
 
   return (
     <section
-      aria-label="Termenul lunii"
+      // Se numește după ce este. Numărătoarea de zile a urcat în antet, lângă
+      // luna la care se referă; aici a rămas întrebarea „cine n-a trimis".
+      aria-label="Închiderea lunii"
       className={cn("rounded-xl border p-4 shadow-sm", tone)}
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
           <CalendarClock className="h-5 w-5 shrink-0" aria-hidden="true" />
-          {overdue
-            ? `Termenul a trecut de ${Math.abs(daysLeft)} ${plural(Math.abs(daysLeft))}`
-            : daysLeft === 0
-              ? "Termenul este azi"
-              : `Mai sunt ${daysLeft} ${plural(daysLeft)} până la termen`}
+          Închiderea lunii {formatReferenceMonth(closing.referenceMonth)}
         </span>
+        {/* Numărătoarea de zile stă acum în antet, lângă luna la care se referă.
+            Aici era a doua oară, cu alte cuvinte — două locuri care spun același
+            lucru se despart la prima modificare a unuia dintre ele. */}
         <span className="text-sm text-slate-600 dark:text-slate-400">
-          depunere până pe {formatDate(closing.deadline)}, pentru{" "}
-          {formatReferenceMonth(closing.referenceMonth)}
+          depunere până pe {formatDate(closing.deadline)}
         </span>
       </div>
 
@@ -473,10 +690,12 @@ function HeroHeader({
   month,
   kpis,
   trend,
+  closing,
 }: {
   month: string | null;
   kpis: DashboardData["kpis"];
   trend: DashboardData["trend"];
+  closing: DashboardClosing | null;
 }) {
   const received = trend.reduce((sum, day) => sum + day.count, 0);
   const yesterday = trend[trend.length - 2]?.count ?? 0;
@@ -484,7 +703,10 @@ function HeroHeader({
   const delta = today - yesterday;
 
   return (
-    <section className="rise-in relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <section
+      aria-label="Luna în lucru"
+      className="rise-in relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
+    >
       {/* Pata de culoare stă în spate, la opacitate mică: dă căldură fără să
           scadă contrastul textului de deasupra. */}
       <div
@@ -494,9 +716,15 @@ function HeroHeader({
 
       <div className="relative flex flex-wrap items-end justify-between gap-6 p-6">
         <div className="min-w-0">
-          <p className="text-[11px] font-medium tracking-wide text-blue-600 uppercase dark:text-blue-400">
-            {month ? `Luna în lucru · ${month}` : "Nicio lună în lucru"}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[11px] font-medium tracking-wide text-blue-600 uppercase dark:text-blue-400">
+              {month ? `Luna în lucru · ${month}` : "Nicio lună în lucru"}
+            </p>
+            {/* Termenul stă lângă lună, nu într-o bandă separată mai jos: cât mai
+                e până la depunere schimbă ce faci azi mai mult decât orice contor,
+                deci trebuie citit în aceeași privire cu luna la care se referă. */}
+            {closing && <DeadlineChip daysLeft={closing.daysLeft} />}
+          </div>
           <h2 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
             Panou principal
           </h2>
