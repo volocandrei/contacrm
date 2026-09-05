@@ -25,7 +25,7 @@ import {
   periodProgress,
 } from "@/api/mock/seed";
 import { buildArchivePath, buildDocumentFilename, type FilenameInput } from "@/lib/filename";
-import { ROLE_LABEL } from "@/lib/labels";
+import { DOCUMENT_STATUS_LABEL, ROLE_LABEL } from "@/lib/labels";
 import { ROLE_CODE } from "@/types/domain";
 import type {
   AccountingPeriod,
@@ -2938,6 +2938,67 @@ function assistantTools(): AssistantTool[] {
       },
     },
     {
+      name: "explain_document",
+      permission: "documents:read",
+      description:
+        "Explică de ce un document este în starea în care este: ce îi lipsește, " +
+        "de ce așteaptă verificare, de ce nu i s-a găsit clientul.",
+      run: (argument) => {
+        if (!argument) return { text: "Spune-mi care document — o bucată din nume ajunge." };
+
+        const page = listDocuments({ q: argument, pageSize: 5 });
+        if (page.items.length === 0) {
+          return { text: `Nu am găsit niciun document pentru „${argument}”.` };
+        }
+        if (page.items.length > 1) {
+          const listed = page.items.map((row) => `• ${row.originalFilename}`).join("\n");
+          const more = page.total > page.items.length ? ` (din ${page.total})` : "";
+          return {
+            text:
+              `Se potrivesc mai multe documente cu „${argument}”${more}:\n${listed}\n` +
+              "Spune-mi numele întreg al celui care te interesează.",
+            links: [{ label: "Caută în documente", path: "/documente/inbox" }],
+          };
+        }
+
+        const item = page.items[0]!;
+        const lines = [`„${item.originalFilename}” — ${DOCUMENT_STATUS_LABEL[item.status]}.`];
+        if (item.clientName) {
+          lines.push(`Client: ${item.clientName}.`);
+        } else if (item.status === "UNMATCHED") {
+          lines.push(
+            "Clientul nu a fost identificat: pe document nu s-a găsit niciun CUI " +
+              "de-al vostru. Atribuie-l o dată, iar de la aceeași adresă documentele " +
+              "următoare vor merge singure.",
+          );
+        }
+
+        // Motivele vin de unde le ia și ecranul de verificare. Un al doilea set
+        // de reguli, scris aici pentru un text mai frumos, ar fi început să
+        // contrazică ecranul la prima modificare a unuia dintre ele.
+        const issues = getDocument(item.id).validationIssues;
+        if (issues.length > 0) {
+          lines.push("De rezolvat:");
+          lines.push(...issues.map((issue) => `• ${issue}`));
+        } else if (item.status === "REVIEW_REQUIRED") {
+          lines.push(
+            "Nu are nimic de corectat — așteaptă doar confirmarea unui om, " +
+              "fiindcă aprobarea automată este oprită.",
+          );
+        }
+
+        return {
+          text: lines.join("\n"),
+          links: [
+            {
+              label: `Deschide ${item.originalFilename}`,
+              path: `/documente/verificare/${item.id}`,
+            },
+          ],
+        };
+      },
+    },
+    {
       name: "find_client",
       permission: "clients:read",
       description: "Găsește un client după nume sau CUI.",
@@ -3126,8 +3187,11 @@ function assistantTools(): AssistantTool[] {
 const ASSISTANT_INTENTS: Array<{
   tool: string;
   triggers: string[][];
-  argument?: "month" | "client" | "raw";
+  argument?: "month" | "client" | "raw" | "document";
 }> = [
+  // Prima, fiindcă este cea mai îngustă: „de ce e la verificare X" conține și
+  // „verificare", care mai jos înseamnă cu totul altceva („cât e de lucru").
+  { tool: "explain_document", triggers: [["de ce", "verificare"], ["de ce", "document"], ["de ce", "fisier"], ["explica", "document"], ["ce e cu"]], argument: "document" },
   { tool: "draft_request", triggers: [["scrie", "solicitare"], ["cere", "documente"], ["mesaj", "client"]], argument: "client" },
   { tool: "propose_task", triggers: [["noteaza"], ["adauga sarcina"], ["sarcina noua"], ["aminteste"]], argument: "raw" },
   { tool: "propose_assignment", triggers: [["atribuie"], ["neatribuit"], ["fara client"]], argument: "client" },
@@ -3151,6 +3215,38 @@ function assistantMonth(text: string): string {
   for (const [name, number] of Object.entries(ASSISTANT_MONTHS)) {
     if (normalised.includes(name)) {
       return `${assistantPreviousMonth().slice(0, 4)}-${String(number).padStart(2, "0")}`;
+    }
+  }
+  return "";
+}
+
+/** Numele scris între ghilimele — singurul mod de a spune unul cu spații. */
+const ASSISTANT_QUOTED = /[„"']([^„”"']{2,120})[”"']/;
+
+/** Terminațiile pe care le poartă un fișier acceptat la încărcare. */
+const ASSISTANT_FILE_SUFFIX = /\S+\.(?:pdf|xml|jpe?g|png|webp)\b/i;
+
+/**
+ * Care document, dintr-o întrebare scrisă de om. Oglindește `extract_document`.
+ *
+ * Un nume de fișier se recunoaște singur, oriunde ar sta în frază. Când lipsește,
+ * se ia ce urmează după „documentul"/„fișierul"; dacă nici asta nu e, se întoarce
+ * gol, ca unealta să ceară lămurirea în loc să caute la întâmplare.
+ */
+function assistantDocument(text: string): string {
+  // Ghilimelele întâi: un nume cu spații („28.5 scan.pdf") nu se poate prinde
+  // altfel, iar tăiat la primul spațiu ar deveni „scan.pdf".
+  const quoted = ASSISTANT_QUOTED.exec(text);
+  if (quoted) return quoted[1]!.trim();
+
+  const found = ASSISTANT_FILE_SUFFIX.exec(text);
+  if (found) return found[0].replace(/^[\s?.,:;"„”]+|[\s?.,:;"„”]+$/g, "");
+
+  const lowered = text.toLowerCase();
+  for (const lead of ["documentul ", "document ", "fisierul ", "fișierul ", "factura "]) {
+    const index = lowered.indexOf(lead);
+    if (index >= 0) {
+      return text.slice(index + lead.length).replace(/^[\s?.,:;"„”]+|[\s?.,:;"„”]+$/g, "");
     }
   }
   return "";
@@ -3222,7 +3318,9 @@ export function assistantAnswer(message: string): AssistantReply {
           ? assistantClient(text)
           : intent.argument === "raw"
             ? assistantRaw(text)
-            : "";
+            : intent.argument === "document"
+              ? assistantDocument(text)
+              : "";
     const result = tool.run(argument);
     return {
       text: result.text,

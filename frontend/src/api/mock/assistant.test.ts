@@ -8,7 +8,14 @@
  * întreabă, că nu inventează cifre, și că nu execută nimic — propune drumuri.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { assistantAnswer, listTasks, mockLogin } from "@/api/mock/store";
+import {
+  assistantAnswer,
+  getDocument,
+  listDocuments,
+  listTasks,
+  mockLogin,
+} from "@/api/mock/store";
+import { DOCUMENT_STATUS_LABEL } from "@/lib/labels";
 
 const ADMIN = "admin@contacrm.test";
 /**
@@ -67,6 +74,85 @@ describe("ce știe asistentul", () => {
     expect(reply.used).toEqual([]);
     expect(reply.text).toContain("Pot răspunde la");
     expect(reply.suggestions.length).toBeGreaterThan(0);
+  });
+});
+
+describe("de ce stă documentul acolo unde stă", () => {
+  /**
+   * Un document al cărui nume nu se potrivește cu niciun altul.
+   *
+   * Căutarea intră și în textul citit, nu doar în nume: un fragment care apare
+   * la două documente cere lămurire, pe bună dreptate. Testul vrea cazul cu un
+   * singur răspuns, deci alege un nume care chiar identifică unul.
+   */
+  function uniquelyNamedDocument() {
+    const all = listDocuments({ pageSize: 200 }).items;
+    // Fără spațiu în nume: altfel întrebarea trebuie scrisă cu ghilimele, iar
+    // cazul acela are testul lui. Aici verificăm forma obișnuită.
+    const found = all.find(
+      (row) =>
+        !row.originalFilename.includes(" ") &&
+        listDocuments({ q: row.originalFilename, pageSize: 5 }).total === 1,
+    );
+    expect(found, "setul sintetic nu are niciun document cu nume neambiguu").toBeDefined();
+    return found!;
+  }
+
+  it("spune starea cu exact cuvântul de pe ecran", () => {
+    const document = uniquelyNamedDocument();
+
+    const reply = assistantAnswer(`de ce e la verificare ${document.originalFilename}`);
+
+    expect(reply.used).toEqual(["explain_document"]);
+    expect(reply.text).toContain(DOCUMENT_STATUS_LABEL[document.status]);
+  });
+
+  it("duce la document, nu doar vorbește despre el", () => {
+    const document = uniquelyNamedDocument();
+
+    const reply = assistantAnswer(`de ce e la verificare ${document.originalFilename}`);
+
+    expect(reply.links.some((link) => link.path.includes(document.id))).toBe(true);
+  });
+
+  it("cere lămurire în loc să caute la întâmplare", () => {
+    const reply = assistantAnswer("de ce e la verificare documentul?");
+
+    expect(reply.text).toContain("Spune-mi care document");
+  });
+
+  it("nu confundă întrebarea cu „cât e de lucru”", () => {
+    // „de ce e la verificare X" conține „verificare", care în altă intenție
+    // înseamnă cu totul altceva. Ordinea listei este regula care le separă.
+    const reply = assistantAnswer(`de ce e la verificare ${uniquelyNamedDocument().originalFilename}`);
+
+    expect(reply.used).not.toContain("workload");
+  });
+
+  it("nu revarsă textul citit din document", () => {
+    // §64: textul OCR nu iese în liste, iar un chat este cea mai largă listă.
+    const document = uniquelyNamedDocument();
+
+    const reply = assistantAnswer(`de ce e la verificare ${document.originalFilename}`);
+
+    const ocr = getDocument(document.id).ocr.textPreview;
+    expect(ocr, "documentul ales nu are text citit, deci testul ar fi vacuu").toBeTruthy();
+    expect(reply.text).not.toContain(ocr!);
+  });
+
+  it("prinde un nume cu spații, dacă e scris între ghilimele", () => {
+    // „28.5 scan.pdf" tăiat la primul spațiu devine „scan.pdf", care se
+    // potrivește cu jumătate din dosar. Ghilimelele sunt modul în care un om
+    // spune, natural, că numele e tot ce e înăuntru.
+    const spaced = listDocuments({ pageSize: 200 }).items.find((row) =>
+      row.originalFilename.includes(" "),
+    );
+    expect(spaced, "setul sintetic nu are niciun nume cu spațiu").toBeDefined();
+
+    const reply = assistantAnswer(`de ce e la verificare „${spaced!.originalFilename}”`);
+
+    expect(reply.used).toEqual(["explain_document"]);
+    expect(reply.text).toContain(spaced!.originalFilename);
   });
 });
 

@@ -22,6 +22,7 @@ from app.domain.enums import (
     TaskPriority,
     TaskStatus,
 )
+from app.domain.labels import DOCUMENT_STATUS_LABEL
 
 DOMAIN_TS = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "domain.ts"
 
@@ -112,3 +113,25 @@ def test_default_document_types_match_the_frontend_seed() -> None:
     )
     for code, fields in frontend.items():
         assert backend[code] == fields, f"{code}: câmpuri obligatorii diferite"
+
+
+def test_document_status_labels_match_the_frontend() -> None:
+    """Aceeași stare, același cuvânt, pe ecran și în gura asistentului.
+
+    Etichetele au trăit doar în frontend cât timp singurul care le arăta era
+    ecranul. De când asistentul spune „este la verificare", textul se compune pe
+    server — iar două formulări pentru aceeași stare sunt mai rele decât una
+    imperfectă: a doua nu se caută în ecran.
+    """
+    labels_ts = Path(__file__).resolve().parents[2] / "frontend" / "src" / "lib" / "labels.ts"
+    block = re.search(
+        r"export const DOCUMENT_STATUS_LABEL: Record<DocumentStatus, string> = \{(.*?)\n\};",
+        labels_ts.read_text(encoding="utf-8"),
+        re.DOTALL,
+    )
+    assert block is not None, "DOCUMENT_STATUS_LABEL nu a fost găsit în lib/labels.ts"
+
+    frontend = dict(re.findall(r'(\w+):\s*"([^"]+)"', block.group(1)))
+    backend = {status.value: label for status, label in DOCUMENT_STATUS_LABEL.items()}
+
+    assert frontend == backend

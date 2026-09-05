@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.domain.enums import DocumentStatus, TaskStatus
+from app.domain.labels import status_label
 from app.domain.periods import filing_deadline
 from app.domain.permissions import Permission
 from app.models.organization import Organization
@@ -32,6 +33,7 @@ from app.schemas.common import PageParams
 from app.schemas.document import DocumentFilters
 from app.services.assistant.base import Action, AssistantContext, Link, ToolResult
 from app.services.document_request import build_request_message
+from app.services.document_validation import DocumentValidationService
 from app.services.period_service import PeriodService
 
 #: Câte rânduri intră într-un răspuns de chat. Peste atât, răspunsul devine un
@@ -265,6 +267,95 @@ def my_tasks(session: Session, context: AssistantContext, _argument: str) -> Too
     )
 
 
+# ── De ce stă documentul ăsta aici ───────────────────────────────────────────
+
+
+def explain_document(session: Session, context: AssistantContext, argument: str) -> ToolResult:
+    """De ce este documentul în starea în care este, spus în cuvinte.
+
+    **Întrebarea zilnică pe care nimic nu o răspundea.** „De ce e la verificare?",
+    „de ce n-a fost recunoscut clientul?" — răspunsul exista, dar numai deschizând
+    documentul și citind insignele câmp cu câmp: care are încredere mică, care
+    lipsește, dacă sumele se adună. La treizeci de documente pe zi, întrebarea se
+    pune des și răspunsul se caută greu.
+
+    **Nu inventează motive.** Le ia de la `DocumentValidationService`, exact cele
+    pe care ecranul de verificare le arată. Un al doilea set de reguli, scris aici
+    pentru un text mai frumos, ar fi început să contrazică ecranul în ziua în care
+    unul din ele s-ar fi schimbat.
+
+    **Nu citește textul documentului.** Explică *starea*, nu conținutul: §64 spune
+    că textul OCR nu iese în liste, iar un chat este cea mai largă listă posibilă.
+    """
+    if not argument:
+        return ToolResult(text="Spune-mi care document — o bucată din nume ajunge.")
+
+    rows, total = DocumentRepository(session).list(
+        context.organization_id,
+        DocumentFilters(q=argument),
+        PageParams(page=1, page_size=MAX_ROWS),
+    )
+    if not rows:
+        return ToolResult(text=f"Nu am găsit niciun document pentru „{argument}”.")
+
+    if len(rows) > 1:
+        listed = "\n".join(f"• {row.document.original_filename}" for row in rows)
+        more = f" (din {total})" if total > len(rows) else ""
+        return ToolResult(
+            text=(
+                f"Se potrivesc mai multe documente cu „{argument}”{more}:\n{listed}\n"
+                "Spune-mi numele întreg al celui care te interesează."
+            ),
+            links=[Link(label="Caută în documente", path="/documente/inbox")],
+        )
+
+    row = rows[0]
+    document = row.document
+    lines = [
+        f"„{document.original_filename}” — {status_label(document.status)}.",
+    ]
+
+    if row.client_name:
+        lines.append(f"Client: {row.client_name}.")
+    elif document.status is DocumentStatus.UNMATCHED:
+        # Cel mai frecvent „de ce", și cel cu cea mai concretă ieșire.
+        lines.append(
+            "Clientul nu a fost identificat: pe document nu s-a găsit niciun CUI "
+            "de-al vostru. Atribuie-l o dată, iar de la aceeași adresă documentele "
+            "următoare vor merge singure."
+        )
+
+    issues = DocumentValidationService().validate(document).issues
+    if issues:
+        lines.append("De rezolvat:")
+        lines.extend(f"• {issue}" for issue in issues)
+    elif document.status is DocumentStatus.REVIEW_REQUIRED:
+        # Fără motive, dar tot la verificare: aprobarea automată este oprită.
+        lines.append(
+            "Nu are nimic de corectat — așteaptă doar confirmarea unui om, "
+            "fiindcă aprobarea automată este oprită."
+        )
+
+    if document.error_code:
+        lines.append(f"Eroare la procesare: {document.error_code.value}.")
+
+    if document.ai_provider:
+        read_by = document.ai_provider
+        if document.ai_model:
+            read_by = f"{read_by} ({document.ai_model})"
+        lines.append(f"Citit de: {read_by}.")
+
+    return ToolResult(
+        text="\n".join(lines),
+        links=[
+            Link(
+                label=f"Deschide {document.original_filename}",
+                path=f"/documente/verificare/{document.id}",
+            )
+        ],
+    )
+
+
 # ── Ce pregătește pentru un om ───────────────────────────────────────────────
 
 
@@ -450,6 +541,17 @@ TOOLS: tuple[Tool, ...] = (
         description="Ce documente lipsesc, per client, pentru o lună.",
         run=missing_documents,
         argument_hint="Luna contabilă, ca „2026-08”. Gol = luna care se depune acum.",
+    ),
+    Tool(
+        name="explain_document",
+        permission=Permission.DOCUMENTS_READ,
+        description=(
+            "Explică de ce un document este în starea în care este: ce îi lipsește, "
+            "de ce așteaptă verificare, de ce nu i s-a găsit clientul. "
+            "Argumentul este o bucată din numele fișierului."
+        ),
+        argument_hint="o bucată din numele fișierului",
+        run=explain_document,
     ),
     Tool(
         name="find_client",

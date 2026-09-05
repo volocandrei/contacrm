@@ -73,6 +73,20 @@ class Intent:
 #: Un grup este o **conjuncție**: toate cuvintele din el trebuie să apară.
 INTENTS: tuple[Intent, ...] = (
     Intent(
+        # Prima, fiindcă este cea mai îngustă: „de ce e la verificare X" conține
+        # și „verificare", care mai jos înseamnă cu totul altceva („cât e de
+        # lucru"). Ordinea listei este regula care le separă.
+        tool="explain_document",
+        triggers=(
+            ("de ce", "verificare"),
+            ("de ce", "document"),
+            ("de ce", "fisier"),
+            ("explica", "document"),
+            ("ce e cu",),
+        ),
+        argument="document",
+    ),
+    Intent(
         tool="draft_request",
         triggers=(("scrie", "solicitare"), ("cere", "documente"), ("mesaj", "client")),
         argument="client",
@@ -183,6 +197,43 @@ def extract_client(text: str) -> str:
 _COMMAND_WORDS = ("noteaza", "adauga sarcina", "sarcina noua", "aminteste-mi", "aminteste")
 
 
+#: Numele scris între ghilimele — singurul mod de a spune unul cu spații în el.
+_QUOTED = re.compile(r"[„\"']([^„”\"']{2,120})[”\"']")
+
+#: Terminațiile pe care le poartă un fișier acceptat la încărcare.
+_FILE_SUFFIX = re.compile(r"\S+\.(?:pdf|xml|jpe?g|png|webp)\b", re.IGNORECASE)
+
+#: Cuvintele după care urmează, de obicei, numele documentului.
+_DOCUMENT_LEAD_INS = ("documentul ", "document ", "fisierul ", "fișierul ", "factura ")
+
+
+def extract_document(text: str) -> str:
+    """Care document, dintr-o întrebare scrisă de om.
+
+    Un nume de fișier este cel mai bun indiciu și se recunoaște singur, oriunde
+    ar sta în frază: „de ce e la verificare factura-1023.pdf?". Când lipsește,
+    se ia ce urmează după „documentul"/„fișierul" — iar dacă nici asta nu e,
+    se întoarce gol, ca unealta să ceară lămurirea în loc să caute la întâmplare.
+    """
+    # Ghilimelele întâi: un nume cu spații („28.5 scan.pdf") nu se poate prinde
+    # altfel, iar tăiat la primul spațiu ar deveni „scan.pdf" — care se
+    # potrivește cu jumătate din dosar.
+    quoted = _QUOTED.search(text)
+    if quoted:
+        return quoted.group(1).strip()
+
+    found = _FILE_SUFFIX.search(text)
+    if found:
+        return found.group(0).strip(' ?.,:;"„”')
+
+    lowered = text.lower()
+    for lead in _DOCUMENT_LEAD_INS:
+        index = lowered.find(lead)
+        if index >= 0:
+            return text[index + len(lead) :].strip(' ?.,:;"„”')
+    return ""
+
+
 def extract_raw(text: str) -> str:
     """Ce a cerut omul, fără cuvântul de comandă din față."""
     normalised = normalise(text)
@@ -216,6 +267,8 @@ class RuleAssistant:
                 argument = extract_month(text)
             elif intent.argument == "client":
                 argument = extract_client(text)
+            elif intent.argument == "document":
+                argument = extract_document(text)
             elif intent.argument == "raw":
                 argument = extract_raw(text)
 

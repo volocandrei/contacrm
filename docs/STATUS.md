@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  18.718 linii sursă +  2.810 linii teste  →   220 teste
-backend   24.043 linii sursă + 20.447 linii teste  → 1.364 teste
+frontend  18.816 linii sursă +  2.896 linii teste  →   226 teste
+backend   24.237 linii sursă + 20.740 linii teste  → 1.379 teste
 end-to-end 1.793 linii                             →    67 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.651 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.672 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -157,6 +157,27 @@ urmă în jurnal ca atunci când omul ar fi făcut-o de mână. Aprobarea unui d
 nu se pregătește nici măcar așa: acolo trebuie să te uiți la document. Și **nu
 inventează**: fiecare cifră vine dintr-o unealtă care a interogat baza; când nu
 știe, spune ce poate în schimb.
+
+Poate și **explica un document**: „de ce e la verificare chitanta-77.pdf?", „de
+ce n-a fost recunoscut clientul?". Răspunsul exista și înainte, dar numai
+deschizând documentul și citind insignele câmp cu câmp — care are încredere mică,
+care lipsește, dacă sumele se adună. La treizeci de documente pe zi, întrebarea se
+pune des și răspunsul se caută greu.
+
+Motivele nu sunt rescrise pentru un text mai frumos: vin de la
+`DocumentValidationService`, exact cele pe care le arată ecranul de verificare. Un
+al doilea set de reguli ar fi început să contrazică ecranul în ziua în care unul
+dintre ele s-ar fi schimbat. Iar starea se spune cu **exact cuvântul de pe ecran**:
+etichetele au trecut din frontend în `app/domain/labels.py`, cu un test de paritate
+care cade dacă cele două se despart.
+
+**Explică starea, nu conținutul** (§64): textul citit din document nu iese
+niciodată în răspuns. Un chat este cea mai largă listă posibilă, iar un răspuns
+care ar recita factura ar muta datele clientului în istoricul unei conversații.
+
+Un nume cu spații se spune între ghilimele — „28.5 scan.pdf". Tăiat la primul
+spațiu ar deveni „scan.pdf", care se potrivește cu jumătate din dosar; atunci
+asistentul întreabă care anume, în loc să răspundă despre documentul greșit.
 
 Poate și **scrie solicitarea** de documente pentru un client — același text ca
 butonul de pe „Documente lipsă", fiindcă vine din același loc de pe server. Două
