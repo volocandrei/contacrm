@@ -368,6 +368,11 @@ function ExportButton({
  *
  * **Raportul** are numerele de pe ecran, agregate. Se pune într-un raport intern
  * sau se trimite cuiva; nu conține niciun document.
+ *
+ * **Arhiva** are documentele însele, aranjate pe client și lună, cu registrul la
+ * rădăcină. Se cere când teancul întreg trebuie să plece undeva — un client care
+ * pleacă, o predare de an, o cerere de la un control. Stă ultima fiindcă este
+ * cea mai grea și cea mai rar cerută.
  */
 function ExportActions({ filters }: { filters: Record<string, string> }) {
   return (
@@ -386,6 +391,13 @@ function ExportActions({ filters }: { filters: Record<string, string> }) {
         fallbackName="raport-documente.csv"
         label="Descarcă raportul"
         title="Numerele de pe ecran, agregate."
+      />
+      <ExportButton
+        filters={filters}
+        path="/reports/archive.zip"
+        fallbackName="arhiva-documente.zip"
+        label="Descarcă arhiva"
+        title="Documentele intervalului, plus registrul, într-un singur fișier. Aranjate pe client și lună."
       />
     </div>
   );

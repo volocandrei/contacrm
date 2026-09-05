@@ -15,17 +15,20 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response
+from fastapi.responses import StreamingResponse
 from pydantic import Field
 
-from app.api.deps import DbSession, require_permission
+from app.api.deps import DbSession, StorageDep, require_permission
 from app.api.route import CommittingRoute
 from app.api.v1.periods import REFERENCE_MONTH
 from app.core.errors import ValidationError
 from app.domain.permissions import Permission
 from app.models.user import User
 from app.schemas.common import ApiModel
-from app.services import document_register, report_export
+from app.services import document_register, month_archive, report_export
+from app.services.document_delivery import SECURITY_HEADERS
 from app.services.document_register import RegisterService
+from app.services.month_archive import MonthArchiveService
 from app.services.report_service import Bucket, ReportService, ReportSummary
 
 router = APIRouter(route_class=CommittingRoute, prefix="/reports", tags=["reports"])
@@ -186,6 +189,47 @@ def register_csv(
         headers={
             "Content-Disposition": f'attachment; filename="{name}"',
             # Sumele clienților nu au ce căuta în cache-ul unui proxy.
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/archive.zip")
+def archive_zip(
+    session: DbSession,
+    storage: StorageDep,
+    user: ReportReader,
+    filters: Annotated[ReportFilters, Query()],
+) -> StreamingResponse:
+    """Documentele intervalului, plus registrul, într-un singur fișier.
+
+    **Golul pe care îl umple.** Documentele se puteau descărca doar unul câte
+    unul. Un client care pleacă, o predare de an, o cerere de la un control —
+    toate cer teancul întreg, iar teancul întreg însemna sute de clicuri.
+
+    Registrul intră la rădăcina arhivei. Fără el, un dosar cu patru sute de
+    PDF-uri este o grămadă, nu o arhivă.
+
+    Ce intră și cum sunt aranjate, cu motivele, în `services/month_archive.py`.
+    """
+    _assert_interval(filters)
+
+    service = MonthArchiveService(session, storage, user.organization_id)
+    entries, rows = service.plan(
+        from_month=filters.from_month,
+        to_month=filters.to_month,
+        client_id=filters.client_id,
+    )
+    buffer = service.build(entries, rows)
+    name = month_archive.filename(filters.from_month, filters.to_month)
+
+    return StreamingResponse(
+        month_archive.chunks(buffer),
+        media_type="application/zip",
+        headers={
+            **SECURITY_HEADERS,
+            "Content-Disposition": f'attachment; filename="{name}"',
+            # Documentele clienților nu au ce căuta în cache-ul unui proxy.
             "Cache-Control": "no-store",
         },
     )

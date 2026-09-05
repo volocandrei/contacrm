@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, Select, select
 from sqlalchemy.orm import Session
 
 from app.domain.enums import DocumentStatus
@@ -101,6 +101,27 @@ class RegisterService:
         self.session = session
         self.organization_id = organization_id
 
+    def documents(
+        self,
+        *,
+        from_month: str | None = None,
+        to_month: str | None = None,
+        client_id: uuid.UUID | None = None,
+    ) -> list[tuple[str | None, Document]]:
+        """Aceleași documente ca registrul, ca obiecte, cu numele clientului.
+
+        **Aceeași selecție, o singură dată.** Arhiva lunii trebuie să conțină
+        exact documentele pe care registrul le listează; două interogări cu
+        filtre scrise separat ar fi ajuns, într-o zi, la două seturi diferite —
+        iar diferența ar fi fost un document lipsă dintr-o arhivă predată.
+        """
+        return [
+            (client_name, document)
+            for document, client_name, _tax_id, _label in self.session.execute(
+                self._statement(from_month=from_month, to_month=to_month, client_id=client_id)
+            )
+        ]
+
     def rows(
         self,
         *,
@@ -114,43 +135,7 @@ class RegisterService:
         după `id` este de necitit, iar unul sortat doar după dată amestecă
         clienții între ei.
         """
-        # Izolarea pe organizație stă prima și nu este opțională (§72).
-        conditions: list[ColumnElement[bool]] = [
-            Document.organization_id == self.organization_id,
-            # Documentele nu se șterg fizic (§62); un document șters nu are ce
-            # căuta într-un registru. `soft_delete` nu are încă apelanți, dar
-            # ziua în care va avea nu trebuie să fie ziua în care se descoperă
-            # asta dintr-un fișier trimis mai departe.
-            Document.deleted_at.is_(None),
-            Document.status.not_in(EXCLUDED),
-            # `is_duplicate` și starea `DUPLICATE` sunt două lucruri diferite:
-            # un document poate fi marcat duplicat rămânând în starea în care
-            # era. Ambele trebuie să țină documentul afară din registru.
-            Document.is_duplicate.is_(False),
-        ]
-        # `YYYY-MM` se compară lexicografic exact ca cronologic - de asta este
-        # stocat așa.
-        if from_month:
-            conditions.append(Document.reference_month >= from_month)
-        if to_month:
-            conditions.append(Document.reference_month <= to_month)
-        if client_id is not None:
-            conditions.append(Document.client_id == client_id)
-
-        statement = (
-            select(Document, Client.name, Client.tax_id, DocumentType.label)
-            .outerjoin(Client, Document.client_id == Client.id)
-            .outerjoin(DocumentType, Document.document_type_id == DocumentType.id)
-            .where(*conditions)
-            # `nulls_last` explicit: documentele fără client sau fără dată sunt
-            # exact cele la care omul mai are de lucrat, iar la coadă se văd.
-            .order_by(
-                Client.name.nulls_last(),
-                Document.document_date.nulls_last(),
-                Document.series.nulls_last(),
-                Document.document_number.nulls_last(),
-            )
-        )
+        statement = self._statement(from_month=from_month, to_month=to_month, client_id=client_id)
 
         return [
             RegisterRow(
@@ -174,6 +159,52 @@ class RegisterService:
             )
             for document, client_name, client_tax_id, type_label in self.session.execute(statement)
         ]
+
+    def _statement(
+        self,
+        *,
+        from_month: str | None,
+        to_month: str | None,
+        client_id: uuid.UUID | None,
+    ) -> Select[tuple[Document, str, str | None, str]]:
+        """Selecția registrului, într-un singur loc."""
+        # Izolarea pe organizație stă prima și nu este opțională (§72).
+        conditions: list[ColumnElement[bool]] = [
+            Document.organization_id == self.organization_id,
+            # Documentele nu se șterg fizic (§62); un document șters nu are ce
+            # căuta într-un registru. `soft_delete` nu are încă apelanți, dar
+            # ziua în care va avea nu trebuie să fie ziua în care se descoperă
+            # asta dintr-un fișier trimis mai departe.
+            Document.deleted_at.is_(None),
+            Document.status.not_in(EXCLUDED),
+            # `is_duplicate` și starea `DUPLICATE` sunt două lucruri diferite:
+            # un document poate fi marcat duplicat rămânând în starea în care
+            # era. Ambele trebuie să țină documentul afară din registru.
+            Document.is_duplicate.is_(False),
+        ]
+        # `YYYY-MM` se compară lexicografic exact ca cronologic - de asta este
+        # stocat așa.
+        if from_month:
+            conditions.append(Document.reference_month >= from_month)
+        if to_month:
+            conditions.append(Document.reference_month <= to_month)
+        if client_id is not None:
+            conditions.append(Document.client_id == client_id)
+
+        return (
+            select(Document, Client.name, Client.tax_id, DocumentType.label)
+            .outerjoin(Client, Document.client_id == Client.id)
+            .outerjoin(DocumentType, Document.document_type_id == DocumentType.id)
+            .where(*conditions)
+            # `nulls_last` explicit: documentele fără client sau fără dată sunt
+            # exact cele la care omul mai are de lucrat, iar la coadă se văd.
+            .order_by(
+                Client.name.nulls_last(),
+                Document.document_date.nulls_last(),
+                Document.series.nulls_last(),
+                Document.document_number.nulls_last(),
+            )
+        )
 
 
 def rows_for(entries: list[RegisterRow]) -> list[list[str]]:

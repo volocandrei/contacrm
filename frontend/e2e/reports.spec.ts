@@ -78,3 +78,45 @@ test("ce s-a citit dintr-un document urcat acum iese în registru", async ({ pag
   // și nu o adună. Fișierul pare bun până când cineva trage un total pe coloană.
   expect(cells[columns.indexOf("Total")]).toBe("1190,00");
 });
+
+test("arhiva conține documentele și registrul, într-un singur fișier", async ({ page }) => {
+  // Documentele se puteau descărca doar unul câte unul. Un client care pleacă,
+  // o predare de an, o cerere de la un control — toate cer teancul întreg.
+  await loginAs(page, ACCOUNTS.admin);
+
+  // Un document propriu, ca arhiva să aibă ce conține indiferent de ordinea
+  // în care rulează celelalte teste.
+  const number = unique();
+  await uploadAndOpen(page, "arhiva.pdf", incomingInvoice({ number, total: "1.190,00" }));
+  await expect(field(page, "documentNumber")).toHaveValue(number, { timeout: 30_000 });
+
+  await page.goto("/rapoarte");
+  const file = await downloadFrom(page, "Descarcă arhiva");
+
+  expect(file.suggestedFilename()).toContain("arhiva-documente");
+  expect(file.suggestedFilename()).toMatch(/\.zip$/);
+
+  // Se deschide și are înăuntru ce trebuie: o rută care întoarce un ZIP gol ar
+  // trece orice verificare care se oprește la numele fișierului.
+  const zip = await readFile(await file.path());
+  const names = entriesOf(zip);
+  expect(names).toContain("registru.csv");
+  expect(names.some((name) => name.endsWith(".pdf"))).toBe(true);
+});
+
+/**
+ * Numele intrărilor dintr-un ZIP, citite din directorul central.
+ *
+ * Fără o bibliotecă: `zip` nu este o dependență a frontendului, iar testul are
+ * nevoie doar de nume. Directorul central stă la coada fișierului, iar fiecare
+ * intrare începe cu semnătura 0x02014b50.
+ */
+function entriesOf(zip: Buffer): string[] {
+  const names: string[] = [];
+  for (let index = 0; index < zip.length - 46; index += 1) {
+    if (zip.readUInt32LE(index) !== 0x02014b50) continue;
+    const length = zip.readUInt16LE(index + 28);
+    names.push(zip.subarray(index + 46, index + 46 + length).toString("utf8"));
+  }
+  return names;
+}

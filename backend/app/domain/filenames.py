@@ -95,6 +95,32 @@ def sanitize_segment(value: str, max_length: int = MAX_SEGMENT_LENGTH) -> str:
     return truncated
 
 
+def sanitize_path_label(value: str, max_length: int = MAX_SEGMENT_LENGTH) -> str:
+    """Un text arbitrar, transformat într-un **nume de dosar** citibil de un om.
+
+    **De ce nu `sanitize_segment`.** Acela strânge spațiile, fiindcă servește
+    convenția de nume de fișier din §10, unde segmentele se lipesc:
+    `2026-08-14_Facturaintrare_AlfaConta_FCT1.pdf`. Aplicat unui dosar dintr-o
+    arhivă, ar produce `AlfaContaSRL/` — corect tehnic și greu de citit exact
+    acolo unde cineva caută cu ochii, printre treizeci de firme.
+
+    Ce rămâne identic sunt regulile de siguranță: fără separatori de cale, fără
+    caractere de control, fără nume rezervate pe Windows, fără puncte repetate.
+    Diacriticele rămân: un dosar nu intră într-un nume de fișier standardizat.
+    """
+    cleaned = _ILLEGAL_CHARS.sub("", value)
+    # Punctele repetate ar permite „..", deci și traversare de cale.
+    cleaned = re.sub(r"\.{2,}", ".", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    # Windows nu acceptă nume care se termină cu punct sau spațiu.
+    cleaned = re.sub(r"^[.\s]+|[.\s]+$", "", cleaned)
+
+    truncated = cleaned[:max_length].rstrip(". ")
+    if truncated == "" or truncated.lower() in _RESERVED_NAMES:
+        return f"_{truncated}"
+    return truncated
+
+
 def extension_by_mime(mime_type: str) -> str | None:
     """Extensia unui tip de conținut deja verificat, sau `None` dacă nu îl știm.
 
@@ -204,5 +230,6 @@ __all__ = [
     "build_archive_path",
     "build_document_filename",
     "normalize_extension",
+    "sanitize_path_label",
     "sanitize_segment",
 ]

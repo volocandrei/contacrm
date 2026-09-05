@@ -13,9 +13,12 @@ client, tip) și ce se răspunde când nu s-a terminat încă nimic.
 from __future__ import annotations
 
 import csv
+import io
 import uuid
+import zipfile
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -29,8 +32,9 @@ from app.models.client import Client
 from app.models.document import Document, DocumentType
 from app.models.organization import Organization
 from app.models.user import Permission, Role, User
-from app.services import document_register, report_export
+from app.services import document_register, month_archive, report_export
 from app.services.report_service import TOP_CLIENTS
+from app.services.storage import LocalStorageProvider
 from tests.conftest import requires_db
 
 pytestmark = requires_db
@@ -175,6 +179,42 @@ def add_document(
         document.archive_key = f"{prefix}/archive/document.pdf"
         document.archive_path = "/ARHIVA/2026/08/Alfa Conta SRL"
     db.add(document)
+    db.flush()
+    return document
+
+
+@pytest.fixture
+def storage(api: TestClient, tmp_path: Path) -> LocalStorageProvider:
+    """Stocarea din care citește **și** aplicația.
+
+    Arhiva citește octeți de pe disc; un provider doar în test ar fi lăsat ruta
+    să caute fișierele în altă parte, iar testul ar fi trecut pe o arhivă goală.
+    """
+    from app.api.deps import get_storage
+
+    provider = LocalStorageProvider(tmp_path / "storage")
+    api.app.dependency_overrides[get_storage] = lambda: provider  # type: ignore[attr-defined]
+    return provider
+
+
+def stored(
+    db: Session,
+    org: Organization,
+    storage: LocalStorageProvider,
+    client: Client,
+    *,
+    name: str,
+) -> Document:
+    """Un document cu fișier **pe disc**, nu doar un rând în bază.
+
+    Arhiva citește octeți; un document fără fișier ar fi trecut testul fără să
+    demonstreze nimic.
+    """
+    document = add_document(db, org, client=client)
+    document.original_filename = name
+    content = b"%PDF-1.7 " + name.encode() + b" %%EOF"
+    storage.save(document.storage_key, io.BytesIO(content))
+    document.file_size = len(content)
     db.flush()
     return document
 
@@ -812,3 +852,212 @@ class TestTheRegister:
         api.post("/api/v1/auth/logout")
 
         assert api.get(REGISTER).status_code == 401
+
+
+@pytest.mark.usefixtures("as_admin")
+class TestTheArchive:
+    """Documentele intervalului, plus registrul, într-un singur fișier.
+
+    Se puteau descărca doar unul câte unul. Un client care pleacă, o predare de
+    an, o cerere de la un control — toate cer teancul întreg.
+
+    Testele deschid arhiva și se uită înăuntru: o rută care întoarce 200 și un
+    ZIP gol ar trece orice verificare care se oprește la codul de răspuns.
+    """
+
+    URL = "/api/v1/reports/archive.zip"
+
+    def _open(self, api: TestClient, **params: str) -> zipfile.ZipFile:
+        response = api.get(self.URL, params=params)
+        assert response.status_code == 200, response.text
+        assert response.headers["content-type"].startswith("application/zip")
+        return zipfile.ZipFile(io.BytesIO(response.content))
+
+    def test_it_contains_the_documents_and_the_register(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        storage: LocalStorageProvider,
+        client_row: Client,
+    ) -> None:
+        """Motivul pentru care există ruta, plus motivul pentru care registrul intră.
+
+        Fără el, un dosar cu patru sute de PDF-uri este o grămadă, nu o arhivă.
+        """
+        stored(db, org, storage, client_row, name="factura-una.pdf")
+        stored(db, org, storage, client_row, name="factura-doua.pdf")
+
+        with self._open(api) as archive:
+            names = archive.namelist()
+
+        assert month_archive.REGISTER_NAME in names
+        assert sum(1 for name in names if name.endswith(".pdf")) == 2
+        # Pe client, apoi pe lună: așa le caută un om.
+        assert all(
+            name.startswith("Alfa Conta SRL/2026-08/") for name in names if name.endswith(".pdf")
+        )
+
+    def test_the_register_inside_lists_the_same_documents(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        storage: LocalStorageProvider,
+        client_row: Client,
+    ) -> None:
+        """Două selecții scrise separat ar fi ajuns la două seturi diferite.
+
+        Iar diferența ar fi fost un document lipsă dintr-o arhivă predată.
+        """
+        stored(db, org, storage, client_row, name="factura.pdf")
+
+        with self._open(api) as archive:
+            register = archive.read(month_archive.REGISTER_NAME).decode("utf-8")
+            files = [name for name in archive.namelist() if name.endswith(".pdf")]
+
+        # Antet plus câte un rând pentru fiecare fișier.
+        assert len(register.strip().splitlines()) == 1 + len(files)
+
+    def test_the_file_keeps_the_name_it_has_in_the_archive(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        storage: LocalStorageProvider,
+        client_row: Client,
+    ) -> None:
+        """Un nume inventat aici ar fi al treilea pentru același document."""
+        document = stored(db, org, storage, client_row, name="original.pdf")
+        document.stored_filename = "2026-08-14_Facturaintrare_AlfaConta_FCT1.pdf"
+        db.flush()
+
+        with self._open(api) as archive:
+            names = archive.namelist()
+
+        assert any(name.endswith("2026-08-14_Facturaintrare_AlfaConta_FCT1.pdf") for name in names)
+
+    def test_two_documents_with_the_same_name_both_survive(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        storage: LocalStorageProvider,
+        client_row: Client,
+    ) -> None:
+        """Același nume de două ori ar suprascrie tăcut primul fișier."""
+        stored(db, org, storage, client_row, name="factura.pdf")
+        stored(db, org, storage, client_row, name="factura.pdf")
+
+        with self._open(api) as archive:
+            names = [name for name in archive.namelist() if name.endswith(".pdf")]
+
+        assert len(names) == 2
+        assert len(set(names)) == 2
+
+    def test_a_missing_file_is_written_down_not_swallowed(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        storage: LocalStorageProvider,
+        client_row: Client,
+    ) -> None:
+        """O absență tăcută se descoperă la un control."""
+        document = stored(db, org, storage, client_row, name="disparut.pdf")
+        storage.delete(document.storage_key)
+
+        with self._open(api) as archive:
+            names = archive.namelist()
+            notice = archive.read(month_archive.MISSING_NAME).decode("utf-8")
+
+        assert month_archive.MISSING_NAME in names
+        assert "disparut.pdf" in notice
+        # §73: calea de stocare nu ajunge în fișierul care circulă.
+        assert document.storage_key not in notice
+
+    def test_an_empty_interval_is_refused_with_what_to_do(
+        self, api: TestClient, client_row: Client
+    ) -> None:
+        """Un ZIP gol se citește ca „nu am documente", nu ca „ai greșit intervalul"."""
+        response = api.get(self.URL, params={"fromMonth": "2020-01", "toMonth": "2020-01"})
+
+        assert response.status_code == 422
+
+    def test_too_many_documents_is_refused_before_reading_anything(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        storage: LocalStorageProvider,
+        client_row: Client,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Se decide întâi **ce**, apoi se citește.
+
+        Invers, refuzul ar veni după ce jumătate din fișiere au fost copiate
+        degeaba.
+        """
+        stored(db, org, storage, client_row, name="una.pdf")
+        stored(db, org, storage, client_row, name="doua.pdf")
+        monkeypatch.setattr(month_archive, "MAX_DOCUMENTS", 1)
+
+        response = api.get(self.URL)
+
+        assert response.status_code == 422
+        assert "Prea multe documente" in response.json()["message"]
+
+    def test_an_archive_that_would_be_too_heavy_is_refused(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        storage: LocalStorageProvider,
+        client_row: Client,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        stored(db, org, storage, client_row, name="grea.pdf")
+        monkeypatch.setattr(month_archive, "MAX_TOTAL_BYTES", 1)
+
+        response = api.get(self.URL)
+
+        assert response.status_code == 422
+        assert "MB" in response.json()["message"]
+
+    def test_another_organizations_documents_are_never_inside(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        other_org: Organization,
+        storage: LocalStorageProvider,
+        client_row: Client,
+    ) -> None:
+        """§72: izolarea stă prima și nu este opțională."""
+        stored(db, org, storage, client_row, name="a-noastra.pdf")
+        stranger = Client(organization_id=other_org.id, name="Terț SRL", tax_id="RO9")
+        db.add(stranger)
+        db.flush()
+        stored(db, other_org, storage, stranger, name="a-lor.pdf")
+
+        with self._open(api) as archive:
+            names = archive.namelist()
+
+        assert not any("a-lor" in name for name in names)
+
+    def test_the_archive_is_not_cached_by_a_proxy(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        storage: LocalStorageProvider,
+        client_row: Client,
+    ) -> None:
+        stored(db, org, storage, client_row, name="factura.pdf")
+
+        assert api.get(self.URL).headers["cache-control"] == "no-store"
+
+    def test_an_anonymous_request_is_refused(self, api: TestClient) -> None:
+        api.post("/api/v1/auth/logout")
+
+        assert api.get(self.URL).status_code == 401

@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  20.922 linii sursă +  3.391 linii teste  →   257 teste
-backend   26.853 linii sursă + 23.364 linii teste  → 1.502 teste
-end-to-end 2.093 linii                             →    78 teste (browser real)
+frontend  20.934 linii sursă +  3.391 linii teste  →   257 teste
+backend   27.186 linii sursă + 23.613 linii teste  → 1.513 teste
+end-to-end 2.135 linii                             →    79 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.837 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.849 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -268,6 +268,42 @@ Ecranul spune **„Pregătit"**, nu „Trimis". Aplicația nu trimite (Faza 2): 
 se copiază și pleacă din clientul de email al contabilului, deci tot ce știe
 sigur este că cererea a fost compusă. „Trimis" ar fi o promisiune pe care nimic
 din spate nu o acoperă.
+
+### Arhiva unei perioade, într-un singur fișier
+
+Documentele se puteau descărca doar unul câte unul. Un client care pleacă, o
+predare de an, o cerere de la un control — toate cer teancul întreg, iar teancul
+întreg însemna sute de clicuri.
+
+`GET /reports/archive.zip` dă documentele intervalului, aranjate `Client/YYYY-MM/`,
+cu **registrul la rădăcină**. Fără el, un dosar cu patru sute de PDF-uri este o
+grămadă, nu o arhivă.
+
+Ce a cerut atenție:
+
+- **aceeași selecție ca registrul, o singură dată.** Arhiva trebuie să conțină
+  exact documentele pe care registrul le listează; două interogări cu filtre
+  scrise separat ar fi ajuns, într-o zi, la două seturi diferite — iar diferența
+  ar fi fost un document lipsă dintr-o arhivă predată;
+- **se decide întâi ce, apoi se citește.** Un refuz pentru mărime venit după ce
+  jumătate din fișiere au fost copiate ar fi fost muncă aruncată;
+- **limite explicite** — 2.000 de documente, 500 MB. Peste, refuzul spune ce
+  interval să ceară. Un an al unui cabinet cu treizeci de clienți poate însemna
+  zeci de mii de fișiere;
+- **pe disc, nu în memorie.** `SpooledTemporaryFile` trece singur pe disc peste
+  16 MB. O arhivă de câteva sute de megaocteți ținută întreagă în RAM ar fi
+  doborât procesul exact când cineva cere ce are nevoie;
+- **un fișier lipsă din stocare nu dispare tăcut**: intră o linie în `LIPSESC.txt`,
+  fără calea de stocare (§73). O absență tăcută se descoperă la un control;
+- **două documente cu același nume supraviețuiesc amândouă.** Fără asta, al
+  doilea l-ar fi suprascris pe primul în arhivă.
+
+**Un al doilea curățător de nume, cu motiv.** `sanitize_segment` strânge spațiile,
+fiindcă servește convenția din §10, unde segmentele se lipesc. Aplicat unui dosar,
+ar fi produs `AlfaContaSRL/` — corect tehnic și greu de citit exact acolo unde
+cineva caută cu ochii, printre treizeci de firme. `sanitize_path_label` păstrează
+spațiile și diacriticele, și păstrează identic tot ce ține de siguranță:
+separatori de cale, caractere de control, nume rezervate pe Windows.
 
 ### Profilul de client cuprinde și declarațiile
 
