@@ -118,13 +118,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  21.376 linii sursă +  3.391 linii teste  →   257 teste
+frontend  21.462 linii sursă +  3.482 linii teste  →   261 teste
 backend   27.754 linii sursă + 24.212 linii teste  → 1.539 teste
 end-to-end 2.217 linii                             →    81 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.877 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.881 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -276,6 +276,29 @@ copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email,
 „Trimis" ar fi acolo o promisiune pe care nimic din spate nu o acoperă. Ce o face
 verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
 confirmat.
+
+### Panoul minte pe o instalare nouă
+
+Găsit la proba de fum, uitându-mă la ecran cu ochii unui cabinet care tocmai a
+instalat aplicația: toate contoarele sunt zero, deci strip-ul „Ce ai de făcut"
+scria **„Nimic de recuperat. Toate documentele sunt procesate, iar clienții au
+fost întrebați."** Despre zero documente și zero clienți.
+
+Fals liniștitor exact în minutul în care omul decide dacă aplicația este bună de
+ceva — și fără niciun drum înainte. Un cabinet fără clienți nu are nimic de
+recuperat, are **totul de configurat**.
+
+Panoul arată acum trei pași, în ordinea în care se fac: clientul întâi, fiindcă
+fără el nu există nici așteptări, nici termene; profilul al doilea, fiindcă scrie
+amândouă dintr-un clic; documentul al treilea, fiindcă abia atunci luna începe să
+existe. Fiecare pas este un link, nu un sfat: „adaugă primul client" fără drum îl
+lasă pe om să caute singur.
+
+**De ce are test de componentă și nu unul de magazin simulat.** Cifrele sunt
+identice în cele două situații — un cabinet gol și unul cu totul la zi arată la
+fel în date. Distincția există doar în ce se vede, deci se poate verifica doar
+randând. Este primul test de componentă scris pentru panou; verificat prin
+mutație.
 
 ### Aplicația spune dimineața ce ai de făcut
 

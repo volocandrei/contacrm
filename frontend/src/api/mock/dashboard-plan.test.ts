@@ -68,3 +68,4 @@ describe("ce mai are cabinetul de făcut", () => {
     expect(typeof kpis.clientsAwaitingReply).toBe("number");
   });
 });
+

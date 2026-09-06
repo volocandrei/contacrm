@@ -13,6 +13,7 @@ import {
   Copy,
   FileStack,
   Inbox,
+  LayoutTemplate,
   Send,
   ShieldCheck,
   TriangleAlert,
@@ -418,6 +419,80 @@ function DeadlineChip({ daysLeft }: { daysLeft: number }) {
 /* ─── Ce ai de făcut ───────────────────────────────────────────────────────── */
 
 /** O treabă de făcut, cu drumul către locul unde se face. */
+/**
+ * Ce are de făcut un cabinet care tocmai a instalat aplicația.
+ *
+ * **De ce nu mesajul verde.** Pe o bază goală toate contoarele sunt zero, deci
+ * ecranul spunea „nimic de recuperat, toate documentele sunt procesate" — despre
+ * zero documente. Este fals liniștitor exact în minutul în care omul decide dacă
+ * aplicația e bună de ceva, și îl lasă fără niciun drum înainte.
+ *
+ * **Trei pași, în ordinea în care se fac.** Clientul întâi, fiindcă fără el nu
+ * există nici așteptări, nici termene. Profilul al doilea, fiindcă el scrie
+ * amândouă dintr-un clic. Documentul al treilea: abia atunci luna începe să
+ * existe și restul ecranelor au ce arăta.
+ */
+function FirstRun() {
+  const steps = [
+    {
+      to: "/crm/clienti",
+      Icon: Building2,
+      title: "Adaugă primul client",
+      detail: "Fără clienți, restul ecranelor nu au despre cine vorbi.",
+    },
+    {
+      to: "/contabilitate/sabloane",
+      Icon: LayoutTemplate,
+      title: "Fă un profil de client",
+      detail:
+        "Ce se așteaptă lunar și ce se depune, scrise o dată și aplicate pe câți clienți vrei.",
+    },
+    {
+      to: "/documente/inbox",
+      Icon: Inbox,
+      title: "Urcă un document",
+      detail: "Se citește singur, iar luna începe să existe.",
+    },
+  ];
+
+  return (
+    <section
+      aria-label="Ce ai de făcut"
+      className={cn(surface, "rise-in p-5")}
+    >
+      <p className="font-medium text-slate-900 dark:text-slate-100">
+        Aplicația este goală. Trei pași și începe să lucreze.
+      </p>
+      <ol className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {steps.map((step, index) => (
+          <li key={step.to}>
+            <Link
+              to={step.to}
+              className={cn(
+                surfaceInteractive,
+                "flex h-full flex-col gap-1 p-4",
+                focusRing,
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <span
+                  className={cn("grid size-8 place-content-center rounded-lg", iconChip.blue)}
+                  aria-hidden="true"
+                >
+                  <step.Icon className="h-4 w-4" />
+                </span>
+                <span className={cn("text-xs", mutedText)}>Pasul {index + 1}</span>
+              </span>
+              <span className="font-medium text-slate-900 dark:text-slate-100">{step.title}</span>
+              <span className={cn("text-sm", mutedText)}>{step.detail}</span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 type Todo = {
   key: string;
   count: number;
@@ -448,7 +523,10 @@ type Todo = {
  * **Ce nu are treabă nu apare.** Un rând cu „0" ocupă exact cât unul cu 12 și
  * nu spune nimic. Când nu e nimic de făcut, panoul o spune într-o propoziție.
  */
-function TodayPlan({
+/** Exportat pentru teste: proprietatea care contează este ce se **vede**, iar
+ *  distincția dintre „nimic de recuperat" și „totul de configurat" nu se poate
+ *  verifica altfel decât randând. */
+export function TodayPlan({
   kpis,
   closing,
   deadlines,
@@ -525,6 +603,13 @@ function TodayPlan({
     },
   ];
   const todos = all.filter((todo) => todo.count > 0);
+
+  // **Un cabinet fără clienți nu are „nimic de recuperat", are totul de
+  // configurat.** Pe o instalare nouă, contoarele sunt toate zero, deci mesajul
+  // verde spunea „toate documentele sunt procesate, iar clienții au fost
+  // întrebați" — despre zero clienți și zero documente. Fals liniștitor exact
+  // în minutul în care omul decide dacă aplicația e bună de ceva.
+  if (kpis.clientsTotal === 0) return <FirstRun />;
 
   if (todos.length === 0) {
     return (
