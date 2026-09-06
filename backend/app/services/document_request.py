@@ -7,10 +7,14 @@ vreme în frontend, unde îl folosea butonul „Copiază solicitarea" de pe ecra
 ar însemna că doi clienți primesc, în aceeași zi, două mesaje diferite de la
 același cabinet.
 
-**Ce nu face.** Nu trimite. Trimiterea cere un provider de email sau WhatsApp și
-rămâne în Faza 2. Până atunci, textul iese gata scris și pleacă din clientul de
-email al contabilului, cu semnătura lui — ceea ce este, până la Faza 2, chiar mai
-onest: niciun mesaj nu pleacă în numele cabinetului fără ca cineva să îl fi citit.
+**Ce face și ce nu.** `compose` scrie textul; `send` îl și trimite, prin
+providerul de email. Cele două sunt separate fiindcă a compune se face și când
+omul vrea doar să copieze, iar a trimite este o acțiune cu efect în afara
+aplicației — efectele acelea nu se produc ca efect secundar al unei citiri.
+
+Copierea a rămas și după ce trimiterea a devenit posibilă: un cabinet fără SMTP
+configurat trebuie să poată lucra exact ca înainte, iar unul cu SMTP are zile în
+care vrea să scrie altceva în mesaj.
 
 **De ce poartă și linkul de trimitere (M14).** O listă de ce lipsește îi spune
 clientului *ce* să caute, dar îl lasă singur cu *cum* trimite: scanează, atașează,

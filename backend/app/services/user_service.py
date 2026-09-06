@@ -6,12 +6,14 @@ cont al unei baze goale. Un cabinet care angajează pe cineva marți nu are de c
 să deschidă un terminal.
 
 **Parola o pune administratorul și o comunică el.** Nu există „invitație prin
-email" pentru că nu există încă un provider de email (Faza 2), iar o invitație
-care nu pleacă este mai rea decât absența ei. Nu se generează nici o parolă pe
-care apoi să o afișăm: un secret care trece prin ecran și prin log-ul unui proxy
-nu mai este un secret. Administratorul o alege și o spune colegului direct, iar
-acesta o schimbă la prima autentificare — pasul acela este în backlog și este
-notat ca atare, nu pretins.
+email" pentru că fluxul de invitație nu există încă — nu pentru că ar lipsi
+providerul, care există. Ce lipsește este tokenul de primă parolă, cu expirare:
+o parolă trimisă în clar prin email nu ar fi o invitație, ar fi o scurgere.
+
+Nu se generează nici o parolă pe care apoi să o afișăm: un secret care trece prin
+ecran și prin log-ul unui proxy nu mai este un secret. Administratorul o alege și
+o spune colegului direct, iar acesta o schimbă la prima autentificare — pasul
+acela este în backlog și este notat ca atare, nu pretins.
 
 **Două lucruri pe care nimeni nu și le poate face singur**, pentru că amândouă
 sună la fel: „nu mai am acces". Nu te poți dezactiva, și nu îți poți lua rolul

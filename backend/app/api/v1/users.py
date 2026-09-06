@@ -39,9 +39,12 @@ class UserCreate(ApiModel):
     email: EmailAddress
     full_name: str = Field(min_length=1, max_length=255)
     role: RoleCode
-    #: O pune administratorul și o comunică el. Nu există invitație prin email
-    #: pentru că nu există provider (Faza 2), iar o invitație care nu pleacă este
-    #: mai rea decât absența ei.
+    #: O pune administratorul și o comunică el.
+    #:
+    #: Providerul de email există acum, deci motivul de dinainte — „nu avem prin
+    #: ce trimite" — a încetat să fie adevărat. Ce lipsește este fluxul de
+    #: invitație: un token de primă parolă, cu expirare, care să nu fie o parolă
+    #: trimisă în clar prin email. Până la el, parola se spune direct.
     password: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=1024)
 
 

@@ -10,9 +10,10 @@
  * Trei alegeri care se văd în ecran:
  *
  * - **Parola o pune administratorul și o comunică direct.** Nu există invitație
- *   prin email pentru că nu există provider (Faza 2), iar o invitație care nu
- *   pleacă este mai rea decât absența ei. Nu se generează nici una „temporară" pe
- *   care apoi s-o afișăm: un secret care trece prin ecran și prin log-ul unui
+ *   prin email, dar nu fiindcă ar lipsi providerul — acela există acum. Lipsește
+ *   tokenul de primă parolă, cu expirare; o parolă trimisă în clar prin email
+ *   n-ar fi o invitație, ar fi o scurgere. Nu se generează nici una „temporară"
+ *   pe care apoi s-o afișăm: un secret care trece prin ecran și prin log-ul unui
  *   proxy nu mai este un secret.
  * - **Nu există ștergere.** Un utilizator apare în jurnalul de audit ca autor al
  *   unor acțiuni contabile; ștergerea lui ar rupe urma. Ce se cere de fapt când
@@ -208,8 +209,8 @@ function PasswordResetForm({ user, onDone }: { user: UserSummary; onDone: () => 
   if (done) {
     return (
       <p className="text-sm text-green-700 dark:text-green-400">
-        Parola lui {user.fullName} a fost schimbată. Spune-i-o direct — aplicația nu trimite
-        mesaje.{" "}
+        Parola lui {user.fullName} a fost schimbată. Spune-i-o direct: aplicația
+        trimite solicitări de documente către clienți, dar nu parole.{" "}
         <button type="button" onClick={onDone} className="font-medium hover:underline">
           Închide
         </button>

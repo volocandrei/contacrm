@@ -422,8 +422,10 @@ def document_request(
     rămas în inboxul clientului, **continuă să funcționeze** — n-am vrut să
     închidem tăcut drumul pe care omul tocmai se pregătea să trimită.
 
-    Nu trimite nimic. Trimiterea cere un provider și rămâne în Faza 2; până
-    atunci textul pleacă din clientul de email al contabilului, cu semnătura lui.
+    **Nu trimite nimic**, și nu pentru că n-ar putea: `/document-request/send`
+    trimite. Ruta asta compune textul pentru cine vrea să-l copieze — pentru un
+    cabinet fără SMTP configurat, sau pentru o zi în care mesajul trebuie scris
+    altfel. Compunerea nu are voie să trimită ca efect secundar.
     """
     composed = DocumentRequestService(session, user.organization_id).compose(
         client_id, filters.reference_month, actor=user, ip=client_ip(request)

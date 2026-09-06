@@ -77,10 +77,11 @@ Nu e comoditate: cookie-ul de sesiune este `SameSite=Lax`, iar de pe altă origi
 ar fi trimis la cererile pornite de `<img>` sau `<object>` — adică exact la
 previzualizarea documentului. Un token în URL nu este o alternativă (§27).
 
-> În modul `http` funcționează **tot**, cu o singură excepție: autentificarea,
-> administrarea, CRM-ul, fluxul complet de documente, panoul principal,
-> perioadele, jurnalul de audit, rapoartele și ecranul de setări. Rămâne doar
-> `Comunicare → Mesaje`, care are nevoie de WhatsApp (Faza 2).
+> În modul `http` funcționează **tot**: autentificarea, administrarea, CRM-ul,
+> fluxul complet de documente, panoul principal, perioadele, termenele de
+> depunere, jurnalul de audit, rapoartele, exporturile și ecranul de setări.
+> Fila „Comunicare" arată acum cronologia clientului, compusă din fapte
+> înregistrate — nu mai are nevoie de WhatsApp ca să spună ceva.
 
 ### Verificări
 
@@ -229,11 +230,16 @@ de clienți, pornite deodată), căutare care acoperă și persoana și firma, �
 de contact **acționabile** — un click sună, scrie sau deschide WhatsApp. Un număr
 pe care trebuie să-l copiezi cu ochiul nu este o agendă, este o listă.
 
-Pe „Documente lipsă", fiecare rând are **Copiază solicitarea**: textul către
-client, cu lista lipsurilor, termenul lunii **și linkul prin care le trimite**,
-gata de plecat din clientul de email al contabilului. Aplicația știe ce lipsește
-și până când, dar nu poate trimite — asta cere un provider și rămâne în Faza 2;
-butonul acoperă exact distanța rămasă, fără să pretindă că o depășește.
+Pe „Documente lipsă", fiecare rând are **Copiază solicitarea** și **Trimite pe
+email**: textul către client, cu lista lipsurilor, termenul lunii **și linkul prin
+care le trimite**. Copierea a rămas, fiindcă un cabinet fără SMTP configurat
+trebuie să poată lucra exact ca înainte, iar unul cu SMTP are zile în care vrea să
+scrie altceva în mesaj.
+
+*(Paragraful acesta a spus până azi că aplicația „nu poate trimite — asta cere un
+provider și rămâne în Faza 2". A încetat să fie adevărat în aceeași zi în care a
+apărut providerul; îl las scris aici fiindcă un document care rămâne în urmă este
+aceeași clasă de defect ca un ecran care rămâne în urmă.)*
 
 Lista și linkul pleacă **împreună**, dintr-un singur buton, fiindcă separate a
 doua parte se pierde: clientul află *ce* îi lipsește și rămâne singur cu *cum*
@@ -264,10 +270,12 @@ Contorul **adună** peste toate cererile lunii: o a doua cerere nu șterge de pe
 ecran ce trimisese omul după prima, altfel l-am suna pe un client care își făcuse
 treaba.
 
-Ecranul spune **„Pregătit"**, nu „Trimis". Aplicația nu trimite (Faza 2): textul
-se copiază și pleacă din clientul de email al contabilului, deci tot ce știe
-sigur este că cererea a fost compusă. „Trimis" ar fi o promisiune pe care nimic
-din spate nu o acoperă.
+Ecranul spune **„Pregătit"** când textul a fost doar copiat, și **„Trimis"** doar
+când mesajul chiar a plecat din aplicație. Distincția nu este cosmetică: la
+copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email, iar
+„Trimis" ar fi acolo o promisiune pe care nimic din spate nu o acoperă. Ce o face
+verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
+confirmat.
 
 ### Cronologia unui client
 
@@ -1227,14 +1235,20 @@ sincronizarea.
 
 ### Golul concret
 
-Frontend-ul consumă **30 de rute**. Backendul real le implementează pe toate.
+**Niciunul la nivel de rută.** Frontend-ul cheamă **65 de rute** (numărate din
+`src/api/endpoints.ts` pe 6 septembrie 2026, fără descărcările de fișiere, care
+merg pe alt drum), iar backendul real le implementează pe toate.
 
-Erau 32, iar două — `GET /messages` și `GET /clients/:id/messages` — erau marcate
-aici drept „Faza 2". Golul era cunoscut la nivel de rută; ce nu era cunoscut este
-că **ecranele care le cereau erau totuși livrate**. În modul simulat mergeau; în
-modul real una arăta o eroare, iar cealaltă rămânea goală fără să spună nimic.
-Auditul de producție le-a făcut oneste, iar `e2e/pages.spec.ts` deschide acum
-fiecare ecran și cade dacă vreunul cere ceva ce serverul nu are.
+Numărul se învechește la fiecare adăugare, deci nu el este garanția.
+`e2e/pages.spec.ts` deschide fiecare ecran într-un browser adevărat și cade dacă
+vreunul cere ceva ce serverul nu are — acela este gardul.
+
+Lecția din spatele lui: două rute — `GET /messages` și `GET /clients/:id/messages`
+— au stat marcate aici drept „Faza 2", deci golul era **cunoscut la nivel de
+rută**. Ce nu era cunoscut este că ecranele care le cereau fuseseră totuși
+livrate: în modul simulat mergeau, în modul real una arăta o eroare, iar cealaltă
+rămânea goală fără să spună nimic. O listă de goluri nu apără nimic dacă nimeni nu
+o compară cu ce este pe ecran.
 
 | Rută | Milestone |
 |---|---|
@@ -1269,13 +1283,13 @@ ci portat.**
 | M4 | CRM: clients, contacts, notes, tags, tasks | ✅ |
 | **M5** | **Documente: încărcare, stocare, API, preview, procesare, interfața de verificare, arhivare, întărire** | ✅ |
 | **M6** | Coadă durabilă + worker separat, perioade + checklist, dashboard, ecran audit, acțiuni în masă | ✅ |
-| **M7** | Rapoarte în SQL, setări reale, extracție din PDF, factura electronică, identificarea clientului, încărcare | ✅ (notificările au trecut în Faza 2 — cer un provider de email sau WhatsApp) |
+| **M7** | Rapoarte în SQL, setări reale, extracție din PDF, factura electronică, identificarea clientului, încărcare | ✅ (notificările au venit înapoi: SMTP, cu trimitere individuală și în masă) |
 | **M8** | CI + teste E2E | ✅ |
 | **M9** | **Preluare automată din OneDrive/SharePoint, un dosar per client** | ✅ |
 | **M10** | **Preluare automată din email; expeditorul identifică clientul** | ✅ |
 | **M11** | **e-Factura: preluarea din SPV-ul ANAF, cu toate trei fișierele** | ✅ (descărcarea; trimiterea rămâne în Faza 2) |
-| Faza 2 | WhatsApp, trimiterea e-Facturii către ANAF, OCR real pentru scanuri, remindere, export ZIP | |
-| Faza 3 | Integrare software contabil, rapoarte avansate, detecție anomalii | |
+| Faza 2 | WhatsApp, trimiterea e-Facturii către ANAF, ~~OCR real pentru scanuri~~ (M16, cere cheie), ~~export ZIP~~ (arhiva lunii), remindere automate | |
+| Faza 3 | Integrare software contabil (registrul există; formatul Saga cere un exemplu), rapoarte avansate, ~~detecție anomalii~~ (duplicatul semantic) | |
 
 **MVP = M1–M8.**
 
@@ -1303,9 +1317,10 @@ nimic pe ecran. Ce se publică este o **listă albă**, nu un filtru — un câm
 `Settings` nu apare de la sine, iar un test se uită la fiecare câmp existent, nu
 la o listă ținută minte, ca prima cheie de API adăugată să nu ajungă pe un ecran.
 
-Notificările rămân Faza 2: datele pe care s-ar sprijini există deja („Documente
-lipsă" spune pentru fiecare client ce nu a sosit), dar trimiterea cere un provider
-de email sau WhatsApp.
+Notificările au ieșit din Faza 2: providerul SMTP există, iar solicitarea de
+documente pleacă din aplicație, individual sau către tot lotul. Rămân Faza 2
+**mementourile automate** — un mesaj trimis de aplicație, fără ca cineva să apese,
+este o decizie de altă natură decât un buton.
 
 **M7 — primul provider care chiar citește documentul**
 
@@ -1366,7 +1381,8 @@ existau pentru ea; rularea pe server a arătat-o imediat. Acum există și teste
 
 **M7 — încărcarea, drumul prin care un document chiar intră**
 
-Fluxul produsului începe cu email și WhatsApp, dar amândouă sunt Faza 2. Între
+Fluxul produsului începe cu email și WhatsApp, iar la momentul acela **amândouă
+erau Faza 2** (emailul a venit la M10, WhatsApp încă nu). Între
 timp aplicația nu avea **niciun** mod prin care un utilizator să bage un document
 în sistem: ruta `POST /documents/upload` exista de la M5, dar numai un script o
 putea folosi. Tot restul — verificare, corectură, aprobare, arhivare — se
