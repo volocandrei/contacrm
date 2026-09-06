@@ -279,6 +279,11 @@ class Settings(BaseSettings):
     #: pune-l pe `false`: acolo conexiunea este criptată de la început.
     smtp_starttls: bool = True
 
+    #: Rezumatul zilnic către cabinet. Separat de `notifications_enabled`, care
+    #: guvernează mesajele **către clienți**: un cabinet poate vrea rezumatul
+    #: fără să lase aplicația să scrie clienților, iar invers nu are sens.
+    daily_digest_enabled: bool = False
+
     @property
     def mail_is_configured(self) -> bool:
         """Se poate trimite ceva, cu adevărat?

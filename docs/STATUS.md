@@ -119,12 +119,12 @@ placeholdere evidente din `.env.example`.
 
 ```
 frontend  21.376 linii sursă +  3.391 linii teste  →   257 teste
-backend   27.467 linii sursă + 23.936 linii teste  → 1.527 teste
+backend   27.754 linii sursă + 24.212 linii teste  → 1.539 teste
 end-to-end 2.194 linii                             →    81 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.865 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.877 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -276,6 +276,42 @@ copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email,
 „Trimis" ar fi acolo o promisiune pe care nimic din spate nu o acoperă. Ce o face
 verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
 confirmat.
+
+### Aplicația spune dimineața ce ai de făcut
+
+Până acum nu făcea nimic dacă nu o deschidea cineva. Știa că trei clienți n-au
+răspuns de o săptămână și că un termen e peste două zile, dar aștepta să fie
+întrebată. Un instrument pe care trebuie să-ți amintești să-l consulți este un
+instrument consultat neregulat.
+
+`GET /internal/daily-digest`, chemat o dată pe zi de planificator, trimite fiecărui
+cabinet ce are de făcut: restanțe, termene în șapte zile, documente neatribuite și
+de verificat, clienți neîntrebați, clienți care tac.
+
+**Către cabinet, nu către clienți.** Un mesaj trimis automat unui client, în numele
+cabinetului, este o decizie de altă natură — se ia o dată, explicit, și nu de
+aplicație. Rămâne singurul lucru din zona asta pe care nu l-am construit: aștept
+decizia.
+
+Ce s-a construit cu grijă:
+
+- **nu pleacă nimic când nu e nimic de spus.** Un rezumat care scrie „nimic" în
+  fiecare dimineață antrenează pe toată lumea să nu-l mai deschidă — inclusiv în
+  ziua în care are ceva înăuntru. Tăcerea este ea însăși informația;
+- **doar cifrele care nu sunt zero primesc un rând.** Șase rânduri cu „0" fac
+  mesajul de necitit exact în ziua în care unul dintre ele contează;
+- **ordinea este a costului de a lăsa lucrurile nefăcute**, nu a ușurinței:
+  restanțele primele, fiindcă sunt singurele care costă bani;
+- **merge la cine face munca** (`documents:write`), nu la cine are voie să se uite.
+  Un rezumat trimis cuiva care nu poate acționa este zgomot cu semnătura
+  cabinetului pe el;
+- **cifrele vin din aceleași servicii ca ecranele.** Un rezumat care contrazice
+  panoul face inutile amândouă — iar el pleacă pe email, unde nu se mai corectează;
+- **un destinatar refuzat nu-i oprește pe ceilalți**;
+- **comutator separat de restul notificărilor**: un cabinet poate vrea rezumatul
+  fără să lase aplicația să scrie clienților. Invers nu are sens.
+
+*NEVERIFICAT — NECESITĂ CREDENȚIALE EXTERNE*, ca tot ce ține de email.
 
 ### Proba de fum pe o instalare complet nouă (6 septembrie 2026)
 

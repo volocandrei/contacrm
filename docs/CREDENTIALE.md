@@ -154,6 +154,19 @@ apăsare.
 cabinet care importă o bază de test cu adrese reale ar scrie clienților adevărați.
 Pornește-l abia când baza conține clienții adevărați.
 
+**Rezumatul zilnic** are comutator separat, `DAILY_DIGEST_ENABLED`, fiindcă merge
+**către cabinet**, nu către clienți: poți vrea rezumatul fără să lași aplicația să
+scrie clienților. Se cheamă o dată pe zi, dimineața:
+
+```
+GET /api/v1/internal/daily-digest
+Authorization: Bearer $CRON_SECRET
+```
+
+Nu pleacă în zilele în care nu e nimic de spus. Un rezumat care scrie „nimic" în
+fiecare dimineață antrenează pe toată lumea să nu-l mai deschidă — inclusiv în
+ziua în care are ceva înăuntru.
+
 *NEVERIFICAT — NECESITĂ CREDENȚIALE EXTERNE:* codul este acoperit de teste care
 înlocuiesc serverul de mail, deci se știe **ce** trimite și cum se poartă la
 eroare. Că un server real acceptă mesajul se vede la prima trimitere adevărată.

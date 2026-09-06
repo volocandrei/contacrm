@@ -26,18 +26,23 @@ fiecare bătaie.
 from __future__ import annotations
 
 import secrets
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Header
+from sqlalchemy import select
 
 from app.api.deps import StorageDep
 from app.api.route import CommittingRoute
 from app.core.config import settings
+from app.core.db import session_scope
 from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
+from app.models.organization import Organization
 from app.schemas.common import ApiModel
 from app.services.anaf.runner import run_anaf_sync
+from app.services.daily_digest import DailyDigestService
+from app.services.mail import build_email_sender
 from app.services.microsoft.runner import run_drive_sync
 from app.services.processing_recovery import recover
 from app.worker import run_once
@@ -116,3 +121,52 @@ def run_queue(
         from_anaf=anaf.ingested,
     )
     return QueueRunOut(requeued=report.requeued, executed=executed, ingested=ingested)
+
+
+class DigestRunOut(ApiModel):
+    """Câte rezumate au plecat. Planificatorul citește o linie, nu un raport."""
+
+    organizations: int
+    sent: int
+
+
+@router.get("/daily-digest", response_model=DigestRunOut)
+def daily_digest(authorization: Annotated[str | None, Header()] = None) -> DigestRunOut:
+    """Rezumatul zilei, către fiecare cabinet.
+
+    **De ce există.** Aplicația nu face nimic dacă nu o deschide cineva. Știe că
+    trei clienți n-au răspuns de o săptămână și că un termen e peste două zile,
+    dar așteaptă să fie întrebată.
+
+    **Către cabinet, nu către clienți.** Un mesaj trimis automat unui client, în
+    numele cabinetului, este o decizie de altă natură — se ia o dată, explicit, și
+    nu de aplicație.
+
+    **Oprit implicit**, și cu comutator propriu: un cabinet poate vrea rezumatul
+    fără să lase aplicația să scrie clienților.
+
+    Se cheamă o dată pe zi, dimineața. Chemată de două ori, trimite de două ori:
+    nu are idempotență, fiindcă un rezumat este o fotografie a momentului, nu o
+    scriere. Planificatorul răspunde de cadență.
+
+    *NEVERIFICAT — NECESITĂ CREDENȚIALE EXTERNE.*
+    """
+    if not _authorized(authorization):
+        logger.warning("cron_unauthorized")
+        raise AppError(ErrorCode.NOT_FOUND, "Resursa nu există.")
+
+    if not settings.daily_digest_enabled:
+        return DigestRunOut(organizations=0, sent=0)
+
+    sender = build_email_sender()
+    today = datetime.now(UTC).date()
+    organizations = 0
+    sent = 0
+
+    with session_scope() as session:
+        for organization_id in session.scalars(select(Organization.id)):
+            organizations += 1
+            sent += DailyDigestService(session, organization_id).send(sender, today=today)
+
+    logger.info("daily_digest", organizations=organizations, sent=sent)
+    return DigestRunOut(organizations=organizations, sent=sent)
