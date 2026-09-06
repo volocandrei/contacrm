@@ -119,12 +119,12 @@ placeholdere evidente din `.env.example`.
 
 ```
 frontend  21.376 linii sursă +  3.391 linii teste  →   257 teste
-backend   27.467 linii sursă + 23.777 linii teste  → 1.521 teste
+backend   27.467 linii sursă + 23.936 linii teste  → 1.527 teste
 end-to-end 2.194 linii                             →    81 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.859 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.865 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -276,6 +276,43 @@ copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email,
 „Trimis" ar fi acolo o promisiune pe care nimic din spate nu o acoperă. Ce o face
 verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
 confirmat.
+
+### Proba de fum pe o instalare complet nouă (6 septembrie 2026)
+
+Suita E2E pornește de la `seed-dev`: clienți, așteptări, obligații și documente
+există deja. Un cabinet real pornește de la nimic, iar drumul acela nu era acoperit
+de nimic — deși este exact drumul pe care se decide dacă aplicația se adoptă sau
+se închide. La auditul anterior, tot o probă de fum a scos cel mai scump defect
+al sesiunii (suma `1.190,00` citită ca `119`).
+
+Parcurs pe o bază creată de la zero: migrări de la prima la ultima, `sync-roles`,
+administrator, catalogul de tipuri (10) și cel de declarații (8), primul client,
+un profil cu așteptări **și** declarații aplicat pe el, un document urcat și
+citit, o cerere compusă, registrul, arhiva și cronologia.
+
+**Ce a mers.** Tot. Documentul a fost citit corect — numărul `1001`, totalul
+`1190.00` (defectul de la auditul anterior rămâne reparat), data, tipul — iar
+clientul s-a identificat singur din CIF-ul de pe factură. Termenul a apărut cu
+`2026-09-25` și **fără restanțe**: regula „aplicația nu produce termene dinainte
+de ziua configurării" se vede exact acolo unde a fost scrisă pentru ea. Registrul
+a ieșit cu virgula zecimală, arhiva cu `registru.csv` la rădăcină.
+
+**Două lucruri de reținut.**
+
+Un PDF prost format (l-am scris eu greșit) a produs `ERROR` cu mesajul „PDF
+ilizibil", nu un 500 — și a apărut apoi **în registru**, cu starea „Eroare", și
+**în arhivă**, sub `Fără client/Fără lună/`. Adică exact ce trebuie: un document
+pe care nu l-am putut citi nu dispare tăcut din predare.
+
+`create-admin` nu se poate scripta pe Windows: `getpass` ia caracterele direct din
+consolă, nu din stdin. Este o alegere deliberată — o parolă dată ca argument
+ajunge în istoricul shell-ului și în lista de procese — dar înseamnă că prima
+instalare cere un om la tastatură. Notat, nu „reparat".
+
+`tests/test_fresh_install.py` apără de-acum partea care se poate strica în tăcere:
+ce trebuie să fie în bază înainte ca cineva să deschidă ecranul. Cel mai important
+test de acolo verifică faptul că **un termen corectat de cabinet supraviețuiește
+următorului deploy** — altfel cabinetul ar afla din amenda de luna următoare.
 
 ### Cronologia unui client
 
