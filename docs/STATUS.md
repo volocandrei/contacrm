@@ -120,7 +120,7 @@ placeholdere evidente din `.env.example`.
 ```
 frontend  21.376 linii sursă +  3.391 linii teste  →   257 teste
 backend   27.754 linii sursă + 24.212 linii teste  → 1.539 teste
-end-to-end 2.194 linii                             →    81 teste (browser real)
+end-to-end 2.217 linii                             →    81 teste (browser real)
 migrări    2.190 linii
 ```
 
@@ -1259,6 +1259,7 @@ Merită reținute, pentru că niciunul nu era vizibil citind codul:
 | Prima variantă a limitării număra **toate** încercările, nu doar eșecurile: al unsprezecelea login cu parola corectă dintr-un minut era refuzat | **două teste E2E căzute departe de cauză**, în mijlocul unui flux de documente |
 | Pe un ecran de 390px, fiecare pagină depășea cu 50px, iar titlul din antet se strângea la lățime zero | măsurând lățimea reală pe trei viewporturi |
 | Prima variantă a verificării de accesibilitate raporta opt câmpuri „fără etichetă”; erau toate corecte — verificarea nu cunoștea eticheta implicită | citind ce anume raportase |
+| Am reintrodus **același** defect, o oră mai târziu, într-un test scris de la zero pentru ecranul de catalog: butonul de salvare folosit iar ca semnal că salvarea s-a terminat. Un tipar reparat rămâne reparat doar acolo unde a fost reparat — a doua oară l-am scris din memorie, nu din regulă | **CI, a doua oară** |
 | Un test confirma salvarea prin butonul „Salvează" devenit inactiv — dar butonul este inactiv **și** cât timp cererea este în zbor (`!isDirty \|\| busy`). Aserțiunea trecea imediat după clic, iar `reload()` de sub ea întrerupea cererea. Pe o mașină rapidă salvarea apuca să ajungă; în CI, pe Linux, nu | **CI, după ce trei încărcări noi au încetinit suita** |
 
 ### Tranzacția se confirma după ce răspunsul plecase (5 septembrie 2026)

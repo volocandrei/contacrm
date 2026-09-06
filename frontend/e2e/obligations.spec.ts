@@ -9,7 +9,7 @@
  *    rea decât un buton lipsă — te face să crezi că ai făcut ceva ce n-ai făcut.
  * 3. **Marcarea este o decizie contabilă**, nu una de operare.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { ACCOUNTS, SEED_CLIENT, loginAs } from "./support";
 
 /** Primul rând cu buton de marcare, oricare ar fi el. */
@@ -125,21 +125,44 @@ test("termenul se schimbă din catalog și se vede imediat în listă", async ({
   const day = page.getByLabel("În ce zi cade termenul pentru D300", { exact: true });
   await expect(day).toBeVisible();
   const original = await day.inputValue();
-  await day.fill("15");
-  await page
-    .getByRole("row", { name: /D300/ })
-    .first()
-    .getByRole("button", { name: "Salvează" })
-    .click();
-  await expect(
-    page.getByRole("row", { name: /D300/ }).first().getByRole("button", { name: "Salvează" }),
-  ).toBeDisabled();
+
+  await saveDay(page, day, "15");
+
+  // Ce apără testul: schimbarea din catalog **mută termenele**, fără repornire.
+  // Niciuna dintre declarațiile din catalogul inițial nu cade pe 15, deci un
+  // titlu de grup cu ziua 15 nu poate veni decât din schimbarea de mai sus.
+  await page.goto("/contabilitate/termene");
+  const onTheFifteenth = page.getByRole("heading", { name: /^15\.\d{2}\.\d{4}$/ });
+  await expect(onTheFifteenth.first()).toBeVisible();
 
   // Înapoi cum era, ca rulările următoare să pornească din aceeași stare.
-  await day.fill(original);
-  await page
-    .getByRole("row", { name: /D300/ })
-    .first()
-    .getByRole("button", { name: "Salvează" })
-    .click();
+  await page.goto("/administrare/declaratii");
+  await saveDay(
+    page,
+    page.getByLabel("În ce zi cade termenul pentru D300", { exact: true }),
+    original,
+  );
+  await page.goto("/contabilitate/termene");
+  await expect(page.getByRole("heading", { name: /^15\.\d{2}\.\d{4}$/ })).toHaveCount(0);
 });
+
+/**
+ * Schimbă ziua și **așteaptă răspunsul**, nu butonul.
+ *
+ * „Salvează" este dezactivat și cât timp cererea este în zbor (`!dirty ||
+ * isPending`), deci `toBeDisabled` trece imediat după clic — iar pasul următor
+ * pleacă peste o salvare neterminată. Este exact defectul reparat o dată în
+ * `document-flow.spec.ts`; l-am rescris aici din memorie și l-am reintrodus.
+ */
+async function saveDay(page: Page, day: Locator, value: string): Promise<void> {
+  await day.fill(value);
+  const row = page.getByRole("row", { name: /D300/ }).first();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" &&
+      response.url().includes("/obligations/types/") &&
+      response.ok(),
+  );
+  await row.getByRole("button", { name: "Salvează" }).click();
+  await saved;
+}
