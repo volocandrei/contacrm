@@ -1,13 +1,19 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  CalendarCheck,
+  CircleCheck,
+  Copy,
+  Inbox,
   Link as LinkIcon,
   LoaderCircle,
   Pencil,
   Plus,
+  Send,
   StickyNote,
   Trash2,
+  type LucideIcon,
 } from "lucide-react";
 import {
   useApplyExpectationTemplate,
@@ -16,6 +22,7 @@ import {
   useClientContacts,
   useClientExpectations,
   useClientObligations,
+  useClientTimeline,
   useClientNotes,
   useClientPeriods,
   useCreateNote,
@@ -53,9 +60,10 @@ import {
   inputField,
   mutedText,
   scrollX,
+  type Tone,
 } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import type { ObligationFrequency } from "@/types/domain";
+import type { ClientTimelineEventKind, ObligationFrequency } from "@/types/domain";
 
 /** Cât poate avea o notă. Oglindește `MAX_NOTE_LENGTH` din backend. */
 const MAX_NOTE_LENGTH = 4000;
@@ -446,25 +454,94 @@ function DocumentsTab({ clientId }: { clientId: string }) {
   );
 }
 
+/**
+ * Ce s-a întâmplat cu clientul, în ordine.
+ *
+ * **De unde vine.** Fila arăta cândva o cronologie de mesaje pe care backendul
+ * nu o avea; la auditul de producție a devenit un substituent onest. Între timp
+ * aplicația chiar trimite solicitări, urmărește termene și închide luni — deci
+ * faptele există, în patru locuri diferite. Aici sunt puse cap la cap.
+ *
+ * **Ce nu conține.** Conținutul documentelor și textul mesajelor: spune *că* a
+ * sosit o factură și *că* i s-a cerut ceva. Aceeași linie ca la jurnalul de
+ * audit (§33). Cine vrea documentul îl deschide de pe rând.
+ */
 function CommunicationTab({ clientId }: { clientId: string }) {
-  // Fila arăta o cronologie de mesaje pe care backendul nu o are: în modul real
-  // cererea răspundea 404, iar ecranul rămânea gol, fără să spună nimic. Până
-  // când sistemul chiar trimite mesaje (Faza 2), arătăm ce știm cu adevărat.
+  const { data, isLoading, error } = useClientTimeline(clientId);
+  const navigate = useNavigate();
+
+  if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState error={error} />;
+
   return (
-    <Panel title="Comunicare">
-      <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
-        Cronologia mesajelor apare odată cu trimiterea automată (Faza 2). Ce a sosit deja de la
-        acest client — pe email sau din dosarul lui de OneDrive — se vede în documentele lui.
-      </p>
-      <Link
-        to={`/documente/inbox?clientId=${clientId}`}
-        className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
-      >
-        Vezi documentele primite
-      </Link>
+    <Panel title="Cronologie">
+      {(data ?? []).length === 0 ? (
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          Încă nu s-a întâmplat nimic cu acest client: niciun document primit,
+          nicio solicitare, nicio depunere.
+        </p>
+      ) : (
+        <ul className="space-y-3">
+          {(data ?? []).map((event, index) => {
+            const { Icon, tone } = TIMELINE_LOOK[event.kind];
+            return (
+              <li key={`${event.at}-${index}`} className="flex gap-3">
+                <span
+                  className={cn(
+                    "mt-0.5 grid size-7 shrink-0 place-content-center rounded-lg",
+                    iconChip[tone],
+                  )}
+                  aria-hidden="true"
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm text-slate-800 dark:text-slate-200">
+                    <span className={cn("mr-1.5 text-xs", mutedText)}>
+                      {TIMELINE_LABEL[event.kind]}
+                    </span>
+                    {event.documentId ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/documente/${event.documentId}`)}
+                        className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                      >
+                        {event.title}
+                      </button>
+                    ) : (
+                      <span className="font-medium">{event.title}</span>
+                    )}
+                  </p>
+                  <p className={cn("mt-0.5 text-xs", mutedText)}>
+                    {formatDateTime(event.at)}
+                    {event.detail ? ` · ${event.detail}` : ""}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </Panel>
   );
 }
+
+/** Cum se numește fiecare fel de fapt. Eticheta este a interfeței, nu a serverului. */
+const TIMELINE_LABEL: Record<ClientTimelineEventKind, string> = {
+  DOCUMENT_RECEIVED: "A sosit",
+  REQUEST_PREPARED: "Pregătit",
+  REQUEST_SENT: "Trimis",
+  OBLIGATION_FILED: "Depus",
+  PERIOD_CLOSED: "Închis",
+};
+
+const TIMELINE_LOOK: Record<ClientTimelineEventKind, { Icon: LucideIcon; tone: Tone }> = {
+  DOCUMENT_RECEIVED: { Icon: Inbox, tone: "blue" },
+  REQUEST_PREPARED: { Icon: Copy, tone: "slate" },
+  REQUEST_SENT: { Icon: Send, tone: "purple" },
+  OBLIGATION_FILED: { Icon: CalendarCheck, tone: "green" },
+  PERIOD_CLOSED: { Icon: CircleCheck, tone: "green" },
+};
 
 function NotesTab({ clientId }: { clientId: string }) {
   const { data: notes, isLoading } = useClientNotes(clientId);

@@ -46,6 +46,7 @@ export const queryKeys = {
   clientNotes: (id: string) => ["clients", id, "notes"] as const,
   clientExpectations: (id: string) => ["clients", id, "expectations"] as const,
   clientAliases: (id: string) => ["clients", id, "aliases"] as const,
+  clientTimeline: (id: string) => ["clients", id, "timeline"] as const,
   clientUploadLinks: (id: string) => ["clients", id, "upload-links"] as const,
   intakes: (params: QueryParams) => ["intakes", params] as const,
   clientPeriods: (id: string) => ["clients", id, "periods"] as const,
@@ -535,6 +536,13 @@ export function useSetClientObligations() {
     ({ clientId, obligationTypeIds }: { clientId: string; obligationTypeIds: string[] }) =>
       obligations.setForClient(clientId, obligationTypeIds),
   );
+}
+
+export function useClientTimeline(clientId: string) {
+  return useQuery({
+    queryKey: queryKeys.clientTimeline(clientId),
+    queryFn: () => clients.timeline(clientId),
+  });
 }
 
 export function usePeriods(params: QueryParams) {

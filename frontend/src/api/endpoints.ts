@@ -45,6 +45,7 @@ import type {
   Task,
   TaskPriority,
   UploadLink,
+  ClientTimelineEvent,
   TaskStatus,
   UserSummary,
 } from "@/types/domain";
@@ -137,6 +138,8 @@ export const clients = {
   ) => api.put<ClientExpectation[]>(`/clients/${id}/expectations`, { expectations }),
   periods: (id: string) => api.get<AccountingPeriod[]>(`/clients/${id}/periods`),
   aliases: (id: string) => api.get<ClientAlias[]>(`/clients/${id}/aliases`),
+  /** Ce s-a întâmplat cu clientul, în ordine: documente, cereri, depuneri, luni. */
+  timeline: (id: string) => api.get<ClientTimelineEvent[]>(`/clients/${id}/timeline`),
   uploadLinks: (id: string) => api.get<UploadLink[]>(`/clients/${id}/upload-links`),
   createUploadLink: (id: string) =>
     api.post<IssuedUploadLink>(`/clients/${id}/upload-links`),

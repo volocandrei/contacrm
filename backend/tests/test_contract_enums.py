@@ -22,6 +22,7 @@ from app.domain.enums import (
     PeriodStatus,
     TaskPriority,
     TaskStatus,
+    TimelineEventKind,
 )
 from app.domain.labels import DOCUMENT_STATUS_LABEL
 
@@ -46,6 +47,7 @@ def _const_list(source: str, name: str) -> set[str]:
         ("CLIENT_STATUS", ClientStatus),
         ("PERIOD_STATUS", PeriodStatus),
         ("OBLIGATION_FREQUENCY", ObligationFrequency),
+        ("TIMELINE_EVENT_KIND", TimelineEventKind),
         ("DOCUMENT_SOURCE", DocumentSource),
         ("TASK_STATUS", TaskStatus),
         ("TASK_PRIORITY", TaskPriority),

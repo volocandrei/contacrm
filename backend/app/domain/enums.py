@@ -123,6 +123,21 @@ class ObligationFrequency(StrEnum):
     ANNUAL = "ANNUAL"
 
 
+class TimelineEventKind(StrEnum):
+    """Ce fel de lucru s-a întâmplat cu un client.
+
+    Nu o clasificare de dragul ei: fiecare fel are altă iconiță și alt text pe
+    ecran, iar eticheta o dă interfața. Serverul spune **ce s-a întâmplat**, nu
+    cum se scrie.
+    """
+
+    DOCUMENT_RECEIVED = "DOCUMENT_RECEIVED"
+    REQUEST_PREPARED = "REQUEST_PREPARED"
+    REQUEST_SENT = "REQUEST_SENT"
+    OBLIGATION_FILED = "OBLIGATION_FILED"
+    PERIOD_CLOSED = "PERIOD_CLOSED"
+
+
 # Ordinea în care sarcinile apar în interfață: ce e de făcut, înaintea ce e gata.
 TASK_STATUS_ORDER: dict[TaskStatus, int] = {
     TaskStatus.TODO: 0,

@@ -47,6 +47,7 @@ import type {
   DocumentTypeCode,
   Intake,
   Contact,
+  ClientTimelineEvent,
   ContactListItem,
   CurrentUser,
   DueObligation,
@@ -2690,6 +2691,80 @@ export function createUploadLink(clientId: string, referenceMonth?: string): Iss
     url: `${mockPublicOrigin()}/incarca/token-simulat-${uploadLinkCounter}`,
   };
 }
+
+/**
+ * Ce s-a întâmplat cu un client, în ordine.
+ *
+ * Se compune la citire, ca pe server: din documente, cereri, depuneri și luni
+ * închise. Un tabel de evenimente ar fi însemnat că fiecare acțiune trebuie
+ * să-și amintească să scrie și acolo — iar ziua în care una uită este ziua în
+ * care cronologia începe să mintă prin omisiune.
+ */
+export function clientTimeline(clientId: string): ClientTimelineEvent[] {
+  requirePermission("clients:read");
+  getClient(clientId);
+  seedClientObligations();
+
+  const events: ClientTimelineEvent[] = [];
+
+  for (const doc of state.documents.filter((row) => row.clientId === clientId)) {
+    events.push({
+      at: doc.receivedAt,
+      kind: "DOCUMENT_RECEIVED",
+      title: doc.storedFilename ?? doc.originalFilename,
+      detail: doc.referenceMonth ? `${SOURCE_DETAIL[doc.source]} · ${doc.referenceMonth}` : SOURCE_DETAIL[doc.source],
+      documentId: doc.id,
+    });
+  }
+
+  for (const link of uploadLinks.filter(
+    (row) => row.clientId === clientId && row.referenceMonth !== null,
+  )) {
+    events.push({
+      at: link.createdAt,
+      kind: "REQUEST_PREPARED",
+      title: "Solicitare de documente",
+      detail: link.referenceMonth,
+      documentId: null,
+    });
+    if (link.notifiedAt) {
+      events.push({
+        at: link.notifiedAt,
+        kind: "REQUEST_SENT",
+        title: "Solicitare trimisă",
+        detail: null,
+        documentId: null,
+      });
+    }
+  }
+
+  for (const [key, filing] of filings) {
+    const [filedClientId, typeId, period] = key.split("|");
+    if (filedClientId !== clientId) continue;
+    const type = obligationTypes.find((entry) => entry.id === typeId);
+    events.push({
+      at: filing.filedAt,
+      kind: "OBLIGATION_FILED",
+      title: type?.code ?? "Declarație",
+      detail: period,
+      documentId: null,
+    });
+  }
+
+  events.sort((a, b) => b.at.localeCompare(a.at));
+  return events.slice(0, 50);
+}
+
+/** Canalul, în cuvintele pe care le-ar folosi cineva din cabinet. */
+const SOURCE_DETAIL: Record<string, string> = {
+  EMAIL: "pe email",
+  WHATSAPP: "pe WhatsApp",
+  UPLOAD: "urcat de noi",
+  API: "prin API",
+  ONEDRIVE: "din OneDrive",
+  EFACTURA: "din SPV",
+  PORTAL: "prin linkul de trimitere",
+};
 
 export function sendDocumentRequests(referenceMonth: string): never {
   requirePermission("documents:write");

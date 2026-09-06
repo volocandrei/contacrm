@@ -35,6 +35,15 @@ export type PeriodStatus = (typeof PERIOD_STATUS)[number];
 export const OBLIGATION_FREQUENCY = ["MONTHLY", "QUARTERLY", "ANNUAL"] as const;
 export type ObligationFrequency = (typeof OBLIGATION_FREQUENCY)[number];
 
+export const TIMELINE_EVENT_KIND = [
+  "DOCUMENT_RECEIVED",
+  "REQUEST_PREPARED",
+  "REQUEST_SENT",
+  "OBLIGATION_FILED",
+  "PERIOD_CLOSED",
+] as const;
+export type ClientTimelineEventKind = (typeof TIMELINE_EVENT_KIND)[number];
+
 export const DOCUMENT_SOURCE = [
   "EMAIL",
   "WHATSAPP",
@@ -905,4 +914,19 @@ export interface SendRequestsResult {
 export interface FilingsResult {
   marked: number;
   failed: { clientId: string; obligationTypeId: string; period: string; message: string }[];
+}
+
+/**
+ * Un fapt din viața unui client, cu momentul lui.
+ *
+ * Eticheta felului o dă interfața: serverul spune **ce s-a întâmplat**, nu cum
+ * se scrie. Aceeași împărțire ca la stările de document.
+ */
+export interface ClientTimelineEvent {
+  at: string;
+  kind: ClientTimelineEventKind;
+  title: string;
+  detail: string | null;
+  /** Prezent doar la documente: rândul devine un drum, nu doar o mențiune. */
+  documentId: string | null;
 }

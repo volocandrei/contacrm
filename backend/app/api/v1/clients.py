@@ -19,6 +19,7 @@ from app.api.v1.documents import to_list_item
 from app.api.v1.periods import MissingFilters
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode, NotFoundError, ValidationError
+from app.domain.enums import TimelineEventKind
 from app.domain.permissions import Permission
 from app.models.client import Client
 from app.models.user import User
@@ -41,6 +42,15 @@ from app.schemas.email import EmailAddress
 from app.services.audit import AuditService
 from app.services.client_aliases import ClientAliasService
 from app.services.client_service import ActorContext, ClientService
+from app.services.client_timeline import (
+    DEFAULT_LIMIT as DEFAULT_TIMELINE,
+)
+from app.services.client_timeline import (
+    MAX_LIMIT as MAX_TIMELINE,
+)
+from app.services.client_timeline import (
+    ClientTimelineService,
+)
 from app.services.document_request import DocumentRequestService
 from app.services.mail import EmailError, EmailNotConfiguredError, build_email_sender
 from app.services.upload_links import UploadLinkService
@@ -573,3 +583,53 @@ def update_contact(
         _actor(user, request),
     )
     return ContactOut.model_validate(contact)
+
+
+class TimelineEventOut(ApiModel):
+    """Un fapt din viața unui client, cu momentul lui.
+
+    Eticheta felului o dă interfața, ca la stările de document: serverul spune
+    **ce s-a întâmplat**, nu cum se scrie.
+    """
+
+    at: datetime
+    kind: TimelineEventKind
+    title: str
+    detail: str | None
+    #: Prezent doar la documente. Rândul devine astfel un drum către document, nu
+    #: doar o mențiune despre el.
+    document_id: uuid.UUID | None
+
+
+@router.get("/{client_id}/timeline", response_model=list[TimelineEventOut])
+def client_timeline(
+    session: DbSession,
+    user: ClientReader,
+    client_id: uuid.UUID,
+    limit: Annotated[int, Query(ge=1, le=MAX_TIMELINE)] = DEFAULT_TIMELINE,
+) -> list[TimelineEventOut]:
+    """Ce s-a întâmplat cu clientul, în ordine.
+
+    Răspunde la întrebarea pe care ți-o pui înainte de un telefon: „ce e cu firma
+    asta?". Până acum răspunsul se strângea din patru ecrane — documentele lui,
+    linkurile de trimitere, termenele, perioadele.
+
+    Nu conține conținutul documentelor și nici textul mesajelor: spune *că* a
+    sosit o factură și *că* i s-a cerut ceva. Aceeași linie ca la jurnalul de
+    audit (§33).
+    """
+    client = ClientRepository(session).get(user.organization_id, client_id)
+    if client is None:
+        raise NotFoundError("Client", client_id)
+
+    events = ClientTimelineService(session, user.organization_id).for_client(client_id, limit=limit)
+    return [
+        TimelineEventOut(
+            at=event.at,
+            kind=event.kind,
+            title=event.title,
+            detail=event.detail,
+            document_id=event.document_id,
+        )
+        for event in events
+    ]

@@ -10,7 +10,14 @@
  * primit la clientul potrivit (§8).
  */
 import { expect, test } from "@playwright/test";
-import { ACCOUNTS, SEED_CLIENT, loginAs, unique } from "./support";
+import {
+  ACCOUNTS,
+  SEED_CLIENT,
+  incomingInvoice,
+  loginAs,
+  unique,
+  uploadAndOpen,
+} from "./support";
 
 test("un client nou primește un contact, iar amândouă apar în listă", async ({ page }) => {
   const marker = unique();
@@ -93,4 +100,24 @@ test("un operator nu vede butonul de client nou", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 2, name: "Clienți" })).toBeVisible();
   // Meniul nu oferă uși încuiate; autorizarea rămâne pe server.
   await expect(page.getByRole("button", { name: "Client nou" })).toHaveCount(0);
+});
+
+test("cronologia clientului spune ce s-a întâmplat, în ordine", async ({ page }) => {
+  // Întrebarea pe care ți-o pui înainte de un telefon: „ce e cu firma asta?".
+  // Până acum răspunsul se strângea din patru ecrane.
+  await loginAs(page, ACCOUNTS.admin);
+  await uploadAndOpen(
+    page,
+    "cronologie.pdf",
+    incomingInvoice({ number: unique(), total: "1.190,00" }),
+  );
+
+  await page.goto("/crm/clienti");
+  await page.getByRole("link", { name: SEED_CLIENT.name }).first().click();
+  await page.getByRole("tab", { name: "Comunicare" }).click();
+
+  await expect(page.getByRole("heading", { name: "Cronologie" })).toBeVisible();
+  // Documentul urcat mai sus apare, cu canalul pe care a sosit.
+  await expect(page.getByText("A sosit").first()).toBeVisible();
+  await expect(page.getByText(/urcat de noi/).first()).toBeVisible();
 });

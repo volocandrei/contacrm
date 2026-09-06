@@ -117,13 +117,13 @@ placeholdere evidente din `.env.example`.
 ## 2. Ce s-a construit
 
 ```
-frontend  21.184 linii sursă +  3.391 linii teste  →   257 teste
-backend   27.186 linii sursă + 23.613 linii teste  → 1.513 teste
-end-to-end 2.167 linii                             →    80 teste (browser real)
+frontend  21.376 linii sursă +  3.391 linii teste  →   257 teste
+backend   27.467 linii sursă + 23.777 linii teste  → 1.521 teste
+end-to-end 2.194 linii                             →    81 teste (browser real)
 migrări    2.190 linii
 ```
 
-Toate verificările trec: **1.850 de teste**, lint curat, `mypy --strict` curat,
+Toate verificările trec: **1.859 de teste**, lint curat, `mypy --strict` curat,
 build curat, suita E2E verde într-un browser real.
 
 ### Frontend — complet, pe backend simulat ✅
@@ -268,6 +268,29 @@ Ecranul spune **„Pregătit"**, nu „Trimis". Aplicația nu trimite (Faza 2): 
 se copiază și pleacă din clientul de email al contabilului, deci tot ce știe
 sigur este că cererea a fost compusă. „Trimis" ar fi o promisiune pe care nimic
 din spate nu o acoperă.
+
+### Cronologia unui client
+
+Întrebarea la care răspunde este cea pe care ți-o pui înainte de un telefon: „ce
+e cu firma asta?". Până acum răspunsul se strângea din patru ecrane — documentele
+lui, linkurile de trimitere, termenele, perioadele.
+
+Fila „Comunicare" de pe fișa clientului era, de la auditul de producție, un
+substituent onest: arătase cândva o cronologie de mesaje pe care backendul n-o
+avea. Între timp aplicația chiar trimite solicitări, urmărește termene și închide
+luni, deci faptele există. Acum sunt puse cap la cap.
+
+**Nimic nu se stochează.** Se compune la citire, din ce este deja înregistrat în
+altă parte. Un tabel de evenimente ar fi însemnat că fiecare acțiune trebuie
+să-și amintească să scrie și acolo — iar ziua în care una uită este ziua în care
+cronologia începe să mintă prin omisiune.
+
+**„Pregătit" și „Trimis" sunt două evenimente**, din același rând de link. Un
+client care nu răspunde se explică altfel dacă mesajul n-a plecat niciodată.
+
+**Ce nu conține:** conținutul documentelor și textul mesajelor. Spune *că* a
+sosit o factură și *că* i s-a cerut ceva — aceeași linie ca la jurnalul de audit
+(§33). Rândul de document este însă un drum către el, nu doar o mențiune.
 
 ### Arhiva unei perioade, într-un singur fișier
 

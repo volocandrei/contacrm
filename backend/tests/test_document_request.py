@@ -26,7 +26,7 @@ compune și un drum public de scriere, așa că are nevoie de ele mai mult ca or
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,12 +34,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.domain.enums import ClientStatus
+from app.domain.enums import ClientStatus, ObligationFrequency
 from app.domain.periods import filing_deadline
 from app.domain.permissions import RoleCode
 from app.models.audit import AuditLog
 from app.models.client import Client, Contact
 from app.models.document import Document, DocumentType
+from app.models.obligation import ObligationFiling, ObligationType
 from app.models.organization import Organization
 from app.models.period import ClientExpectation
 from app.models.upload_link import ClientUploadLink
@@ -1002,3 +1003,164 @@ class TestSendingToMany:
         assert response.status_code == 200
         assert response.json()["sent"] == []
         assert outbox == []
+
+
+class TestTheTimeline:
+    """Ce s-a întâmplat cu un client, în ordine.
+
+    Întrebarea pe care ți-o pui înainte de un telefon: „ce e cu firma asta?".
+    Până acum răspunsul se strângea din patru ecrane.
+
+    Ce apără testele:
+
+    1. **Toate cele patru feluri de fapte ajung acolo.** O cronologie din care
+       lipsește un fel arată completă și minte prin omisiune.
+    2. **„Pregătit" și „Trimis" sunt evenimente diferite.** Un client care nu
+       răspunde se explică altfel dacă mesajul n-a plecat niciodată.
+    3. **Ordinea este cronologică inversă**, fiindcă așa se citește.
+    4. **Nu conține conținut** (§33).
+    """
+
+    def _timeline(self, api: TestClient, client_row: Client) -> list[dict[str, object]]:
+        response = api.get(f"/api/v1/clients/{client_row.id}/timeline")
+        assert response.status_code == 200, response.text
+        payload: list[dict[str, object]] = response.json()
+        return payload
+
+    def test_it_carries_every_kind_of_fact(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        org: Organization,
+        types: dict[str, DocumentType],
+        client_row: Client,
+        gaps: None,
+    ) -> None:
+        """O cronologie din care lipsește un fel arată completă și minte prin omisiune."""
+        login(api_storage, admin.email)
+        compose(api_storage, client_row)
+        obligation = ObligationType(
+            organization_id=org.id,
+            code="D300",
+            label="D300",
+            frequency=ObligationFrequency.MONTHLY,
+            months_after=1,
+            deadline_day=25,
+        )
+        db.add(obligation)
+        db.flush()
+        db.add(
+            ObligationFiling(
+                organization_id=org.id,
+                client_id=client_row.id,
+                obligation_type_id=obligation.id,
+                period=MONTH,
+                filed_at=datetime.now(UTC),
+            )
+        )
+        db.commit()
+
+        kinds = {event["kind"] for event in self._timeline(api_storage, client_row)}
+
+        assert "DOCUMENT_RECEIVED" in kinds
+        assert "REQUEST_PREPARED" in kinds
+        assert "OBLIGATION_FILED" in kinds
+
+    def test_prepared_and_sent_are_two_events(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+        outbox: list[EmailMessage],
+    ) -> None:
+        """Un client care nu răspunde se explică altfel dacă mesajul n-a plecat."""
+        login(api_storage, admin.email)
+        api_storage.post(
+            f"/api/v1/clients/{client_row.id}/document-request/send?referenceMonth={MONTH}",
+            json={"to": "cineva@exemplu.test"},
+        )
+
+        events = self._timeline(api_storage, client_row)
+        kinds = [event["kind"] for event in events]
+
+        assert "REQUEST_PREPARED" in kinds
+        assert "REQUEST_SENT" in kinds
+        sent = next(event for event in events if event["kind"] == "REQUEST_SENT")
+        assert sent["detail"] == "cineva@exemplu.test"
+
+    def test_a_copied_request_has_no_sent_event(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+    ) -> None:
+        """Copiat, mesajul poate să nu fi plecat niciodată. Cronologia nu presupune."""
+        login(api_storage, admin.email)
+        compose(api_storage, client_row)
+
+        kinds = [event["kind"] for event in self._timeline(api_storage, client_row)]
+
+        assert "REQUEST_PREPARED" in kinds
+        assert "REQUEST_SENT" not in kinds
+
+    def test_the_newest_comes_first(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+    ) -> None:
+        login(api_storage, admin.email)
+        compose(api_storage, client_row)
+
+        moments = [str(event["at"]) for event in self._timeline(api_storage, client_row)]
+
+        assert moments == sorted(moments, reverse=True)
+
+    def test_a_document_row_leads_to_the_document(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        admin: User,
+        client_row: Client,
+        gaps: None,
+    ) -> None:
+        """Altfel rândul este o mențiune despre document, nu un drum către el."""
+        login(api_storage, admin.email)
+
+        document = next(
+            event
+            for event in self._timeline(api_storage, client_row)
+            if event["kind"] == "DOCUMENT_RECEIVED"
+        )
+
+        assert document["documentId"] is not None
+
+    def test_another_organizations_client_is_a_404(
+        self, api_storage: TestClient, db: Session, admin: User, client_row: Client
+    ) -> None:
+        """§72: existența nu se confirmă nici măcar printr-un refuz diferit."""
+        login(api_storage, admin.email)
+        stranger = Organization(name="Alt Cabinet SRL")
+        db.add(stranger)
+        db.flush()
+        theirs = Client(organization_id=stranger.id, name="Terț SRL")
+        db.add(theirs)
+        db.commit()
+
+        response = api_storage.get(f"/api/v1/clients/{theirs.id}/timeline")
+
+        assert response.status_code == 404
+
+    def test_an_anonymous_request_is_refused(
+        self, api_storage: TestClient, client_row: Client
+    ) -> None:
+        api_storage.post("/api/v1/auth/logout")
+
+        assert api_storage.get(f"/api/v1/clients/{client_row.id}/timeline").status_code == 401

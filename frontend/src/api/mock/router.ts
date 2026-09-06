@@ -99,6 +99,11 @@ const routes: Route[] = [
   },
   {
     method: "GET",
+    pattern: "/clients/:id/timeline",
+    handler: ({ params }) => store.clientTimeline(params.id!),
+  },
+  {
+    method: "GET",
     pattern: "/clients/:id/aliases",
     handler: ({ params }) => store.listClientAliases(params.id!),
   },
