@@ -338,8 +338,8 @@ export function AddUserButton() {
       </div>
 
       <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-        Parola o alegi tu și i-o spui colegului direct. Nu pleacă niciun email — aplicația încă
-        nu trimite mesaje.
+        Parola o alegi tu și i-o spui colegului direct. Nu pleacă nicio invitație: aplicația
+        trimite mesaje clienților, dar niciodată o parolă.
       </p>
 
       {problem && (

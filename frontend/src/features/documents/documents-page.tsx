@@ -198,8 +198,8 @@ export function DocumentsPage({
         }
       />
 
-      {/* Singurul drum prin care un document intră azi: email și WhatsApp sunt
-          Faza 2. Stă pe inbox, pentru că acolo ajunge oricum după încărcare. */}
+      {/* Drumul manual: restul sosesc singure, din email, OneDrive, e-Factura sau
+          de la client. Stă pe inbox, pentru că acolo ajunge oricum după încărcare. */}
       {preset === "inbox" && canWrite && <UploadPanel />}
 
       {/* Filtre (§25) */}

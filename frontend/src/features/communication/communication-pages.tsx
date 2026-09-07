@@ -65,8 +65,13 @@ export function MessagesPage() {
       <div className="flex items-start gap-3 rounded-xl border border-blue-200/70 bg-blue-50/60 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
         <Send className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <p>
-          Aici este <strong>ce am primit</strong>. Trimiterea — email, WhatsApp, remindere — cere un
-          provider și rămâne în Faza 2; până atunci ecranul nu pretinde că există.
+          Aici este <strong>ce am primit</strong>. Ce pleacă din aplicație — solicitarea de
+          documente — se trimite din{" "}
+          <Link to="/contabilitate/lipsa" className="font-medium underline underline-offset-2">
+            Documente lipsă
+          </Link>{" "}
+          sau din fișa clientului. Aplicația reține <strong>că</strong> a trimis și către cine,
+          nu conținutul mesajului.
         </p>
       </div>
 
@@ -216,54 +221,77 @@ function IntakeRow({ intake }: { intake: Intake }) {
 
 /* ─── Șabloane ─────────────────────────────────────────────────────────────── */
 
+/**
+ * Mesajele pe care aplicația chiar le trimite.
+ *
+ * **Ce era înainte aici.** Trei șabloane inventate — o confirmare de primire, una
+ * pe WhatsApp, un reminder — niciunul existent în backend. Ecranul arăta texte pe
+ * care aplicația nu le trimisese niciodată, ceea ce este mai rău decât un ecran
+ * gol: cine le citea credea că le poate aștepta.
+ *
+ * Acum sunt cele două mesaje reale. Textul autoritar stă în backend
+ * (`build_request_message` și `app/services/daily_digest.py`), iar
+ * `tests/test_contract_messages.py` cade dacă frazele de aici se despart de el.
+ */
 const TEMPLATES: Array<{
   code: string;
   title: string;
   channel: string;
+  audience: string;
   Icon: LucideIcon;
   tone: Tone;
   preview: string;
 }> = [
   {
-    code: "DOCUMENTS_RECEIVED",
-    title: "Confirmare de primire",
+    code: "DOCUMENT_REQUEST",
+    title: "Solicitare de documente",
     channel: "Email",
+    audience: "către client",
     Icon: Mail,
     tone: "blue",
     preview:
-      "Am recepționat și procesat {{count}} documente pentru luna {{month}}. Așteptăm {{missing}}.",
+      "Pentru evidența contabilă a lunii {{luna}} mai avem nevoie de următoarele documente: " +
+      "{{lista}} Vă rugăm să ni le transmiteți până la {{termen}}, " +
+      "ca declarațiile să poată fi depuse la timp. " +
+      "Cel mai simplu este să le încărcați direct aici, fără cont și fără parolă: {{link}}",
   },
   {
-    code: "DOCUMENTS_RECEIVED_SHORT",
-    title: "Confirmare scurtă",
-    channel: "WhatsApp",
-    Icon: MessageCircle,
-    tone: "green",
-    preview:
-      "Am primit {{count}} documente pentru {{month}}. {{auto}} procesate automat, {{review}} necesită verificare.",
-  },
-  {
-    code: "PERIOD_REMINDER",
-    title: "Solicitare documente",
+    code: "DAILY_DIGEST",
+    title: "Ce aveți de făcut azi",
     channel: "Email",
+    audience: "către colegii din cabinet",
     Icon: CalendarClock,
     tone: "amber",
-    preview: "Vă rugăm să transmiteți documentele pentru luna {{month}} până la {{deadline}}.",
+    preview:
+      "Bună dimineața, Pentru {{ziua}}: {{cifre}} — de exemplu 3 declarații nedepuse după " +
+      "termen. Rândurile care ar fi zero nu se scriu deloc.",
   },
 ];
 
 /**
- * Șabloanele și reminderele se administrează abia când backend-ul poate trimite mesaje.
- * Nu afișăm un editor care nu are ce salva.
+ * Textele nu se editează încă — dar se **văd**, iar cel real se vede compus, cu
+ * documentele clientului, din fișa lui: `Comunicare → Pregătește solicitarea`.
  */
 export function TemplatesPage() {
   return (
     <div>
       <PageHeader
         title="Șabloane de notificare"
-        description="Textele trimise clienților. Conținutul devine editabil odată cu backend-ul."
+        description="Mesajele pe care aplicația le trimite. Textul îl compune serverul din datele lunii; nu este încă editabil din interfață."
       />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+
+      <div className="mb-4 flex items-start gap-3 rounded-xl border border-blue-200/70 bg-blue-50/60 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+        <Send className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <p>
+          Solicitarea se trimite dintr-un clic din{" "}
+          <Link to="/contabilitate/lipsa" className="font-medium underline underline-offset-2">
+            Documente lipsă
+          </Link>{" "}
+          sau din fișa clientului, unde textul se vede întâi compus, cu documentele lui.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {TEMPLATES.map((template, index) => (
           <section
             key={template.code}
@@ -282,11 +310,13 @@ export function TemplatesPage() {
                 <h3 className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                   {template.title}
                 </h3>
-                <p className={cn("text-xs", mutedText)}>{template.channel}</p>
+                <p className={cn("text-xs", mutedText)}>
+                  {template.channel} · {template.audience}
+                </p>
               </div>
             </div>
             {/* Textul arată ca un mesaj, nu ca un câmp de configurare — cine îl
-                aprobă trebuie să vadă ce va citi clientul. */}
+                aprobă trebuie să vadă ce va citi destinatarul. */}
             <p className="flex-1 rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
               <Placeholders text={template.preview} />
             </p>
@@ -322,10 +352,41 @@ function Placeholders({ text }: { text: string }) {
 
 /* ─── Remindere ────────────────────────────────────────────────────────────── */
 
-const REMINDER_RULES: Array<{ when: string; what: string; tone: Tone }> = [
-  { when: "−5 zile", what: "Solicitare documente pentru luna în curs", tone: "blue" },
-  { when: "Ziua termenului", what: "Ultimul apel înainte de închidere", tone: "amber" },
-  { when: "+1 zi", what: "Notificare documente lipsă, cu lista lor", tone: "red" },
+/**
+ * Ce pleacă azi din aplicație, și ce nu.
+ *
+ * **Ce era înainte aici.** Trei „reguli planificate", fiecare cu o pastilă
+ * „oprit". Se citeau ca niște reguli care există și doar așteaptă să fie pornite
+ * — dar nu exista nici regula, nici comutatorul. Iar panoul de alături scria că
+ * lipsește „un provider de email, adică Faza 2", ceea ce nu mai este adevărat de
+ * când solicitarea chiar pleacă din aplicație. Un ecran care subestimează ce
+ * poate produsul ascunde exact funcția pe care cabinetul o caută.
+ *
+ * Distincția care contează nu este între „pornit" și „oprit", ci între **ce
+ * pleacă la apăsarea unui om** și **ce ar pleca singur**. Prima jumătate există.
+ * A doua nu, și nu din lipsă de cod: un mesaj trimis automat, în numele
+ * cabinetului, unui client, este o decizie care se ia o dată, explicit, de
+ * cabinet — nu de aplicație.
+ */
+const WHAT_LEAVES: Array<{ what: string; where: string; to: string; tone: Tone }> = [
+  {
+    what: "Solicitarea de documente, către un client",
+    where: "Fișa clientului → Comunicare",
+    to: "/crm/clienti",
+    tone: "blue",
+  },
+  {
+    what: "Solicitarea către toți clienții cărora le lipsește ceva",
+    where: "Documente lipsă → Cere la toți",
+    to: "/contabilitate/lipsa",
+    tone: "blue",
+  },
+  {
+    what: "Rezumatul zilei, către colegii din cabinet",
+    where: "Automat, o dată pe zi, dacă a fost pornit",
+    to: "/administrare/setari",
+    tone: "green",
+  },
 ];
 
 export function RemindersPage() {
@@ -333,61 +394,67 @@ export function RemindersPage() {
     <div>
       <PageHeader
         title="Remindere"
-        description="Reguli programate de urmărire a documentelor lipsă"
+        description="Ce pleacă din aplicație și la ce apăsare"
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Panel title="Regulile planificate" className="lg:col-span-2" bodyClassName="p-0">
-          <ol className="divide-y divide-slate-100 dark:divide-slate-800">
-            {REMINDER_RULES.map((rule) => (
-              <li key={rule.when} className="flex items-center gap-4 px-5 py-4">
+        <Panel title="Ce pleacă azi" className="lg:col-span-2" bodyClassName="p-0">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            {WHAT_LEAVES.map((row) => (
+              <li key={row.what} className="flex items-center gap-4 px-5 py-4">
                 <span
                   className={cn(
                     "grid h-10 w-10 shrink-0 place-content-center rounded-xl",
-                    iconChip[rule.tone],
+                    iconChip[row.tone],
                   )}
                 >
-                  <Bell className="h-5 w-5" aria-hidden="true" />
+                  <Send className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    {rule.what}
+                    {row.what}
                   </p>
-                  <p className={cn("text-xs", mutedText)}>{rule.when} față de termenul de depunere</p>
+                  <Link
+                    to={row.to}
+                    className={cn("text-xs hover:underline", mutedText)}
+                  >
+                    {row.where}
+                  </Link>
                 </div>
-                <span className={cn("ml-auto shrink-0", pillClass("slate"))}>oprit</span>
               </li>
             ))}
-          </ol>
+          </ul>
         </Panel>
 
-        <Panel title="Ce lipsește">
+        <Panel title="Ce nu pleacă singur">
           <div className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
             <p className="flex items-start gap-2">
-              <ScrollText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+              <Bell className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
               <span>
-                Datele există deja:{" "}
+                <strong>Niciun mesaj automat către clienți.</strong> Datele ar ajunge:{" "}
                 <Link
                   to="/contabilitate/lipsa"
                   className="font-medium text-blue-600 hover:underline dark:text-blue-400"
                 >
                   Documente lipsă
                 </Link>{" "}
-                spune, pentru fiecare client și fiecare lună, ce anume nu a sosit.
+                știe cine n-a trimis și de câte zile.
               </span>
             </p>
             <p className="flex items-start gap-2">
-              <Send className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+              <ScrollText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
               <span>
-                Lipsește <strong>trimiterea</strong> — un provider de email sau WhatsApp, adică
-                Faza 2.
+                Ce lipsește nu este codul, ci <strong>decizia</strong>: un mesaj trimis
+                automat, în numele cabinetului, unui client, se hotărăște o dată și
+                explicit — de cabinet, nu de aplicație.
               </span>
             </p>
             <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
               <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               <span>
-                Trimiterea automată rămâne oprită până când regulile sunt configurate și validate de
-                cabinet. Niciun mesaj nu pleacă fără audit.
+                Chiar și ce pleacă la apăsare are nevoie de un server de email
+                configurat. Fără el, textul se copiază și se trimite de mână, iar
+                rândul rămâne „Pregătit", nu „Trimis".
               </span>
             </p>
           </div>

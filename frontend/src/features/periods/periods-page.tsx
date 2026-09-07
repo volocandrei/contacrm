@@ -335,11 +335,11 @@ const COPIED_FEEDBACK_MS = 2000;
 /**
  * Solicitarea, în clipboard.
  *
- * Aplicația știe ce lipsește și până când, dar nu poate **trimite** — asta cere
- * un provider și rămâne în Faza 2. Între „știm" și „clientul află" stătea un om
- * care recitea tabelul și rescria lista de mână, de treizeci de ori pe lună.
- * Textul iese gata scris; trimiterea rămâne a contabilului, din clientul lui de
- * email, cu semnătura lui.
+ * Aplicația știe ce lipsește și până când. Între „știm" și „clientul află" stătea
+ * un om care recitea tabelul și rescria lista de mână, de treizeci de ori pe lună.
+ * Textul iese gata scris, iar de la M17 poate și pleca din aplicație — dar numai
+ * cu un server de email configurat. Fără el, drumul rămas este copierea, iar
+ * trimiterea rămâne a contabilului, din clientul lui de email, cu semnătura lui.
  *
  * **Textul vine de la server.** A fost o vreme compus aici, ceea ce era în
  * regulă cât timp butonul ăsta era singurul care îl cerea. Din momentul în care

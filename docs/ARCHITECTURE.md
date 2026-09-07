@@ -172,6 +172,12 @@ formă a ceea ce ar trebui construit, nu ca descriere a ce este. Ecranele care
 le-ar fi consumat au fost făcute oneste la auditul de producție: nu mai cer
 rute inexistente.
 
+**Trimiterea, însă, există** de la M17, fără tabelele astea: solicitarea de
+documente pleacă pe email la apăsarea unui om, iar faptul că a plecat se reține
+în `client_upload_links.notified_at` — **că** s-a trimis și către cine, nu
+conținutul (§33, §52). Ce rămâne nefăcut este arhiva mesajelor și trimiterea
+automată, care este o decizie a cabinetului, nu o lipsă de cod.
+
 | Tabel | Câmpuri cheie |
 |---|---|
 | `communication_messages` | id, client_id, direction, channel, external_id, subject, body, occurred_at |

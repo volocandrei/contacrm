@@ -1,11 +1,14 @@
 /**
  * Încărcarea manuală a documentelor — drumul prin care un document intră azi.
  *
- * Fluxul produsului începe cu email și WhatsApp, dar amândouă sunt Faza 2. Până
- * atunci aplicația nu avea **niciun** mod prin care un utilizator să bage un
- * document în sistem: exista ruta `POST /documents/upload`, dar numai un script
- * o putea folosi. Restul aplicației — verificare, aprobare, arhivare — se
+ * Când a fost scris, aplicația nu avea **niciun** mod prin care un utilizator să
+ * bage un document în sistem: exista ruta `POST /documents/upload`, dar numai un
+ * script o putea folosi. Restul aplicației — verificare, aprobare, arhivare — se
  * sprijinea pe date semănate.
+ *
+ * Între timp documentele sosesc și singure: din email și OneDrive, din e-Factura,
+ * și de la client prin linkul de încărcare. Panoul rămâne drumul pe care intră
+ * teancul de hârtii scanate, care nu vine de nicăieri de la sine.
  *
  * Trei decizii merită scrise:
  *

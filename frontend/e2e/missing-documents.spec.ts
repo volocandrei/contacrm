@@ -1,11 +1,12 @@
 /**
  * Solicitarea de documente, dusă până la capăt.
  *
- * Aplicația știe ce lipsește fiecărui client și până când, dar nu poate
- * **trimite** — asta cere un provider și rămâne în Faza 2. Butonul acoperă exact
- * distanța rămasă: textul iese gata scris, iar contabilul îl trimite din clientul
- * lui de email. Testul verifică drumul întreg, inclusiv că în clipboard ajunge
- * chiar mesajul, nu un șablon cu locurile necompletate.
+ * Aplicația știe ce lipsește fiecărui client și până când. Trimiterea din
+ * aplicație există de la M17, dar are nevoie de un server de email configurat;
+ * fără el, drumul rămas este copierea. Butonul acoperă exact distanța aceea:
+ * textul iese gata scris, iar contabilul îl trimite din clientul lui de email.
+ * Testul verifică drumul întreg, inclusiv că în clipboard ajunge chiar mesajul,
+ * nu un șablon cu locurile necompletate.
  *
  * Documentul se urcă întâi pentru că perioada contabilă **se derivă**: fără
  * niciun document, luna nu există, deci nu are cum să-i lipsească ceva.

@@ -277,6 +277,47 @@ copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email,
 verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
 confirmat.
 
+### Trei ecrane spuneau că aplicația nu poate trimite (7 septembrie 2026)
+
+Găsit trecând în revistă ce **afirmă** interfața, nu ce face codul — aceeași
+întrebare care a produs, în zilele dinainte, patru defecte reale.
+
+De la M17, solicitarea de documente chiar pleacă din aplicație, iar rezumatul
+zilei ajunge la colegii din cabinet. Trei ecrane rămăseseră cu textul de dinainte:
+
+- **Mesaje** scria „Trimiterea — email, WhatsApp, remindere — cere un provider și
+  rămâne în Faza 2";
+- **Remindere** avea un panou „Ce lipsește" care spunea același lucru, plus trei
+  „reguli planificate" cu pastila *oprit* — se citeau ca niște reguli care există
+  și doar așteaptă un comutator. Nu exista nici regula, nici comutatorul;
+- **Șabloane de notificare** arăta **trei mesaje inventate** — o confirmare de
+  primire, una pe WhatsApp, un reminder. Niciunul nu a existat vreodată în
+  backend, iar pe WhatsApp aplicația nu a trimis nimic niciodată.
+
+Un ecran care **subestimează** ce poate produsul este la fel de fals ca unul care
+promite prea mult, și e mai scump: ascunde exact funcția pe care cabinetul o
+caută. Un cabinet care citea „Faza 2" nu apăsa niciodată butonul de trimitere
+livrat cu o zi înainte.
+
+Ce spun acum ecranele:
+
+- **Șabloane** arată cele **două mesaje reale** — solicitarea către client și
+  rezumatul către colegi — cu mențiunea că textul îl compune serverul și că
+  varianta completă, cu documentele clientului, se vede pe fișa lui;
+- **Remindere** desparte ce contează cu adevărat: **ce pleacă la apăsarea unui om**
+  (există, cu trei drumuri, fiecare cu link) și **ce ar pleca singur** (nu există).
+  Iar motivul este scris: lipsa nu este de cod, ci de decizie — un mesaj trimis
+  automat, în numele cabinetului, unui client, se hotărăște o dată și explicit, de
+  cabinet;
+- **Mesaje** spune că aplicația reține **că** a trimis și către cine, nu conținutul
+  (§33, §52).
+
+**Ce ține previzualizarea legată de mesajul real.** O copie scrisă de mână se
+desparte de original la prima reformulare, iar despărțirea nu se vede: ecranul
+continuă să arate corect, doar că altceva. `tests/test_contract_messages.py`
+compară frazele care poartă înțelesul cu sursa lor din backend și cade dacă una
+se schimbă doar într-o parte. Verificat prin mutație.
+
 ### Cabinetul își vede banii (7 septembrie 2026)
 
 **Ce lipsea.** Aplicația știa tot despre munca făcută pentru client — ce a sosit,
