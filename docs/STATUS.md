@@ -1589,7 +1589,7 @@ ci portat.**
 | **M9** | **Preluare automată din OneDrive/SharePoint, un dosar per client** | ✅ |
 | **M10** | **Preluare automată din email; expeditorul identifică clientul** | ✅ |
 | **M11** | **e-Factura: preluarea din SPV-ul ANAF, cu toate trei fișierele** | ✅ (descărcarea; trimiterea rămâne în Faza 2) |
-| Faza 2 | WhatsApp, trimiterea e-Facturii către ANAF, ~~OCR real pentru scanuri~~ (M16, cere cheie), ~~export ZIP~~ (arhiva lunii), remindere automate | |
+| Faza 2 | WhatsApp, trimiterea e-Facturii către ANAF, ~~OCR real pentru scanuri~~ (M16, cere cheie), ~~export ZIP~~ (arhiva lunii), remindere automate (cere o decizie a cabinetului, nu cod) | |
 | Faza 3 | Integrare software contabil (registrul există; formatul Saga cere un exemplu), rapoarte avansate, ~~detecție anomalii~~ (duplicatul semantic) | |
 
 **MVP = M1–M8.**
@@ -2075,6 +2075,18 @@ Necesită input uman, nu sunt de rezolvat în cod:
    Saga, luată dintr-un exemplu real, nu dedusă. *Vezi `docs/SAGA.md`.*
 6. **Tenant unic vs. multi-firmă** de la lansare. Schema suportă ambele;
    `organization_id` există peste tot de la început.
+7. **Are voie aplicația să trimită singură remindere clienților?** Tot ce trebuie
+   există: știm cine n-a trimis, de câte zile, ce anume lipsește, și avem prin ce
+   trimite. Ce lipsește este hotărârea. Un mesaj plecat automat, în numele
+   cabinetului, către un client, nu este o funcție tehnică — este o schimbare în
+   relația cu clientul, iar dacă textul sau momentul sunt greșite, cabinetul află
+   de la client. Se ia o dată, explicit, de cabinet. Până atunci, ecranul
+   „Remindere" spune pe față ce pleacă la apăsare și ce nu pleacă deloc.
+8. **Onorariile: doar registru, sau și facturare?** Ce există acum este registrul
+   cabinetului — cine cât plătește, cine a plătit. Facturarea propriu-zisă are
+   serie, număr, TVA și, pentru B2B în România, e-Factura: alt regim de
+   răspundere, nu o continuare firească. *Decizie de business, cu implicații
+   legale.*
 
 ---
 
