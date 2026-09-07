@@ -27,7 +27,7 @@ from app.api.route import CommittingRoute
 from app.api.v1.periods import AccountingPeriodOut, to_period
 from app.core.config import settings
 from app.domain.enums import ClientStatus, DocumentStatus, PeriodStatus, TaskStatus
-from app.domain.periods import filing_deadline, format_reference_month
+from app.domain.periods import ChecklistEntry, filing_deadline, format_reference_month
 from app.domain.permissions import Permission, permissions_for
 from app.models.audit import AuditLog
 from app.models.client import Client
@@ -269,21 +269,25 @@ def dashboard(session: DbSession, user: DashboardReader) -> DashboardOut:
     repository = DocumentRepository(session)
     by_status = repository.count_by_status(organization_id)
 
-    # Luna în lucru o spun datele, nu calendarul: vezi `latest_active_month`.
+    # Luna în lucru, perioadele ei și cui îi lipsește ceva — dintr-o trecere.
+    # Vezi `month_overview`: golurile vin din aceeași sursă ca raportul
+    # „Documente lipsă", fiindcă `list_periods` singur nu-l vede pe clientul care
+    # n-a trimis absolut nimic. Panoul îl număra ca pe unul în regulă: cu patru
+    # clienți activi și un singur document urcat, spunea „1 client cu lipsuri"
+    # acolo unde raportul spunea 4.
     service = PeriodService(session)
-    current = service.latest_active_month(organization_id)
-    periods = service.list_periods(organization_id, reference_month=current) if current else []
+    current, periods, gaps = service.month_overview(organization_id)
 
     return DashboardOut(
         reference_month=current,
-        kpis=_kpis(session, organization_id, by_status, periods, current),
+        kpis=_kpis(session, organization_id, by_status, periods, gaps, current),
         attention=_attention(session, organization_id, periods),
         recent_documents=[
             _to_list_item(row) for row in _recent(session, organization_id, RECENT_DOCUMENTS)
         ],
         periods=[to_period(view) for view in periods[:MAX_PERIODS]],
         timeline=_timeline(session, organization_id),
-        closing=_closing(current, periods) if current else None,
+        closing=_closing(current, gaps) if current else None,
         trend=_trend(session, organization_id),
         fees=_fees(session, user),
         by_status=[
@@ -297,21 +301,22 @@ def dashboard(session: DbSession, user: DashboardReader) -> DashboardOut:
 # ── Indicatori ───────────────────────────────────────────────────────────────
 
 
-def _closing(reference_month: str, periods: list[PeriodView]) -> ClosingOut:
+def _closing(
+    reference_month: str, waiting: list[tuple[PeriodView, list[ChecklistEntry]]]
+) -> ClosingOut:
     """Cât a mai rămas până la termen și cine încă nu a trimis.
 
-    Se calculează din perioadele deja citite pentru panou — nicio interogare în
-    plus. Clienții se ordonează după **cât** le lipsește, nu alfabetic: primul
-    rând trebuie să fie cel care costă cel mai mult dacă rămâne așa.
+    Primește chiar lista raportului „Documente lipsă", nu perioadele: altfel
+    clientul care n-a trimis nimic lipsea și de aici, iar panoul ar fi spus că
+    mai așteptăm de la unul singur.
+
+    Clienții se ordonează după **cât** le lipsește, nu alfabetic: primul rând
+    trebuie să fie cel care costă cel mai mult dacă rămâne așa.
     """
     deadline = filing_deadline(reference_month, day=settings.filing_deadline_day)
     today = datetime.now(ZoneInfo(settings.default_timezone)).date()
 
-    waiting = [
-        (view, [item for item in view.checklist if not item.is_satisfied]) for view in periods
-    ]
-    waiting = [(view, gaps) for view, gaps in waiting if gaps]
-    waiting.sort(key=lambda pair: (-len(pair[1]), pair[0].client_name))
+    waiting = sorted(waiting, key=lambda pair: (-len(pair[1]), pair[0].client_name))
 
     return ClosingOut(
         reference_month=reference_month,
@@ -351,6 +356,7 @@ def _kpis(
     organization_id: uuid.UUID,
     by_status: dict[DocumentStatus, int],
     periods: list[PeriodView],
+    gaps: list[tuple[PeriodView, list[ChecklistEntry]]],
     reference_month: str | None,
 ) -> DashboardKpisOut:
     clients_total = (
@@ -392,13 +398,15 @@ def _kpis(
         1 for p in periods if p.status in {PeriodStatus.COMPLETE, PeriodStatus.FINALIZED}
     )
 
-    not_asked, awaiting_reply = _collection_state(session, organization_id, reference_month)
+    not_asked, awaiting_reply = _collection_state(session, organization_id, reference_month, gaps)
 
     return DashboardKpisOut(
         clients_total=clients_total,
         clients_active=clients_active,
         clients_complete=complete,
-        clients_missing_docs=len(periods) - complete,
+        # Din raportul de lipsuri, nu din perioade: clientul care n-a trimis
+        # nimic nu are perioadă, dar are tot ce-i lipsește.
+        clients_missing_docs=len(gaps),
         documents_today=documents_today,
         documents_processing=by_status.get(DocumentStatus.PROCESSING, 0),
         documents_error=by_status.get(DocumentStatus.ERROR, 0),
@@ -411,7 +419,10 @@ def _kpis(
 
 
 def _collection_state(
-    session: Session, organization_id: uuid.UUID, reference_month: str | None
+    session: Session,
+    organization_id: uuid.UUID,
+    reference_month: str | None,
+    entries: list[tuple[PeriodView, list[ChecklistEntry]]],
 ) -> tuple[int, int]:
     """Câți clienți n-au fost întrebați, și câți au fost dar tac.
 
@@ -421,12 +432,13 @@ def _collection_state(
 
     Sursa este aceeași: perioadele cu goluri, încrucișate cu cererile lunii. Un al
     doilea mod de a le număra ar fi produs, într-o zi, alte cifre decât ecranul.
-    """
-    if reference_month is None:
-        return 0, 0
 
-    entries = PeriodService(session).missing(organization_id, reference_month)
-    if not entries:
+    **Golurile vin gata calculate**, nu se cer din nou. Le calcula singur, cu un
+    `PeriodService` nou — deci cu memoria rece — și repeta cinci interogări pe
+    care panoul tocmai le făcuse: clienți, așteptări, etichete, perioade,
+    documente. Erau invizibile fiindcă răspunsul ieșea corect.
+    """
+    if reference_month is None or not entries:
         return 0, 0
 
     traces = UploadLinkService(session).requests_for(organization_id, reference_month)

@@ -196,6 +196,90 @@ def test_the_numbers_agree_with_the_missing_documents_screen(
     assert never == 2
 
 
+class TestTheClientWhoSentNothing:
+    """Cel mai scump defect al panoului: clientul invizibil tocmai fiindcă tace.
+
+    `list_periods` nu inventează o lună fără documente, deci clientul care n-a
+    trimis absolut nimic nu are perioadă — iar panoul îl număra ca pe unul în
+    regulă. Cu patru clienți activi și un singur document urcat, panoul spunea
+    „1 client cu lipsuri" acolo unde raportul spunea 4. Ecranul cu care începe
+    ziua raporta un sfert din munca rămasă.
+
+    Găsit rulând aplicația, nu citind codul: panoul și raportul, deschise unul
+    după altul pe aceleași date.
+    """
+
+    def test_the_missing_count_agrees_with_the_report(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        org: Organization,
+        admin: User,
+        client_row: Client,
+        expectations: dict[str, ClientExpectation],
+        types: dict[str, DocumentType],
+    ) -> None:
+        """Un client trimite ceva, altul nimic. Amândoi datorează documente."""
+        silent = Client(
+            organization_id=org.id,
+            name="Tăcut SRL",
+            tax_id="RO9911",
+            status=ClientStatus.ACTIVE,
+        )
+        db.add(silent)
+        db.flush()
+        db.add(
+            ClientExpectation(
+                organization_id=org.id,
+                client_id=silent.id,
+                document_type_id=types["FACTURA_INTRARE"].id,
+                expected_min_count=2,
+            )
+        )
+        add_document(db, org, client_row, types["FACTURA_INTRARE"])
+        db.commit()
+        login(api_storage, admin.email)
+
+        report = api_storage.get(f"/api/v1/periods/missing?referenceMonth={MONTH}").json()
+        body = api_storage.get("/api/v1/dashboard").json()
+
+        assert len(report) == 2, "amândoi clienții datorează documente"
+        assert body["kpis"]["clientsMissingDocs"] == len(report)
+        assert body["closing"]["clientsWaiting"] == len(report)
+        # Și apare pe nume: o cifră corectă cu o listă strâmbă tot minte.
+        assert "Tăcut SRL" in {row["clientName"] for row in body["closing"]["laggards"]}
+
+    def test_a_freshly_installed_office_is_not_told_it_is_done(
+        self,
+        api_storage: TestClient,
+        db: Session,
+        org: Organization,
+        admin: User,
+        client_row: Client,
+        expectations: dict[str, ClientExpectation],
+    ) -> None:
+        """Clienți importați, așteptări puse, niciun document: panoul nu tace.
+
+        `latest_active_month` întoarce `None` cât timp niciun document n-are lună
+        — răspunsul corect la „ce lună spun datele", dar catastrofal pentru un
+        ecran: panoul rămânea complet gol, fără lună și fără cifre, deși clientul
+        datora deja documente. Când datele tac, vorbește calendarul.
+        """
+        # Activ, nu prospect: un prospect nu datorează documente, iar fixture-ul
+        # implicit este prospect. Cabinetul care tocmai a importat lista importă
+        # clienți activi — vezi importul din CSV, care pune tot ACTIVE.
+        client_row.status = ClientStatus.ACTIVE
+        db.commit()
+        login(api_storage, admin.email)
+
+        body = api_storage.get("/api/v1/dashboard").json()
+
+        assert body["referenceMonth"], "panoul trebuie să știe la ce lună se uită"
+        assert body["kpis"]["clientsMissingDocs"] == 1
+        assert body["closing"] is not None
+        assert body["closing"]["clientsWaiting"] == 1
+
+
 def test_a_revoked_link_still_counts_as_asked(
     api_storage: TestClient,
     db: Session,

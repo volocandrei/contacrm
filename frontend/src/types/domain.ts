@@ -527,7 +527,15 @@ export type ClientExpectation = {
 };
 
 export type AccountingPeriod = {
-  id: string;
+  /**
+   * Nulă pentru clientul care n-a trimis nimic în luna asta.
+   *
+   * Raportul „Documente lipsă” îl arată — este chiar cel căruia îi lipsește
+   * tot — dar el nu are perioadă în bază, deci nu are nici id. Tipul spunea că
+   * este mereu un șir, iar TypeScript garanta astfel ceva fals: pe acele rânduri
+   * valoarea este `null` la rulare, cu compilatorul liniștit.
+   */
+  id: string | null;
   clientId: string;
   clientName: string;
   year: number;

@@ -168,8 +168,17 @@ export function MissingDocumentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {/* Cheia este clientul, nu perioada: clientul care n-a trimis nimic
+                    apare aici — este chiar cel căruia îi lipsește tot — dar el nu
+                    are perioadă în bază, deci `period.id` este `null`. Toate acele
+                    rânduri primeau aceeași cheie absentă, iar React le poate
+                    recicla greșit la reordonare. Un rând pe client pe lună, deci
+                    `clientId` este unic prin construcție. */}
                 {rows.map(({ period, missing, requestedAt, notifiedAt, receivedThroughLink }) => (
-                  <tr key={period.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                  <tr
+                    key={period.clientId}
+                    className="hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                  >
                     <td className="px-4 py-3">
                       <Link
                         to={`/crm/clienti/${period.clientId}`}

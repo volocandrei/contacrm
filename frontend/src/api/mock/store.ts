@@ -36,6 +36,7 @@ import type {
   AssistantLink,
   AssistantReply,
   AuditLogEntry,
+  ChecklistItem,
   Client,
   ClientAlias,
   ClientExpectation,
@@ -111,6 +112,18 @@ const state = {
   tasks: structuredClone(TASKS) as Task[],
   audit: structuredClone(AUDIT_LOGS) as AuditLogEntry[],
   users: structuredClone(USERS) as UserSummary[],
+  /**
+   * Ce se așteaptă lunar de la fiecare client, **independent de perioade**.
+   *
+   * Pe server, `client_expectations` este un tabel separat, iar checklistul unei
+   * luni se derivă din el. Aici așteptările trăiau doar în interiorul
+   * perioadelor, ceea ce arăta la fel — până la clientul nou: el n-are nicio
+   * perioadă, deci nu putea avea așteptări, deci nu apărea nicăieri ca dator.
+   * Serverul îl arăta imediat. Demonstrația ascundea exact scenariul prin care
+   * trece orice cabinet nou: importă clienții, pune așteptările, vrea să vadă ce
+   * i se datorează.
+   */
+  expectations: new Map<string, ChecklistItem[]>(),
 };
 
 let auditCounter = state.audit.length;
@@ -1297,7 +1310,7 @@ export function collectionState(referenceMonth: string): {
 
 export function listMissingDocuments(referenceMonth: string) {
   const deadline = filingDeadline(referenceMonth);
-  return listPeriods({ referenceMonth })
+  const withPeriods = listPeriods({ referenceMonth })
     .map((period) => {
       // Ultima cerere pentru clientul ăsta, pe luna asta. Linkurile revocate
       // rămân în calcul: o cerere trimisă s-a trimis, iar faptul că i-am închis
@@ -1326,6 +1339,55 @@ export function listMissingDocuments(referenceMonth: string) {
       };
     })
     .filter((entry) => entry.missing.length > 0);
+
+  return [...withPeriods, ...neverStarted(referenceMonth, withPeriods)].sort((a, b) =>
+    a.period.clientName.localeCompare(b.period.clientName),
+  );
+}
+
+/**
+ * Clienții activi care n-au trimis **absolut nimic** în luna asta.
+ *
+ * `listPeriods` nu inventează o lună fără documente, și are dreptate: acolo
+ * întrebarea este „ce perioade există". Aici întrebarea este alta — „cui îi
+ * lipsește ceva" —, iar clientul care n-a trimis nimic este exact cel căruia îi
+ * lipsește tot. Lăsat pe dinafară, devenea invizibil tocmai în raportul făcut ca
+ * să-l găsească, și reapărea abia după ce trimitea primul document. Aceeași
+ * regulă ca `_never_started` din `period_service.py`.
+ */
+function neverStarted(referenceMonth: string, seen: Array<{ period: AccountingPeriod }>) {
+  const known = new Set(seen.map((entry) => entry.period.clientId));
+  const deadline = filingDeadline(referenceMonth);
+  const [year, month] = referenceMonth.split("-").map(Number) as [number, number];
+
+  return state.clients
+    .filter((client) => client.status === "ACTIVE" && !known.has(client.id))
+    .map((client) => ({ client, checklist: state.expectations.get(client.id) ?? [] }))
+    .filter((entry) => entry.checklist.length > 0)
+    .map(({ client, checklist }) => ({
+      period: {
+        id: null,
+        clientId: client.id,
+        clientName: client.name,
+        referenceMonth,
+        year,
+        month,
+        status: "NOT_STARTED" as const,
+        receivedCount: 0,
+        satisfiedCount: 0,
+        expectedCount: checklist.length,
+        checklist,
+        openedAt: null,
+        closedAt: null,
+        completedAt: null,
+      } as AccountingPeriod,
+      missing: checklist,
+      deadline,
+      // Nu i s-a cerut nimic: n-are cum, n-are nici perioadă.
+      requestedAt: null,
+      notifiedAt: null,
+      receivedThroughLink: 0,
+    }));
 }
 
 /* ─── Rapoarte (§84) ───────────────────────────────────────────────────────── */
@@ -2174,9 +2236,10 @@ export function listExpectations(clientId: string): ClientExpectation[] {
   requirePermission("documents:read");
   getClient(clientId);
 
+  const stored = state.expectations.get(clientId);
   const periods = state.periods.filter((period) => period.clientId === clientId);
   const latest = periods.sort((a, b) => b.referenceMonth.localeCompare(a.referenceMonth))[0];
-  return (latest?.checklist ?? []).map((item) => ({
+  return (stored ?? latest?.checklist ?? []).map((item) => ({
     documentTypeCode: item.documentType,
     documentTypeLabel: item.documentTypeLabel,
     expectedMinCount: item.expectedMinCount,
@@ -2207,6 +2270,18 @@ export function setExpectations(
     }
   }
 
+  const checklist = (): ChecklistItem[] =>
+    wanted.map((entry) => ({
+      documentType: entry.documentTypeCode as DocumentTypeCode,
+      documentTypeLabel:
+        DOCUMENT_TYPE_LABEL.get(entry.documentTypeCode as DocumentTypeCode) ??
+        entry.documentTypeCode,
+      expectedMinCount: entry.expectedMinCount,
+      receivedCount: 0,
+      isSatisfied: false,
+    }));
+
+  state.expectations.set(clientId, checklist());
   for (const period of state.periods.filter((row) => row.clientId === clientId)) {
     period.checklist = wanted.map((entry) => ({
       documentType: entry.documentTypeCode as DocumentTypeCode,
@@ -2364,7 +2439,12 @@ export function getDashboard(): DashboardData {
       clientsTotal: state.clients.length,
       clientsActive: state.clients.filter((c) => c.status === "ACTIVE").length,
       clientsComplete: complete.length,
-      clientsMissingDocs: currentPeriods.length - complete.length,
+      // Din raportul de lipsuri, nu din perioade. `listPeriods` nu inventează o
+      // lună fără documente, deci nu-l vede pe clientul care n-a trimis absolut
+      // nimic — exact cel căruia îi lipsește tot. Panoul îl număra ca pe unul în
+      // regulă: cu patru clienți activi și un singur document, spunea „1 client
+      // cu lipsuri" acolo unde raportul spunea 4. Găsit rulând serverul real.
+      clientsMissingDocs: listMissingDocuments(CURRENT_MONTH).length,
       documentsToday: docs.filter((d) => d.receivedAt.startsWith(today)).length,
       documentsProcessing: countByStatus("PROCESSING"),
       documentsError: countByStatus("ERROR"),
@@ -2380,7 +2460,7 @@ export function getDashboard(): DashboardData {
     attention: attention.slice(0, 8),
     recentDocuments: docs.slice(0, 8).map(toListItem),
     periods: currentPeriods.slice(0, 6),
-    closing: buildClosing(currentPeriods),
+    closing: buildClosing(),
     trend: buildTrend(docs),
     byStatus: buildStatusSlices(docs),
     fees: dashboardFees(),
@@ -2453,15 +2533,14 @@ const MOCK_MAX_MISSING_LABELS = 3;
  * 25 septembrie. Clienții se ordonează după cât le lipsește, nu alfabetic —
  * primul rând trebuie să fie cel care costă cel mai mult dacă rămâne așa.
  */
-function buildClosing(periods: AccountingPeriod[]): DashboardClosing {
+function buildClosing(): DashboardClosing {
   const deadline = filingDeadline(CURRENT_MONTH);
 
-  const waiting = periods
-    .map((period) => ({
-      period,
-      gaps: period.checklist.filter((item) => item.receivedCount < item.expectedMinCount),
-    }))
-    .filter((entry) => entry.gaps.length > 0)
+  // Chiar lista raportului „Documente lipsă", nu perioadele: clientul care n-a
+  // trimis nimic nu are perioadă, deci lipsea și de aici — iar panoul spunea că
+  // mai așteptăm de la unul singur.
+  const waiting = listMissingDocuments(CURRENT_MONTH)
+    .map((entry) => ({ period: entry.period, gaps: entry.missing }))
     .sort(
       (a, b) =>
         b.gaps.length - a.gaps.length || a.period.clientName.localeCompare(b.period.clientName),

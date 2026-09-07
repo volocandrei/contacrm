@@ -28,6 +28,7 @@ from app.domain.enums import ClientStatus, DocumentStatus, PeriodStatus
 from app.domain.periods import (
     ChecklistEntry,
     derive_period_status,
+    format_reference_month,
     is_valid_reference_month,
     period_progress,
     split_reference_month,
@@ -66,6 +67,14 @@ class PeriodView:
 class PeriodService:
     def __init__(self, session: Session) -> None:
         self.session = session
+        # Trei citiri pe care panoul le cerea de două ori: o dată pentru
+        # perioadele lunii, o dată pentru clienții care n-au trimis nimic. Sunt
+        # aceleași rânduri, iar serviciul trăiește cât o singură cerere — deci se
+        # citesc o dată. Nu este un cache: nu supraviețuiește cererii, deci nu
+        # poate deveni o dată învechită.
+        self._cached_clients: dict[uuid.UUID, list[Client]] = {}
+        self._cached_expectations: dict[uuid.UUID, dict[uuid.UUID, list[ClientExpectation]]] = {}
+        self._cached_labels: dict[uuid.UUID, dict[uuid.UUID, tuple[str, str]]] = {}
 
     # ── Citire ──────────────────────────────────────────────────────────────
 
@@ -133,6 +142,37 @@ class PeriodService:
         candidates = [m for m in (from_documents, from_periods) if m]
         return max(candidates) if candidates else None
 
+    def month_overview(
+        self, organization_id: uuid.UUID
+    ) -> tuple[str | None, list[PeriodView], list[tuple[PeriodView, list[ChecklistEntry]]]]:
+        """Luna în lucru, perioadele ei și cui îi lipsește ceva — dintr-o trecere.
+
+        **De ce un singur răspuns și nu trei apeluri.** Panoul are nevoie de toate
+        trei deodată, iar cerute separat ar fi însemnat `list_periods` de două ori
+        pe fiecare deschidere de ecran. Este primul ecran după autentificare: nu
+        are voie să coste cât arhiva.
+
+        **Când există lună.** Întâi cea pe care o spun datele
+        (`latest_active_month`). Când datele tac, luna calendaristică — dar numai
+        dacă în ea chiar se datorează ceva. Distincția contează în două feluri
+        opuse, și amândouă s-au greșit:
+
+        - un cabinet fără nimic în el nu are lună, și panoul nu inventează una;
+        - un cabinet care tocmai și-a importat clienții și și-a pus așteptările
+          **are** o lună de lucru, chiar dacă n-a intrat încă niciun document.
+          Panoul îi răspundea „nimic de făcut" despre o lună întreagă de muncă.
+        """
+        current = self.latest_active_month(organization_id)
+        month = current or format_reference_month(datetime.now(UTC).date())
+
+        periods = self.list_periods(organization_id, reference_month=month)
+        gaps = self.missing_in(organization_id, month, periods)
+
+        if current is None and not gaps:
+            # Nimic în date și nimic de recuperat: nu există lună în lucru.
+            return None, [], []
+        return month, periods, gaps
+
     def get(
         self, organization_id: uuid.UUID, client_id: uuid.UUID, reference_month: str
     ) -> PeriodView:
@@ -158,9 +198,26 @@ class PeriodService:
         îi lipsește tot. Lăsat pe dinafară, devenea invizibil tocmai în raportul
         făcut ca să-l găsească, și reapărea abia după ce trimitea primul document.
         """
+        return self.missing_in(
+            organization_id,
+            reference_month,
+            self.list_periods(organization_id, reference_month=reference_month),
+        )
+
+    def missing_in(
+        self,
+        organization_id: uuid.UUID,
+        reference_month: str,
+        periods: list[PeriodView],
+    ) -> list[tuple[PeriodView, list[ChecklistEntry]]]:
+        """Aceeași întrebare, dar peste perioade deja citite.
+
+        Există ca panoul să nu ceară de două ori aceleași rânduri: el are nevoie
+        și de perioadele complete, și de golurile lor.
+        """
         result = []
         seen: set[uuid.UUID] = set()
-        for view in self.list_periods(organization_id, reference_month=reference_month):
+        for view in periods:
             seen.add(view.client_id)
             gaps = [item for item in view.checklist if not item.is_satisfied]
             if gaps:
@@ -313,6 +370,17 @@ class PeriodService:
     # ── Interogări interne ──────────────────────────────────────────────────
 
     def _clients(self, organization_id: uuid.UUID, client_id: uuid.UUID | None) -> list[Client]:
+        if client_id is None:
+            cached = self._cached_clients.get(organization_id)
+            if cached is None:
+                cached = self._clients_query(organization_id, None)
+                self._cached_clients[organization_id] = cached
+            return cached
+        return self._clients_query(organization_id, client_id)
+
+    def _clients_query(
+        self, organization_id: uuid.UUID, client_id: uuid.UUID | None
+    ) -> list[Client]:
         stmt = select(Client).where(
             Client.organization_id == organization_id, Client.deleted_at.is_(None)
         )
@@ -358,6 +426,16 @@ class PeriodService:
         return counts
 
     def _expectations(self, organization_id: uuid.UUID) -> dict[uuid.UUID, list[ClientExpectation]]:
+        cached = self._cached_expectations.get(organization_id)
+        if cached is not None:
+            return cached
+        grouped = self._expectations_query(organization_id)
+        self._cached_expectations[organization_id] = grouped
+        return grouped
+
+    def _expectations_query(
+        self, organization_id: uuid.UUID
+    ) -> dict[uuid.UUID, list[ClientExpectation]]:
         rows = self.session.scalars(
             select(ClientExpectation).where(ClientExpectation.organization_id == organization_id)
         ).all()
@@ -367,6 +445,14 @@ class PeriodService:
         return grouped
 
     def _type_labels(self, organization_id: uuid.UUID) -> dict[uuid.UUID, tuple[str, str]]:
+        cached = self._cached_labels.get(organization_id)
+        if cached is not None:
+            return cached
+        labels = self._type_labels_query(organization_id)
+        self._cached_labels[organization_id] = labels
+        return labels
+
+    def _type_labels_query(self, organization_id: uuid.UUID) -> dict[uuid.UUID, tuple[str, str]]:
         rows = self.session.execute(
             select(DocumentType.id, DocumentType.code, DocumentType.label).where(
                 DocumentType.organization_id == organization_id

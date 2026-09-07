@@ -155,7 +155,20 @@ class IssuedLinkOut(UploadLinkOut):
 def list_upload_links(
     session: DbSession, user: ClientReader, client_id: uuid.UUID
 ) -> list[UploadLinkOut]:
-    """Drumurile deschise pentru clientul ăsta, fără tokenurile lor."""
+    """Drumurile deschise pentru clientul ăsta, fără tokenurile lor.
+
+    **Clientul se verifică întâi**, deși lista se filtrează oricum pe organizație.
+    Fără verificare, ruta răspundea `200 []` pentru clientul altui cabinet — și
+    pentru un id inventat — în timp ce toate rutele-surori (`/contacts`,
+    `/notes`, `/timeline`) și chiar `POST` pe aceeași resursă răspundeau `404`.
+    Nu se scurgea nimic, fiindcă interogarea cere `organization_id`; ce lipsea
+    era chiar garanția, iar ziua în care cineva ar fi simplificat interogarea la
+    `client_id` ar fi transformat inconsecvența în scurgere, fără niciun test
+    care să cadă (§72).
+    """
+    if ClientRepository(session).get(user.organization_id, client_id) is None:
+        raise NotFoundError("Client", client_id)
+
     links = UploadLinkService(session).for_client(user.organization_id, client_id)
     return [
         UploadLinkOut(
@@ -263,7 +276,13 @@ def list_aliases(
     cineva atribuie un document venit de la o adresă, următoarele merg singure
     acolo. Un alias pus din greșeală ar misruta tăcut, lună de lună — de aceea
     lista este vizibilă și fiecare rând se poate șterge.
+
+    Clientul se verifică întâi, ca la toate rutele-surori: altfel ruta răspundea
+    `200 []` pentru clientul altui cabinet și pentru un id inventat (§72).
     """
+    if ClientRepository(session).get(user.organization_id, client_id) is None:
+        raise NotFoundError("Client", client_id)
+
     aliases = ClientAliasService(session).for_client(user.organization_id, client_id)
     return [
         ClientAliasOut(
