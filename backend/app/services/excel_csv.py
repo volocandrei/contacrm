@@ -31,6 +31,8 @@ import re
 from decimal import Decimal
 from typing import Final
 
+from app.core.errors import ValidationError
+
 #: Separatorul așteptat de Excel în setările românești.
 DELIMITER: Final = ";"
 
@@ -80,6 +82,45 @@ def _as_text(value: str) -> str:
     return "'" + value
 
 
+#: Cat de mare poate fi un fisier de import. Un CSV de o mie de randuri are
+#: sub 200 KB; peste asta, cineva a urcat altceva.
+MAX_IMPORT_BYTES: Final = 2 * 1024 * 1024
+
+
+def decode(raw: bytes) -> str:
+    """Textul fișierului, oricum ar fi fost salvat.
+
+    **De ce nu doar UTF-8.** „Salvează ca CSV" din Excel pe Windows românesc
+    scrie cp1252, nu UTF-8. Un import care cere UTF-8 refuză exact fișierul pe
+    care îl produce programul din care vine lista — și îl refuză cu un mesaj
+    despre codificare, pe care nimeni nu are cum să-l urmeze.
+
+    Se încearcă întâi UTF-8, fiindcă el nu poate fi confundat: o secvență validă
+    de UTF-8 apărută din întâmplare într-un fișier pe un octet este practic
+    imposibilă. Invers nu se poate spune, deci codificarea veche rămâne ultima.
+
+    **cp1250, nu cp1252.** Windows-ul românesc folosește pagina de cod
+    central-europeană; `ă`, `ș` și `ț` nici nu există în cp1252, deci un fișier
+    care le conține nu poate fi cp1252. Fișierele vechi poartă `ş`/`ţ` cu
+    sedilă în loc de virgulă — asta scria pagina de cod atunci, iar aplicația
+    citește ce este în fișier, nu ce ar fi trebuit să fie.
+    """
+    if len(raw) > MAX_IMPORT_BYTES:
+        raise ValidationError(
+            "Fișierul este prea mare.",
+            {"file": [f"Maximum {MAX_IMPORT_BYTES // (1024 * 1024)} MB."]},
+        )
+    for encoding in ("utf-8-sig", "utf-8", "cp1250"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise ValidationError(
+        "Fișierul nu poate fi citit ca text.",
+        {"file": ["Salvează-l ca CSV, nu ca xlsx."]},
+    )
+
+
 def render(rows: list[list[str]]) -> str:
     """Rândurile, ca fișier gata de trimis ca răspuns.
 
@@ -114,4 +155,13 @@ def day(value: dt.date | None) -> str:
     return "" if value is None else value.strftime("%d.%m.%Y")
 
 
-__all__ = ["BOM", "DELIMITER", "LINE_ENDING", "day", "number", "render"]
+__all__ = [
+    "BOM",
+    "DELIMITER",
+    "LINE_ENDING",
+    "MAX_IMPORT_BYTES",
+    "day",
+    "decode",
+    "number",
+    "render",
+]

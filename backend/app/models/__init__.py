@@ -9,6 +9,7 @@ from __future__ import annotations
 from app.models.alias import AliasKind, ClientAlias
 from app.models.anaf import AnafConnection, AnafMandate
 from app.models.audit import AuditLog
+from app.models.bank import BankStatement, BankTransaction, TransactionMatch
 from app.models.base import Base
 from app.models.client import Client, ClientNote, Contact, Tag, client_tags
 from app.models.document import (
@@ -63,6 +64,9 @@ ALL_MODELS = (
     FeeEntry,
     ClientReminder,
     ImapMailbox,
+    BankStatement,
+    BankTransaction,
+    TransactionMatch,
     DocumentType,
     DocumentIntake,
     Document,
@@ -84,6 +88,8 @@ __all__ = [
     "AnafConnection",
     "AnafMandate",
     "AuditLog",
+    "BankStatement",
+    "BankTransaction",
     "Base",
     "Client",
     "ClientAlias",
@@ -117,6 +123,7 @@ __all__ = [
     "Role",
     "Tag",
     "Task",
+    "TransactionMatch",
     "User",
     "client_tags",
     "role_permissions",

@@ -45,7 +45,7 @@ from app.domain.romanian_documents import is_valid_tax_id
 from app.models.client import Client
 from app.services.client_matching import normalize_tax_id
 from app.services.client_service import ActorContext, ClientService
-from app.services.excel_csv import BOM, DELIMITER
+from app.services.excel_csv import BOM, DELIMITER, decode
 
 #: Câte rânduri se acceptă într-un fișier. Un cabinet cu peste atât de mulți
 #: clienți are alte probleme decât importul, iar limita ține cererea sub timpul
@@ -159,40 +159,6 @@ class _Parsed:
     name: str
     tax_id: str | None
     values: dict[str, str] = field(default_factory=dict)
-
-
-def decode(raw: bytes) -> str:
-    """Textul fișierului, oricum ar fi fost salvat.
-
-    **De ce nu doar UTF-8.** „Salvează ca CSV" din Excel pe Windows românesc
-    scrie cp1252, nu UTF-8. Un import care cere UTF-8 refuză exact fișierul pe
-    care îl produce programul din care vine lista — și îl refuză cu un mesaj
-    despre codificare, pe care nimeni nu are cum să-l urmeze.
-
-    Se încearcă întâi UTF-8, fiindcă el nu poate fi confundat: o secvență validă
-    de UTF-8 apărută din întâmplare într-un fișier pe un octet este practic
-    imposibilă. Invers nu se poate spune, deci codificarea veche rămâne ultima.
-
-    **cp1250, nu cp1252.** Windows-ul românesc folosește pagina de cod
-    central-europeană; `ă`, `ș` și `ț` nici nu există în cp1252, deci un fișier
-    care le conține nu poate fi cp1252. Fișierele vechi poartă `ş`/`ţ` cu
-    sedilă în loc de virgulă — asta scria pagina de cod atunci, iar aplicația
-    citește ce este în fișier, nu ce ar fi trebuit să fie.
-    """
-    if len(raw) > MAX_BYTES:
-        raise ValidationError(
-            "Fișierul este prea mare.",
-            {"file": [f"Maximum {MAX_BYTES // (1024 * 1024)} MB."]},
-        )
-    for encoding in ("utf-8-sig", "utf-8", "cp1250"):
-        try:
-            return raw.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    raise ValidationError(
-        "Fișierul nu poate fi citit ca text.",
-        {"file": ["Salvează-l ca CSV, nu ca xlsx."]},
-    )
 
 
 def _delimiter(first_line: str) -> str:

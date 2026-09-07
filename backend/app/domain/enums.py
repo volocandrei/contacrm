@@ -281,3 +281,45 @@ DOCUMENT_FIELD_NAMES: tuple[str, ...] = (
     "totalAmount",
     "referenceMonth",
 )
+
+
+class BankTransactionStatus(StrEnum):
+    """Unde a ajuns o tranzacție bancară în reconciliere (§12).
+
+    **De ce sunt șase și nu două.** „Potrivit / nepotrivit" ar fi ascuns exact
+    lucrurile pe care contabilul le caută: ce a propus sistemul și el n-a
+    confirmat încă, ce a hotărât un om cu mâna lui, și ce a decis cineva că nu are
+    nicio factură în spate. Un comision bancar de 3 lei nu este „nepotrivit", este
+    **lămurit** — iar dacă cele două arată la fel, lista de nepotrivite nu se mai
+    golește niciodată și nimeni nu se mai uită la ea.
+    """
+
+    #: Nimic nu s-a potrivit, sau nimeni nu s-a uitat încă.
+    UNMATCHED = "UNMATCHED"
+    #: Sistemul a găsit un candidat. **Nu este o potrivire** — este o propunere
+    #: care așteaptă o apăsare. Vezi `app/services/bank_matching.py` pentru de ce
+    #: nimic nu se leagă singur.
+    SUGGESTED = "SUGGESTED"
+    #: Confirmată. Din ce a propus sistemul sau din ce a ales omul — diferența o
+    #: ține `TransactionMatch.confirmed_by_id`, nu starea.
+    MATCHED = "MATCHED"
+    #: Fără factură în spate, și așa trebuie să rămână: comision, dobândă,
+    #: transfer între conturile proprii. Iese din lista de lucru.
+    IGNORED = "IGNORED"
+    #: Sumele nu se închid: plătit mai mult, mai puțin, sau pe mai multe facturi
+    #: care nu dau totalul. Cere un om, nu o regulă.
+    NEEDS_REVIEW = "NEEDS_REVIEW"
+
+
+class BankDirection(StrEnum):
+    """Banii au intrat sau au ieșit.
+
+    Se derivă din semnul sumei, nu se citește din fișier: un extras scrie uneori
+    două coloane (debit/credit), alteori una cu semn, iar o singură sursă de
+    adevăr este mai ieftină decât împăcarea lor la fiecare raport.
+    """
+
+    #: Bani ieșiți: plata unei facturi de la furnizor.
+    DEBIT = "DEBIT"
+    #: Bani intrați: încasarea unei facturi emise.
+    CREDIT = "CREDIT"

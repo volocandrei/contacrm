@@ -15,6 +15,7 @@ from app.api.v1 import (
     assistant,
     audit,
     auth,
+    bank,
     clients,
     contacts,
     dashboard,
@@ -37,6 +38,7 @@ from app.api.v1 import (
 api_router = APIRouter(route_class=CommittingRoute)
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
+api_router.include_router(bank.router)
 api_router.include_router(clients.router)
 api_router.include_router(contacts.router)
 api_router.include_router(dashboard.router)
