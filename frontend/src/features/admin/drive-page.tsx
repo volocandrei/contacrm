@@ -19,16 +19,30 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
+  Archive,
+  ArrowRight,
+  AtSign,
   CircleAlert,
   CircleCheck,
   Cloud,
   CloudOff,
+  FileOutput,
+  FileSpreadsheet,
   FolderOpen,
   FolderPlus,
-  Mail,
+  HardDrive,
+  Landmark,
+  Link2,
   LoaderCircle,
+  Mail,
+  MessageCircle,
+  Plug,
   RefreshCw,
   Trash2,
+  Upload,
+  Wallet,
+  Wrench,
+  type LucideIcon,
 } from "lucide-react";
 import {
   useClients,
@@ -56,6 +70,8 @@ import {
   mutedText,
   pillClass,
   scrollX,
+  surface,
+  iconChip,
   type Tone,
 } from "@/lib/ui";
 import { cn } from "@/lib/utils";
@@ -63,6 +79,7 @@ import type {
   DocumentSourceRow,
   DriveFolder,
   DriveStatus,
+  SourceExport,
   SourceState,
 } from "@/types/domain";
 
@@ -95,26 +112,29 @@ export function DrivePage() {
 /* ─── Harta drumurilor ─────────────────────────────────────────────────────── */
 
 /**
- * Toate drumurile pe care pot intra documentele, într-un singur loc.
+ * Toate drumurile pe care pot intra documentele, fiecare cu cardul lui.
  *
- * **Ce era înainte.** Ecranul acesta arăta doar OneDrive și cutia poștală
- * Microsoft. Restul drumurilor existau — încărcarea manuală, linkul de trimitere,
+ * **Ce era înainte.** Ecranul arăta doar OneDrive și cutia poștală Microsoft.
+ * Restul drumurilor existau — încărcarea manuală, linkul de trimitere,
  * e-Factura — dar fiecare pe alt ecran, iar nicăieri nu scria lista întreagă.
- * Cine nu găsea un drum presupunea că nu există, ceea ce este exact concluzia
- * greșită despre un produs care are cinci.
+ * Cine nu găsea un drum presupunea că nu există, adică exact concluzia greșită
+ * despre un produs care are cinci.
  *
- * **Starea vine de la server, nu de aici.** Fiecare rând se uită la configurarea
+ * **De ce carduri și nu rânduri.** Prima formă a fost o listă: opt rânduri, unul
+ * sub altul, cu pastile. Se citea ca un tabel de setări — și un tabel se
+ * parcurge de sus în jos, nu se **compară**. Aici întrebarea nu este „ce scrie pe
+ * rândul 4", ci „care dintre ele merg și care nu", iar la asta răspunde ochiul,
+ * dintr-o privire, dacă fiecare drum are un dreptunghi al lui, o iconiță
+ * recunoscută și o culoare.
+ *
+ * **Starea vine de la server, nu de aici.** Fiecare card se uită la configurarea
  * care rulează chiar acum și la conexiunile din bază. Scrisă în TSX, lista ar fi
  * spus „OneDrive: conectat" pentru că așa scria acolo.
  *
- * **Numărul de documente lângă fiecare rând.** O integrare conectată care n-a
- * adus niciodată nimic arată exact ca una care merge; contorul este singurul
- * lucru care le deosebește.
- *
- * **Ce nu există apare tot aici.** Un rând lipsă îi face pe oameni să întrebe la
- * nesfârșit dacă se poate; unul care tace îi face să aștepte documente care nu
- * vin. Fiecare spune și ce ar fi nevoie ca să existe — unele cer cod, altele o
- * hotărâre de firmă.
+ * **Ce nu există arată altfel, nu doar scrie altceva.** Cardurile acelea au
+ * chenar întrerupt și culoare stinsă: forma spune „nu e de aici" înainte să
+ * apuce cineva să citească. Un chenar plin cu textul „nu există încă" înăuntru
+ * se citește pe jumătate și se ține minte greșit.
  */
 const SOURCE_STATE_LABEL: Record<SourceState, string> = {
   LIVE: "merge acum",
@@ -128,6 +148,33 @@ const SOURCE_STATE_TONE: Record<SourceState, Tone> = {
   PLANNED: "slate",
 };
 
+/**
+ * Iconița fiecărui drum. Ține de prezentare, deci stă aici, nu pe server.
+ *
+ * Sunt alese ca să fie **recunoscute**, nu ca să fie frumoase: norul pentru
+ * OneDrive, plicul pentru email, clădirea publică pentru ANAF. Un cabinet caută
+ * pe ecran forma pe care o știe din altă parte, nu numele nostru pentru ea.
+ */
+const SOURCE_ICON: Record<string, LucideIcon> = {
+  UPLOAD: Upload,
+  PORTAL: Link2,
+  ONEDRIVE: Cloud,
+  EMAIL_MICROSOFT: Mail,
+  EFACTURA: Landmark,
+  EMAIL_IMAP: AtSign,
+  WHATSAPP: MessageCircle,
+  GOOGLE_DRIVE: HardDrive,
+  REGISTER_CSV: FileSpreadsheet,
+  MONTH_ARCHIVE: Archive,
+  FEE_REGISTER: Wallet,
+  SAGA: FileOutput,
+};
+
+/** Culoarea cardului: a stării, nu a mărcii. Ecranul răspunde la „merge sau nu". */
+function sourceTone(state: SourceState): Tone {
+  return SOURCE_STATE_TONE[state];
+}
+
 function SourceMap() {
   const { data, isLoading, error } = useDocumentSources();
 
@@ -139,107 +186,236 @@ function SourceMap() {
   const planned = data.sources.filter((row) => row.state === "PLANNED");
 
   return (
-    <div className="space-y-4">
-      <Panel
-        title="Pe unde intră documentele"
-        action={
-          <span className={pillClass(data.live > 0 ? "green" : "amber")}>
-            {data.live} {data.live === 1 ? "drum merge acum" : "drumuri merg acum"}
-          </span>
-        }
-        bodyClassName="p-0"
-      >
-        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-          {working.map((row) => (
-            <SourceRow key={row.code} row={row} />
+    <div className="space-y-8">
+      <section>
+        <SectionTitle
+          title="Pe unde intră documentele"
+          hint="Fiecare drum, cu starea lui de acum și câte documente au venit pe el"
+          badge={
+            <span className={pillClass(data.live > 0 ? "green" : "amber")}>
+              {data.live} {data.live === 1 ? "drum merge acum" : "drumuri merg acum"}
+            </span>
+          }
+        />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {working.map((row, index) => (
+            <SourceCard key={row.code} row={row} index={index} />
           ))}
-        </ul>
-      </Panel>
+        </div>
+      </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title="Ce nu există încă" bodyClassName="p-0">
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {planned.map((row) => (
-              <SourceRow key={row.code} row={row} />
-            ))}
-          </ul>
-        </Panel>
+      <section>
+        <SectionTitle
+          title="Ce nu există încă"
+          hint="Scris pe față, cu ce ar fi nevoie — ca să nu aștepte nimeni documente care nu vin"
+        />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {planned.map((row, index) => (
+            <SourceCard key={row.code} row={row} index={index} />
+          ))}
+        </div>
+      </section>
 
-        {/* Ieșirile stau pe același ecran, dar în altă listă: cabinetul întreabă
-            „ce se leagă cu Saga?" în aceeași propoziție cu „de unde iau
-            facturile", iar două ecrane l-ar pune să caute de două ori. */}
-        <Panel title="Ce iese din aplicație" bodyClassName="p-0">
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {data.exports.map((item) => (
-              <li key={item.code} className="px-5 py-3">
-                <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
-                  {item.path ? (
-                    <Link to={item.path} className="hover:underline">
-                      {item.title}
-                    </Link>
-                  ) : (
-                    item.title
-                  )}
-                  <span className={pillClass(SOURCE_STATE_TONE[item.state])}>
-                    {SOURCE_STATE_LABEL[item.state]}
-                  </span>
-                </p>
-                <p className={cn("mt-0.5 text-xs", mutedText)}>
-                  {item.requirement ?? item.summary}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      </div>
+      {/* Ieșirile stau pe același ecran, dar despărțite: cabinetul întreabă „ce se
+          leagă cu Saga?" în aceeași propoziție cu „de unde iau facturile", iar
+          două ecrane l-ar pune să caute de două ori. Amestecate, în schimb, ar
+          face pe cineva să caute facturi într-un export. */}
+      <section>
+        <SectionTitle
+          title="Ce iese din aplicație"
+          hint="Fișierele pe care le duci mai departe, în Excel sau în programul de contabilitate"
+        />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {data.exports.map((item, index) => (
+            <ExportCard key={item.code} item={item} index={index} />
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
 
-/** Un drum, starea lui, și — când nu merge — ce anume lipsește. */
-function SourceRow({ row }: { row: DocumentSourceRow }) {
+/** Capul unei secțiuni: ce urmează și de ce, fără să ocupe un card întreg. */
+function SectionTitle({
+  title,
+  hint,
+  badge,
+}: {
+  title: string;
+  hint: string;
+  badge?: React.ReactNode;
+}) {
   return (
-    <li className="flex flex-wrap items-start gap-x-4 gap-y-1 px-5 py-3">
-      <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
-          {row.path ? (
-            <Link to={row.path} className="hover:underline">
-              {row.title}
-            </Link>
-          ) : (
-            row.title
+    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+      <div>
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+        <p className={cn("text-xs", mutedText)}>{hint}</p>
+      </div>
+      {badge}
+    </div>
+  );
+}
+
+/**
+ * Un drum, ca dreptunghi de sine stătător.
+ *
+ * Ordinea în card urmează ordinea întrebărilor: **ce este** (iconiță și nume),
+ * **merge sau nu** (pastila), **ce face** (o propoziție), **ce lipsește** (numai
+ * când lipsește ceva), **cât a adus** (numărul), **unde se apasă**.
+ */
+function SourceCard({ row, index }: { row: DocumentSourceRow; index: number }) {
+  const Icon = SOURCE_ICON[row.code] ?? Plug;
+  const planned = row.state === "PLANNED";
+  const tone = sourceTone(row.state);
+
+  return (
+    <article
+      className={cn(
+        "flex flex-col p-5",
+        // Chenar întrerupt și culoare stinsă pentru ce nu există: forma spune
+        // „nu e de aici" înainte să apuce cineva să citească.
+        planned
+          ? "rounded-xl border border-dashed border-slate-300 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-900/40"
+          : surface,
+        "rise-in",
+        RISE_DELAY[index % RISE_DELAY.length],
+      )}
+    >
+      <div className="mb-3 flex items-start gap-3">
+        <span
+          className={cn(
+            "grid h-11 w-11 shrink-0 place-content-center rounded-xl",
+            planned ? iconChip.slate : iconChip[tone],
           )}
-          <span className={pillClass(SOURCE_STATE_TONE[row.state])}>
-            {SOURCE_STATE_LABEL[row.state]}
+          aria-hidden="true"
+        >
+          <Icon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3
+            className={cn(
+              "truncate text-sm font-semibold",
+              planned
+                ? "text-slate-600 dark:text-slate-400"
+                : "text-slate-900 dark:text-slate-100",
+            )}
+          >
+            {row.title}
+          </h3>
+          <span className={cn(pillClass(tone), "mt-1")}>{SOURCE_STATE_LABEL[row.state]}</span>
+        </div>
+
+        {/* Numărul lipsește cu totul pentru drumurile care nu pot produce niciun
+            document: un zero ar arăta ca o integrare stricată, nu ca una
+            inexistentă. */}
+        {row.documents !== null && (
+          <span className="shrink-0 text-right">
+            <span className="block text-2xl leading-none font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+              {row.documents}
+            </span>
+            <span className={cn("block text-[11px]", mutedText)}>
+              {row.documents === 1 ? "document" : "documente"}
+            </span>
           </span>
-          {row.detail && <span className={cn("text-xs font-normal", mutedText)}>{row.detail}</span>}
-        </p>
-        <p className={cn("mt-0.5 text-xs", mutedText)}>{row.summary}</p>
-        {/* Ce lipsește, nu doar că lipsește: „neconfigurat" fără motiv trimite
-            omul să caute exact în partea greșită. */}
-        {row.requirement && (
-          <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-300">
-            <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            {row.requirement}
-          </p>
         )}
       </div>
 
-      {/* Numărul rămâne gol pentru drumurile care nu pot produce niciun document:
-          un zero ar arăta ca o integrare stricată, nu ca una inexistentă. */}
-      {row.documents !== null && (
-        <span className="shrink-0 text-right">
-          <span className="block text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-            {row.documents}
-          </span>
-          <span className={cn("block text-xs", mutedText)}>
-            {row.documents === 1 ? "document" : "documente"}
-          </span>
-        </span>
+      <p className={cn("flex-1 text-xs leading-relaxed", mutedText)}>{row.summary}</p>
+
+      {row.detail && (
+        <p className="mt-2 text-xs font-medium text-slate-700 dark:text-slate-300">{row.detail}</p>
       )}
-    </li>
+
+      {/* Ce lipsește, nu doar că lipsește: „neconfigurat" fără motiv trimite omul
+          să caute exact în partea greșită. */}
+      {row.requirement && (
+        <p
+          className={cn(
+            "mt-3 flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-xs",
+            planned
+              ? "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-400"
+              : "bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200",
+          )}
+        >
+          {planned ? (
+            <Wrench className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          ) : (
+            <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          )}
+          {row.requirement}
+        </p>
+      )}
+
+      {row.path && (
+        <Link
+          to={row.path}
+          className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+        >
+          {row.state === "NEEDS_SETUP" ? "Configurează" : "Deschide"}
+          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </Link>
+      )}
+    </article>
   );
 }
+
+/** Un drum de ieșire. Card mai mic: se citește mai rar decât intrările. */
+function ExportCard({ item, index }: { item: SourceExport; index: number }) {
+  const Icon = SOURCE_ICON[item.code] ?? FileOutput;
+  const planned = item.state === "PLANNED";
+
+  return (
+    <article
+      className={cn(
+        "flex flex-col p-4",
+        planned
+          ? "rounded-xl border border-dashed border-slate-300 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-900/40"
+          : surface,
+        "rise-in",
+        RISE_DELAY[index % RISE_DELAY.length],
+      )}
+    >
+      <div className="mb-2 flex items-center gap-2.5">
+        <span
+          className={cn(
+            "grid h-9 w-9 shrink-0 place-content-center rounded-lg",
+            planned ? iconChip.slate : iconChip.blue,
+          )}
+          aria-hidden="true"
+        >
+          <Icon className="h-4 w-4" />
+        </span>
+        <h3
+          className={cn(
+            "min-w-0 flex-1 truncate text-sm font-medium",
+            planned ? "text-slate-600 dark:text-slate-400" : "text-slate-900 dark:text-slate-100",
+          )}
+        >
+          {item.title}
+        </h3>
+      </div>
+      <p className={cn("flex-1 text-xs leading-relaxed", mutedText)}>{item.summary}</p>
+      {item.requirement && (
+        <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-slate-100 px-2.5 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-400">
+          <Wrench className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {item.requirement}
+        </p>
+      )}
+      {item.path && (
+        <Link
+          to={item.path}
+          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+        >
+          Deschide
+          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </Link>
+      )}
+    </article>
+  );
+}
+
+/** Decalajele de intrare, reluate ciclic peste cardurile unei grile. */
+const RISE_DELAY = ["", "rise-delay-1", "rise-delay-2", "rise-delay-3", "rise-delay-4"];
 
 /* ─── Conexiunea Microsoft ─────────────────────────────────────────────────── */
 
