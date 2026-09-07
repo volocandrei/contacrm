@@ -38,12 +38,14 @@ from app.core.crypto import decrypt, encrypt, encryption_available
 from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
 from app.core.security import TokenError, decode_state, encode_state
+from app.domain.enums import SourceState
 from app.domain.permissions import Permission
 from app.models.client import Client
 from app.models.microsoft import DriveFolder, MailFolder, MicrosoftConnection
 from app.models.user import User
 from app.schemas.common import ApiModel
 from app.services.audit import AuditService
+from app.services.document_sources import EXPORTS, DocumentSourceService, SourceCode
 from app.services.microsoft import DriveError, DriveSyncService
 from app.services.microsoft.deps import DriveClientDep
 from app.services.microsoft.graph import authorize_url
@@ -251,6 +253,89 @@ def _as_app_error(exc: DriveError) -> AppError:
 
 
 # ── Rute ─────────────────────────────────────────────────────────────────────
+
+
+class SourceOut(ApiModel):
+    """Un drum pe care pot intra documentele, cu starea de acum."""
+
+    code: SourceCode
+    title: str
+    summary: str
+    state: SourceState
+    #: Ce lipsește, când nu merge. „Neconfigurat" fără asta este o ghicitoare.
+    requirement: str | None
+    path: str | None
+    #: Câte documente au intrat pe aici. Nulă pentru drumurile care încă nu pot
+    #: produce niciunul — un zero ar arăta ca o integrare stricată.
+    documents: int | None
+    detail: str | None
+
+
+class ExportOut(ApiModel):
+    """Un drum de ieșire. Aceeași formă, ca ecranul să nu inventeze alta."""
+
+    code: str
+    title: str
+    summary: str
+    state: SourceState
+    requirement: str | None
+    path: str | None
+
+
+class SourcesOut(ApiModel):
+    """Tot ecranul, într-o singură cerere.
+
+    Intrările și ieșirile vin împreună pentru că se citesc împreună: cabinetul
+    întreabă „ce se leagă cu Saga?" în aceeași propoziție cu „de unde iau
+    facturile". Sunt două liste, nu una — dar un singur răspuns.
+    """
+
+    sources: list[SourceOut]
+    exports: list[ExportOut]
+    #: Câte drumuri merg acum. Numărul din capul ecranului: dacă este 2, cabinetul
+    #: trebuie să știe fără să numere rânduri.
+    live: int
+
+
+@router.get("/sources", response_model=SourcesOut)
+def list_sources(session: DbSession, user: SettingsAdmin) -> SourcesOut:
+    """Pe unde pot intra documentele, și pe unde ies.
+
+    **Starea se calculează, nu se declară.** Fiecare rând se uită la configurarea
+    care rulează chiar acum și la conexiunile din bază. Scrisă în interfață, lista
+    ar fi spus „OneDrive: conectat" pentru că așa scria acolo.
+
+    Cere `admin:settings`: enumeră ce este configurat și ce lipsește din
+    configurare — aceeași întrebare ca ecranul de setări, deci același gard.
+    """
+    sources = DocumentSourceService(session, user.organization_id).sources()
+    return SourcesOut(
+        sources=[
+            SourceOut(
+                code=item.code,
+                title=item.title,
+                summary=item.summary,
+                state=item.state,
+                requirement=item.requirement,
+                path=item.path,
+                documents=item.documents,
+                detail=item.detail,
+            )
+            for item in sources
+        ],
+        exports=[
+            ExportOut(
+                code=item.code,
+                title=item.title,
+                summary=item.summary,
+                state=item.state,
+                requirement=item.requirement,
+                path=item.path,
+            )
+            for item in EXPORTS
+        ],
+        live=sum(1 for item in sources if item.state is SourceState.LIVE),
+    )
 
 
 @router.get("/onedrive", response_model=DriveStatusOut)

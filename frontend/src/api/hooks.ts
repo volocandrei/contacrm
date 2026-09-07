@@ -14,6 +14,7 @@ import {
   contacts,
   dashboard,
   documents,
+  documentSources,
   expectationTemplates,
   anaf,
   drive,
@@ -72,6 +73,7 @@ export const queryKeys = {
   users: ["users"] as const,
   roles: ["roles"] as const,
   settings: ["settings"] as const,
+  documentSources: ["integrations", "sources"] as const,
   driveStatus: ["drive", "status"] as const,
   anafStatus: ["anaf", "status"] as const,
   driveBrowse: (parentId?: string) => ["drive", "browse", parentId ?? null] as const,
@@ -828,6 +830,16 @@ export function useImportClients() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard });
     },
   });
+}
+
+/**
+ * Toate drumurile pe care pot intra documentele, cu starea de acum.
+ *
+ * Nu înlocuiește `useDriveStatus`: acela configurează OneDrive în amănunt, ăsta
+ * răspunde la întrebarea de deasupra — pe unde intră documentele, în general.
+ */
+export function useDocumentSources() {
+  return useQuery({ queryKey: queryKeys.documentSources, queryFn: documentSources.list });
 }
 
 /* ─── Remindere ──────────────────────────────────────────────────────────── */

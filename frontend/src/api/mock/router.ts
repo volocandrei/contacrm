@@ -398,6 +398,9 @@ const routes: Route[] = [
     handler: ({ params }) => store.removeAnafMandate(params.id!),
   },
 
+  /* Pe unde intra documentele. Starea se calculeaza, ca pe server. */
+  { method: "GET", pattern: "/integrations/sources", handler: () => store.getDocumentSources() },
+
   /* Contabilitate */
   { method: "GET", pattern: "/periods", handler: ({ query }) => store.listPeriods(query) },
   {

@@ -55,6 +55,8 @@ import type {
   DocumentFieldName,
   DocumentListItem,
   DocumentRequest,
+  DocumentSourceRow,
+  DocumentSources,
   DocumentStatus,
   DocumentTypeCode,
   DriveBrowseItem,
@@ -87,6 +89,8 @@ import type {
   RoleCode,
   RoleInfo,
   SettingEntry,
+  SourceExport,
+  SourceState,
   StatusSlice,
   Task,
   UploadLink,
@@ -3009,6 +3013,213 @@ export function composeDocumentRequest(
         (contact) => contact.clientId === clientId && Boolean(contact.whatsappNumber),
       )?.whatsappNumber ?? null,
   };
+}
+
+/* ─── Surse de documente ───────────────────────────────────────────────────── */
+
+/**
+ * Oglinda lui `services/document_sources.py`.
+ *
+ * **De ce contează să fie fidelă.** Ecranul ăsta este primul pe care îl deschide
+ * cineva care evaluează aplicația, iar el promite ceva verificabil: pe unde pot
+ * intra documentele. O demonstrație care arată „e-Factura: merge" acolo unde
+ * instalarea reală ar spune „lipsește împuternicirea" nu vinde produsul, ci
+ * pregătește o discuție neplăcută peste două luni.
+ *
+ * Stările se calculează și aici din starea conexiunilor simulate, nu se scriu de
+ * mână — exact ca pe server.
+ */
+function sourceCounts(): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const document of state.documents) {
+    counts[document.source] = (counts[document.source] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/** Câte dosare/împuterniciri sunt urmărite, când conexiunea există. */
+function trackedCount(rows: { length: number }, connected: boolean): number {
+  return connected ? rows.length : 0;
+}
+
+export function getDocumentSources(): DocumentSources {
+  requirePermission("admin:settings");
+
+  const counts = sourceCounts();
+  const drive = getDriveStatus();
+  const anaf = getAnafStatus();
+
+  const driveFolders = trackedCount(drive.folders, drive.connected);
+  const mailFolders = trackedCount(drive.mailFolders, drive.connected);
+  const mandates = trackedCount(anaf.mandates, anaf.connected);
+
+  const microsoftMissing = !drive.configured
+    ? "Lipsesc MS_CLIENT_ID și MS_CLIENT_SECRET din configurare."
+    : !drive.encryptionReady
+      ? "Lipsește DRIVE_TOKEN_KEY: fără ea tokenul nu poate fi păstrat criptat."
+      : null;
+
+  function microsoft(tracked: number, nothingTracked: string) {
+    if (microsoftMissing === null && drive.connected && tracked > 0) {
+      return { state: "LIVE" as SourceState, requirement: null };
+    }
+    return {
+      state: "NEEDS_SETUP" as SourceState,
+      requirement:
+        microsoftMissing ??
+        (drive.connected ? nothingTracked : "Contul Microsoft nu este conectat."),
+    };
+  }
+
+  const onedrive = microsoft(driveFolders, "Niciun dosar urmărit: leagă un dosar de un client.");
+  const mailbox = microsoft(mailFolders, "Niciun dosar de email urmărit.");
+
+  let efactura: { state: SourceState; requirement: string | null };
+  if (!anaf.configured) {
+    efactura = {
+      state: "NEEDS_SETUP",
+      requirement: "Lipsesc ANAF_CLIENT_ID și ANAF_CLIENT_SECRET din configurare.",
+    };
+  } else if (!anaf.connected) {
+    efactura = {
+      state: "NEEDS_SETUP",
+      requirement: "Autorizarea cere certificatul digital, în browser. Nu se automatizează.",
+    };
+  } else if (mandates === 0) {
+    // Fără împuternicire ANAF nu dă eroare, dă gol — ceea ce e mai rău.
+    efactura = {
+      state: "NEEDS_SETUP",
+      requirement: "Niciun client împuternicit: fiecare depune formularul 150 în SPV.",
+    };
+  } else {
+    efactura = { state: "LIVE", requirement: null };
+  }
+
+  const plural = (count: number, one: string, many: string) =>
+    count === 0 ? null : `${count} ${count === 1 ? one : many}`;
+
+  const sources: DocumentSourceRow[] = [
+    {
+      code: "UPLOAD",
+      title: "Încărcare din aplicație",
+      summary: "Trageți fișierele în fereastră. Merge și cu douăzeci deodată.",
+      state: "LIVE",
+      requirement: null,
+      path: "/documente/inbox",
+      documents: counts.UPLOAD ?? 0,
+      detail: null,
+    },
+    {
+      code: "PORTAL",
+      title: "Link de trimitere pentru client",
+      summary:
+        "Clientul deschide o adresă și trage fișierele. Fără cont, fără parolă, fără aplicație de instalat.",
+      state: "LIVE",
+      requirement: null,
+      path: "/contabilitate/lipsa",
+      documents: counts.PORTAL ?? 0,
+      detail: "Se deschide din fișa clientului sau odată cu solicitarea de documente.",
+    },
+    {
+      code: "ONEDRIVE",
+      title: "OneDrive / SharePoint",
+      summary: "Dosarul în care clientul își pune documentele, citit singur.",
+      ...onedrive,
+      path: "/administrare/surse",
+      documents: counts.ONEDRIVE ?? 0,
+      detail: plural(driveFolders, "dosar urmărit", "dosare urmărite"),
+    },
+    {
+      code: "EMAIL_MICROSOFT",
+      title: "Email — Microsoft 365 / Outlook",
+      summary: "Atașamentele din cutia poștală a cabinetului, luate automat.",
+      ...mailbox,
+      path: "/administrare/surse",
+      documents: counts.EMAIL ?? 0,
+      detail: plural(mailFolders, "dosar de email urmărit", "dosare de email urmărite"),
+    },
+    {
+      code: "EFACTURA",
+      title: "e-Factura — SPV ANAF",
+      summary: "Facturile electronice, luate direct de la sursă, cu XML, sigiliu și PDF.",
+      ...efactura,
+      path: "/administrare/e-factura",
+      documents: counts.EFACTURA ?? 0,
+      detail: plural(mandates, "client împuternicit", "clienți împuterniciți"),
+    },
+    {
+      code: "EMAIL_IMAP",
+      title: "Email — orice cutie poștală (IMAP)",
+      summary:
+        "Gmail, Yahoo, cutia de la găzduire. Astăzi merge doar Microsoft 365, iar cabinetele mici rareori sunt acolo.",
+      state: "PLANNED",
+      requirement:
+        "De construit. Nu cere nicio hotărâre de business — doar adresa, parola de aplicație și serverul cutiei.",
+      path: null,
+      documents: null,
+      detail: null,
+    },
+    {
+      code: "WHATSAPP",
+      title: "WhatsApp",
+      summary:
+        "Pozele de bonuri, direct din conversație. Aplicația poate deschide azi o conversație cu mesajul scris, dar nu poate primi nimic pe acolo.",
+      state: "PLANNED",
+      requirement:
+        "Un cont WhatsApp Business și un număr aprobat de Meta. Este o înregistrare de firmă, nu o setare.",
+      path: null,
+      documents: null,
+      detail: null,
+    },
+    {
+      code: "GOOGLE_DRIVE",
+      title: "Google Drive",
+      summary: "Același lucru ca OneDrive, pentru cabinetele care lucrează pe Google.",
+      state: "PLANNED",
+      requirement: "De construit, plus un proiect Google Cloud cu OAuth aprobat.",
+      path: null,
+      documents: null,
+      detail: null,
+    },
+  ];
+
+  const exports: SourceExport[] = [
+    {
+      code: "REGISTER_CSV",
+      title: "Registrul lunii, ca fișier",
+      summary: "Toate documentele unei luni, în Excel — se deschide oriunde.",
+      state: "LIVE",
+      requirement: null,
+      path: "/rapoarte",
+    },
+    {
+      code: "MONTH_ARCHIVE",
+      title: "Arhiva unei luni",
+      summary: "Documentele lunii, într-un singur fișier, cu numele standardizate.",
+      state: "LIVE",
+      requirement: null,
+      path: "/contabilitate/perioade",
+    },
+    {
+      code: "FEE_REGISTER",
+      title: "Onorariile lunii",
+      summary: "Cine cât plătește și cine a plătit, pentru cine emite facturile.",
+      state: "LIVE",
+      requirement: null,
+      path: "/crm/onorarii",
+    },
+    {
+      code: "SAGA",
+      title: "Export către Saga",
+      summary: "Notele contabile, în forma pe care o importă Saga direct.",
+      state: "PLANNED",
+      requirement:
+        "Un fișier pe care Saga îl importă azi, ca exemplu. Forma exactă nu se poate deduce, iar un export ghicit se importă strâmb fără să spună nimeni.",
+      path: null,
+    },
+  ];
+
+  return { sources, exports, live: sources.filter((row) => row.state === "LIVE").length };
 }
 
 /* ─── Import de clienți ────────────────────────────────────────────────────── */

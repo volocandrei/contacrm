@@ -19,7 +19,7 @@ from typing import Any
 from sqlalchemy import ColumnElement, Select, func, literal_column, or_, select
 from sqlalchemy.orm import Session, joinedload, lazyload
 
-from app.domain.enums import DocumentStatus
+from app.domain.enums import DocumentSource, DocumentStatus
 from app.models.client import Client
 from app.models.document import Document, DocumentType, DocumentVersion
 from app.schemas.common import PageParams
@@ -331,6 +331,21 @@ class DocumentRepository:
             .group_by(Document.status)
         ).all()
         return {DocumentStatus(row[0]): row[1] for row in rows}
+
+    def count_by_source(self, organization_id: uuid.UUID) -> dict[DocumentSource, int]:
+        """Câte documente au intrat pe fiecare drum.
+
+        Ecranul „Surse documente" se uită la ele ca să răspundă la întrebarea pe
+        care o pune orice cabinet după o săptămână: **chiar intră ceva pe acolo?**
+        O integrare conectată care n-a adus niciodată nimic arată identic cu una
+        care merge, până când cineva numără.
+        """
+        rows = self.session.execute(
+            select(Document.source, func.count())
+            .where(Document.organization_id == organization_id, Document.deleted_at.is_(None))
+            .group_by(Document.source)
+        ).all()
+        return {DocumentSource(row[0]): row[1] for row in rows}
 
     def soft_delete(self, document: Document, when: datetime) -> None:
         """Documentele nu se șterg fizic (§62, R8): rămân auditabile."""

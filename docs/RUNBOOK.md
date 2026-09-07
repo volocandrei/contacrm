@@ -291,6 +291,21 @@ reface.
    când reușește). **Reprocesarea nu ajută aici**: ea cheamă extracția, care
    citește XML-ul deja stocat, nu convertorul ANAF.
 
+### Nu vin documente dintr-o integrare
+
+`Administrare → Surse documente`. Rândul integrării spune una din trei:
+
+- **merge acum** — atunci uită-te la numărul de documente de lângă el. Zero
+  înseamnă că drumul este deschis, dar n-a venit nimic pe el: caută cauza la
+  celălalt capăt (dosarul e gol, clientul nu trimite acolo).
+- **de configurat** — scrie exact ce lipsește: o variabilă de mediu, o conectare,
+  o împuternicire. Cele trei se rezolvă în locuri diferite.
+- **nu există încă** — nu aștepta documente pe acolo. Scrie ce ar fi nevoie.
+
+Capcana care nu seamănă cu o eroare: **e-Factura conectată, fără împuterniciri.**
+ANAF nu răspunde cu eroare, răspunde **gol**. Ecranul spune „niciun client
+împuternicit"; fiecare client trebuie să depună formularul 150 în SPV.
+
 ### Documentele nu mai sosesc din OneDrive sau de pe email
 
 1. `Administrare → Surse documente` spune dacă legătura mai este activă. Un token

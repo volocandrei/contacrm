@@ -277,6 +277,59 @@ copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email,
 verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
 confirmat.
 
+### Surse documente spune tot, nu doar OneDrive (7 septembrie 2026)
+
+**Întrebarea la care nu răspundea nimeni.** Un cabinet care se uită la aplicație
+pune, în primele cinci minute, aceeași întrebare: *cum ajung documentele
+înăuntru?* Răspunsul era împrăștiat pe patru ecrane — OneDrive și cutia poștală
+pe unul, e-Factura pe altul, încărcarea manuală în inbox, linkul de trimitere pe
+fișa clientului — și nicăieri nu scria lista întreagă. Cine nu găsea un drum
+presupunea că nu există, ceea ce este exact concluzia greșită despre un produs
+care are cinci.
+
+Ecranul `Administrare → Surse documente` le adună acum pe toate, cu configurarea
+OneDrive rămasă dedesubt, unde era.
+
+**Starea se calculează, nu se declară.** Fiecare rând se uită la configurarea care
+rulează chiar acum și la conexiunile din bază. Scrisă în TSX, lista ar fi spus
+„OneDrive: conectat" pentru că așa scria acolo — exact defectul reparat o dată la
+ecranul de setări.
+
+**Trei stări și niciun eufemism:** merge acum, de configurat, nu există încă.
+„Parțial" și „în roadmap" sunt distincții de programator; puse pe ecran, dau
+speranțe.
+
+**Când nu merge, scrie ce anume lipsește** — și cauzele nu se confundă între ele.
+Cheile lipsă se rezolvă în deployment, conectarea se rezolvă apăsând un buton,
+iar împuternicirea se rezolvă la ANAF. Un singur text pentru toate trei l-ar fi
+trimis pe administrator să caute variabile de mediu care erau deja acolo.
+Verificat prin mutație.
+
+**Cazul cel mai perfid are rândul lui:** e-Factura conectată, dar fără nicio
+împuternicire. Totul pare verde și nu vine nimic, fiindcă ANAF nu întoarce
+eroare, ci **gol**. Este singurul refuz din aplicație care nu se vede ca un refuz.
+
+**Numărul de documente lângă fiecare drum.** O integrare conectată care n-a adus
+niciodată nimic arată exact ca una care merge; contorul este singurul lucru care
+le deosebește. Pentru drumurile care nu există, contorul lipsește cu totul — un
+zero ar fi arătat ca o integrare stricată.
+
+**Ce nu există apare tot acolo**, cu ce ar fi nevoie: IMAP (Gmail, Yahoo, cutia de
+la găzduire — azi merge doar Microsoft 365), WhatsApp (cere un cont Business
+aprobat de Meta: o înregistrare de firmă, nu o setare), Google Drive. Un rând
+lipsă îi face pe oameni să întrebe la nesfârșit dacă se poate; unul care tace îi
+face să aștepte documente care nu vin.
+
+**Și ce iese, în listă separată:** registrul lunii, arhiva, onorariile — plus
+exportul Saga, marcat ca inexistent, cu motivul. Cabinetul întreabă „ce se leagă
+cu Saga?" în aceeași propoziție cu „de unde iau facturile"; două ecrane l-ar pune
+să caute de două ori.
+
+**Un test ține lista completă:** dacă cineva adaugă mâine un `DocumentSource` nou,
+testul cade până când apare și pe ecran. Fără el, documentele ar fi intrat pe un
+drum pe care ecranul nu-l numără nicăieri, iar totalul ar fi fost mai mic decât
+arhiva — tăcut.
+
 ### Lista de clienți intră dintr-un fișier (7 septembrie 2026)
 
 **Golul care ținea aplicația neîncercată.** Un cabinet are între treizeci și trei

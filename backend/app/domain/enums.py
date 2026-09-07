@@ -139,6 +139,27 @@ class TimelineEventKind(StrEnum):
 
 
 # Ordinea în care sarcinile apar în interfață: ce e de făcut, înaintea ce e gata.
+class SourceState(StrEnum):
+    """Ce se întâmplă **acum** cu un drum de intrare a documentelor.
+
+    Trei stări, nu cinci, fiindcă la ecranul „Surse documente" cabinetul pune o
+    singură întrebare: *pot să primesc documente pe aici azi?* Restul —
+    „implementat", „în roadmap", „parțial" — sunt distincții de programator, iar
+    puse pe ecran fac exact ce nu trebuie: dau speranțe.
+    """
+
+    #: Merge acum. Documentele pot intra pe aici astăzi, fără să mai facă nimeni
+    #: nimic. Nu înseamnă că *au* intrat — pentru asta ecranul arată și numărul.
+    LIVE = "LIVE"
+    #: Există în aplicație, dar cere ceva: o conectare, o cheie, o împuternicire.
+    #: Ecranul spune **ce anume**, altfel „neconfigurat" este o ghicitoare.
+    NEEDS_SETUP = "NEEDS_SETUP"
+    #: Nu există. Se scrie pe față, cu ce ar fi nevoie ca să existe. Un rând
+    #: lipsă i-ar face pe oameni să întrebe la nesfârșit; un rând care tace i-ar
+    #: face să aștepte documente care nu vin niciodată.
+    PLANNED = "PLANNED"
+
+
 class ImportOutcome(StrEnum):
     """Ce s-ar întâmpla cu un rând dintr-un fișier de clienți importat.
 

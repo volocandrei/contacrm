@@ -17,7 +17,7 @@
  *   documentele pur și simplu nu mai vin și nimeni nu află de ce.
  */
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   CircleAlert,
   CircleCheck,
@@ -35,6 +35,7 @@ import {
   useConnectDrive,
   useDisconnectDrive,
   useDriveBrowse,
+  useDocumentSources,
   useDriveStatus,
   useMailFolders,
   useSyncDrive,
@@ -48,9 +49,22 @@ import { ApiError } from "@/api/types";
 import { ConnectionCard, Notice } from "@/components/connection-card";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { formatDateTime } from "@/lib/format";
-import { buttonDanger, buttonPrimary, buttonSecondary, scrollX } from "@/lib/ui";
+import {
+  buttonDanger,
+  buttonPrimary,
+  buttonSecondary,
+  mutedText,
+  pillClass,
+  scrollX,
+  type Tone,
+} from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import type { DriveFolder, DriveStatus } from "@/types/domain";
+import type {
+  DocumentSourceRow,
+  DriveFolder,
+  DriveStatus,
+  SourceState,
+} from "@/types/domain";
 
 export function DrivePage() {
   const { data, isLoading, error } = useDriveStatus();
@@ -63,8 +77,13 @@ export function DrivePage() {
     <div className="space-y-6">
       <PageHeader
         title="Surse de documente"
-        description="Dosarele din OneDrive și din email din care documentele sunt preluate automat"
+        description="Pe unde intră documentele în aplicație — și ce lipsește ca să intre pe fiecare drum"
       />
+
+      {/* Harta întâi, configurarea după: întrebarea „pe unde pot intra
+          documentele" se pune înaintea celei despre un anume dosar din OneDrive. */}
+      <SourceMap />
+
       <ConnectionPanel status={data} />
       {data.connected && <FoldersPanel status={data} />}
       {data.connected && <BrowsePanel status={data} />}
@@ -73,7 +92,156 @@ export function DrivePage() {
   );
 }
 
-/* ─── Conexiunea ───────────────────────────────────────────────────────────── */
+/* ─── Harta drumurilor ─────────────────────────────────────────────────────── */
+
+/**
+ * Toate drumurile pe care pot intra documentele, într-un singur loc.
+ *
+ * **Ce era înainte.** Ecranul acesta arăta doar OneDrive și cutia poștală
+ * Microsoft. Restul drumurilor existau — încărcarea manuală, linkul de trimitere,
+ * e-Factura — dar fiecare pe alt ecran, iar nicăieri nu scria lista întreagă.
+ * Cine nu găsea un drum presupunea că nu există, ceea ce este exact concluzia
+ * greșită despre un produs care are cinci.
+ *
+ * **Starea vine de la server, nu de aici.** Fiecare rând se uită la configurarea
+ * care rulează chiar acum și la conexiunile din bază. Scrisă în TSX, lista ar fi
+ * spus „OneDrive: conectat" pentru că așa scria acolo.
+ *
+ * **Numărul de documente lângă fiecare rând.** O integrare conectată care n-a
+ * adus niciodată nimic arată exact ca una care merge; contorul este singurul
+ * lucru care le deosebește.
+ *
+ * **Ce nu există apare tot aici.** Un rând lipsă îi face pe oameni să întrebe la
+ * nesfârșit dacă se poate; unul care tace îi face să aștepte documente care nu
+ * vin. Fiecare spune și ce ar fi nevoie ca să existe — unele cer cod, altele o
+ * hotărâre de firmă.
+ */
+const SOURCE_STATE_LABEL: Record<SourceState, string> = {
+  LIVE: "merge acum",
+  NEEDS_SETUP: "de configurat",
+  PLANNED: "nu există încă",
+};
+
+const SOURCE_STATE_TONE: Record<SourceState, Tone> = {
+  LIVE: "green",
+  NEEDS_SETUP: "amber",
+  PLANNED: "slate",
+};
+
+function SourceMap() {
+  const { data, isLoading, error } = useDocumentSources();
+
+  if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState error={error} />;
+  if (!data) return null;
+
+  const working = data.sources.filter((row) => row.state !== "PLANNED");
+  const planned = data.sources.filter((row) => row.state === "PLANNED");
+
+  return (
+    <div className="space-y-4">
+      <Panel
+        title="Pe unde intră documentele"
+        action={
+          <span className={pillClass(data.live > 0 ? "green" : "amber")}>
+            {data.live} {data.live === 1 ? "drum merge acum" : "drumuri merg acum"}
+          </span>
+        }
+        bodyClassName="p-0"
+      >
+        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          {working.map((row) => (
+            <SourceRow key={row.code} row={row} />
+          ))}
+        </ul>
+      </Panel>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Panel title="Ce nu există încă" bodyClassName="p-0">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            {planned.map((row) => (
+              <SourceRow key={row.code} row={row} />
+            ))}
+          </ul>
+        </Panel>
+
+        {/* Ieșirile stau pe același ecran, dar în altă listă: cabinetul întreabă
+            „ce se leagă cu Saga?" în aceeași propoziție cu „de unde iau
+            facturile", iar două ecrane l-ar pune să caute de două ori. */}
+        <Panel title="Ce iese din aplicație" bodyClassName="p-0">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            {data.exports.map((item) => (
+              <li key={item.code} className="px-5 py-3">
+                <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+                  {item.path ? (
+                    <Link to={item.path} className="hover:underline">
+                      {item.title}
+                    </Link>
+                  ) : (
+                    item.title
+                  )}
+                  <span className={pillClass(SOURCE_STATE_TONE[item.state])}>
+                    {SOURCE_STATE_LABEL[item.state]}
+                  </span>
+                </p>
+                <p className={cn("mt-0.5 text-xs", mutedText)}>
+                  {item.requirement ?? item.summary}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+/** Un drum, starea lui, și — când nu merge — ce anume lipsește. */
+function SourceRow({ row }: { row: DocumentSourceRow }) {
+  return (
+    <li className="flex flex-wrap items-start gap-x-4 gap-y-1 px-5 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+          {row.path ? (
+            <Link to={row.path} className="hover:underline">
+              {row.title}
+            </Link>
+          ) : (
+            row.title
+          )}
+          <span className={pillClass(SOURCE_STATE_TONE[row.state])}>
+            {SOURCE_STATE_LABEL[row.state]}
+          </span>
+          {row.detail && <span className={cn("text-xs font-normal", mutedText)}>{row.detail}</span>}
+        </p>
+        <p className={cn("mt-0.5 text-xs", mutedText)}>{row.summary}</p>
+        {/* Ce lipsește, nu doar că lipsește: „neconfigurat" fără motiv trimite
+            omul să caute exact în partea greșită. */}
+        {row.requirement && (
+          <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+            <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {row.requirement}
+          </p>
+        )}
+      </div>
+
+      {/* Numărul rămâne gol pentru drumurile care nu pot produce niciun document:
+          un zero ar arăta ca o integrare stricată, nu ca una inexistentă. */}
+      {row.documents !== null && (
+        <span className="shrink-0 text-right">
+          <span className="block text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+            {row.documents}
+          </span>
+          <span className={cn("block text-xs", mutedText)}>
+            {row.documents === 1 ? "document" : "documente"}
+          </span>
+        </span>
+      )}
+    </li>
+  );
+}
+
+/* ─── Conexiunea Microsoft ─────────────────────────────────────────────────── */
 
 function ConnectionPanel({ status }: { status: DriveStatus }) {
   const [params, setParams] = useSearchParams();

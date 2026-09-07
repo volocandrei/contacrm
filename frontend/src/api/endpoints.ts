@@ -25,6 +25,7 @@ import type {
   DocumentListItem,
   DocumentRequest,
   DocumentRequestSent,
+  DocumentSources,
   DocumentType,
   DriveBrowseItem,
   DriveFolder,
@@ -445,6 +446,16 @@ export const anaf = {
 };
 
 /** Integrarea OneDrive (M9). Tokenul nu circulă niciodată pe aici (§73). */
+/**
+ * Pe unde intră documentele, și pe unde ies.
+ *
+ * Starea fiecărui drum se calculează pe server, din configurarea care rulează
+ * chiar acum. Scrisă aici, lista ar fi fost una de speranțe.
+ */
+export const documentSources = {
+  list: () => api.get<DocumentSources>("/integrations/sources"),
+};
+
 export const drive = {
   status: () => api.get<DriveStatus>("/integrations/onedrive"),
   authorize: () => api.post<{ authorizeUrl: string }>("/integrations/onedrive/authorize"),

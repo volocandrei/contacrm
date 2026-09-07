@@ -90,6 +90,48 @@ export const DOCUMENT_ACTION = [
 export type DocumentAction = (typeof DOCUMENT_ACTION)[number];
 
 /**
+ * Ce se întâmplă acum cu un drum de intrare a documentelor.
+ *
+ * Trei stări, nu cinci: la ecranul „Surse documente" cabinetul pune o singură
+ * întrebare — *pot să primesc documente pe aici azi?* Backend-ul este
+ * autoritatea (`app/domain/enums.py`).
+ */
+export const SOURCE_STATE = ["LIVE", "NEEDS_SETUP", "PLANNED"] as const;
+export type SourceState = (typeof SOURCE_STATE)[number];
+
+/** Un drum pe care pot intra documentele. */
+export type DocumentSourceRow = {
+  code: string;
+  title: string;
+  summary: string;
+  state: SourceState;
+  /** Ce lipsește, când nu merge. */
+  requirement: string | null;
+  path: string | null;
+  /** Nulă pentru drumurile care încă nu pot produce niciun document. */
+  documents: number | null;
+  detail: string | null;
+};
+
+/** Un drum de ieșire. Aceeași formă, ca ecranul să nu inventeze alta. */
+export type SourceExport = {
+  code: string;
+  title: string;
+  summary: string;
+  state: SourceState;
+  requirement: string | null;
+  path: string | null;
+};
+
+/** Tot ecranul „Surse documente", într-un singur răspuns. */
+export type DocumentSources = {
+  sources: DocumentSourceRow[];
+  exports: SourceExport[];
+  /** Câte drumuri merg acum — numărul din capul ecranului. */
+  live: number;
+};
+
+/**
  * Ce s-ar întâmpla cu un rând dintr-un fișier de clienți importat.
  *
  * Ca și `REMINDER_STATUS`, ecranul are nevoie de **motiv**, nu doar de
