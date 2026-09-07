@@ -278,6 +278,14 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: "periods:manage",
       },
       {
+        // Fără permisiune: este ecranul **contului tău**, nu unul administrativ.
+        // Parola unui operator păzește aceleași documente ca a administratorului,
+        // iar un operator care nu-și poate schimba parola o schimbă niciodată.
+        label: "Securitate",
+        path: "/administrare/securitate",
+        Icon: ShieldCheck,
+      },
+      {
         label: "Setări",
         path: "/administrare/setari",
         Icon: Settings,

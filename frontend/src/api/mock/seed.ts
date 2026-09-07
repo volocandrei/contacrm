@@ -7,6 +7,7 @@
 import type {
   AccountingPeriod,
   AuditLogEntry,
+  DocumentLine,
   ChecklistItem,
   Client,
   ClientNote,
@@ -365,6 +366,59 @@ const OCR_SNIPPETS = [
 
 let documentCounter = 0;
 
+/**
+ * Liniile unei facturi electronice din setul de demonstrație.
+ *
+ * **Trei cote pe același document**, deliberat: este exact cazul pe care un
+ * total de factură nu îl poate arăta, și motivul pentru care liniile există.
+ * Un cabinet care deschide demonstrația trebuie să vadă întrebarea la care
+ * răspunde ecranul, nu o factură cu o singură cotă unde nimic nu se distinge.
+ */
+function invoiceLines(seedKey: string): DocumentLine[] {
+  const shift = seedKey.length % 3;
+  return [
+    {
+      position: 1,
+      number: "1",
+      description: "Servicii de mentenanță lunară",
+      quantity: "1",
+      unitCode: "H87",
+      unitPrice: (900 + shift * 50).toFixed(2),
+      netAmount: (900 + shift * 50).toFixed(2),
+      vatRate: "21",
+      vatAmount: null,
+      grossAmount: null,
+      vatCategory: "S",
+    },
+    {
+      position: 2,
+      number: "2",
+      description: "Materiale tipărite",
+      quantity: "10",
+      unitCode: "H87",
+      unitPrice: "25.00",
+      netAmount: "250.00",
+      vatRate: "11",
+      vatAmount: null,
+      grossAmount: null,
+      vatCategory: "S",
+    },
+    {
+      position: 3,
+      number: "3",
+      description: "Transport intracomunitar",
+      quantity: "1",
+      unitCode: "H87",
+      unitPrice: "300.00",
+      netAmount: "300.00",
+      vatRate: "0",
+      vatAmount: null,
+      grossAmount: null,
+      vatCategory: "AE",
+    },
+  ];
+}
+
 function buildDocument(
   client: Client | null,
   monthIndex: number,
@@ -470,6 +524,9 @@ function buildDocument(
   return {
     id: `doc-${documentCounter}`,
     files: [],
+    // Liniile există doar pentru facturile electronice: acolo fiecare valoare
+    // stă într-un element cu nume. Din PDF nu se citesc, și nu se ghicesc.
+    lines: source === "EFACTURA" ? invoiceLines(`doc-${documentCounter}`) : [],
     originalFilename,
     storedFilename: archived
       ? buildDocumentFilename({

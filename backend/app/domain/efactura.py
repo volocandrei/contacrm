@@ -65,6 +65,43 @@ class Party:
 
 
 @dataclass(frozen=True, slots=True)
+class InvoiceLine:
+    """O linie de factură: ce s-a vândut, cât, cu ce cotă de TVA.
+
+    **De ce nu ajunge TVA-ul de pe factură.** Pe aceeași factură pot sta trei
+    cote — 21% pentru un produs, 11% pentru altul, 0% pentru un serviciu scutit —
+    iar contabilul are nevoie de fiecare separat, pentru decont. Un singur procent
+    la nivel de document este o medie fără sens contabil, iar din el nu se poate
+    reconstitui defalcarea.
+
+    **De ce este de încredere.** Într-un XML UBL fiecare valoare stă într-un
+    element cu nume: nu se citește un procent dintr-un text, se citește câmpul
+    `Percent`. Aici nu există „80% sigur". Din PDF-uri liniile nu se citesc încă
+    — și nu se vor ghici: o linie inventată intră direct în decontul de TVA.
+
+    Sumele rămân șiruri, ca în restul modulului: se convertesc o singură dată, la
+    scriere, cu regulile de rotunjire ale aplicației.
+    """
+
+    #: Numărul liniei de pe document (`cbc:ID`), nu poziția în listă.
+    number: str | None
+    description: str | None
+    quantity: str | None
+    #: Codul UN/ECE al unității (`H87` = bucată, `HUR` = oră). Se păstrează așa
+    #: cum vine: traducerea lui este o listă de o mie de coduri, iar contabilul
+    #: recunoaște codul.
+    unit_code: str | None
+    unit_price: str | None
+    #: `LineExtensionAmount`: valoarea liniei **fără** TVA, după reducere.
+    net_amount: str | None
+    #: Cota, ca număr: `19`, `21`, `0`. Fără semnul procent.
+    vat_rate: str | None
+    #: Categoria UBL (`S` = cotă standard, `AE` = taxare inversă, `E` = scutit,
+    #: `Z` = cotă zero). Explică un `0` care altfel ar arăta ca o eroare.
+    vat_category: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class EInvoice:
     """Ce scrie în factură. Nimic dedus, nimic completat."""
 
@@ -78,6 +115,9 @@ class EInvoice:
     vat_amount: str | None
     total: str | None
     is_credit_note: bool
+    #: Liniile documentului, în ordinea din XML. Goală nu înseamnă „fără linii":
+    #: înseamnă că documentul nu le-a declarat, iar noi nu inventăm.
+    lines: tuple[InvoiceLine, ...] = ()
 
     @property
     def summary(self) -> str:
@@ -102,8 +142,28 @@ class EInvoice:
                 f"Bază impozabilă: {self.subtotal or '—'}",
                 f"TVA: {self.vat_amount or '—'}",
                 f"Total: {self.total or '—'} {self.currency or ''}".strip(),
+                *self._lines_in_words(),
             ]
         )
+
+    def _lines_in_words(self) -> list[str]:
+        """Liniile, sub totaluri, în rezumatul pe care îl citește operatorul.
+
+        Un XML nu se poate privi, iar cotele diferite de pe aceeași factură sunt
+        exact ce nu se vede din totaluri. Fără rândurile astea, operatorul are
+        „TVA: 250,00" și niciun mod de a afla din ce s-a compus.
+        """
+        if not self.lines:
+            return []
+        rows = ["", "Linii:"]
+        for line in self.lines:
+            rate = f"{line.vat_rate}%" if line.vat_rate is not None else "TVA —"
+            rows.append(
+                f"  {line.number or '·'}. {line.description or '—'} · "
+                f"{line.quantity or '—'} x {line.unit_price or '—'} = "
+                f"{line.net_amount or '—'} · {rate}"
+            )
+        return rows
 
 
 def looks_like_xml(head: bytes) -> bool:
@@ -159,6 +219,66 @@ def _split_number(raw: str | None) -> tuple[str | None, str | None]:
     if match:
         return match.group(1).upper(), match.group(2)
     return None, raw.strip()
+
+
+def _lines(root: object, is_credit_note: bool) -> tuple[InvoiceLine, ...]:
+    """Liniile documentului, citite din elementele lor.
+
+    O notă de credit le numește `CreditNoteLine`, iar cantitatea `CreditedQuantity`
+    — restul este identic. Diferența de nume este singurul motiv pentru care
+    funcția are nevoie să știe ce fel de document citește.
+
+    O linie fără niciun câmp citibil se sare: ar fi un rând gol în registru, care
+    arată ca o pierdere de date fără să fie.
+    """
+    findall = getattr(root, "findall", None)
+    if findall is None:  # pragma: no cover — apelat doar cu un element
+        return ()
+
+    container = f"{CAC}CreditNoteLine" if is_credit_note else f"{CAC}InvoiceLine"
+    quantity_tag = f"{CBC}CreditedQuantity" if is_credit_note else f"{CBC}InvoicedQuantity"
+
+    found: list[InvoiceLine] = []
+    for element in findall(container):
+        quantity_element = element.find(quantity_tag)
+        category = element.find(f"{CAC}Item/{CAC}ClassifiedTaxCategory")
+
+        line = InvoiceLine(
+            number=_text(element.find(f"{CBC}ID")),
+            description=_text(element.find(f"{CAC}Item/{CBC}Name")),
+            quantity=_number(_text(quantity_element)),
+            unit_code=(quantity_element.get("unitCode") if quantity_element is not None else None),
+            unit_price=_amount(_text(element.find(f"{CAC}Price/{CBC}PriceAmount"))),
+            net_amount=_amount(_text(element.find(f"{CBC}LineExtensionAmount"))),
+            vat_rate=(
+                _number(_text(category.find(f"{CBC}Percent"))) if category is not None else None
+            ),
+            vat_category=(_text(category.find(f"{CBC}ID")) if category is not None else None),
+        )
+        if any(
+            value is not None
+            for value in (line.description, line.net_amount, line.quantity, line.unit_price)
+        ):
+            found.append(line)
+    return tuple(found)
+
+
+def _number(raw: str | None) -> str | None:
+    """Un număr care nu este o sumă: cantitate, cotă de TVA.
+
+    Nu se rotunjește la două zecimale ca `_amount`: o cantitate poate fi `0.001`
+    (kilograme), iar o cotă este `19`, nu `19.00`. Zerourile de la coadă se taie,
+    ca `21.00` din XML să se citească `21` pe ecran.
+    """
+    if raw is None:
+        return None
+    try:
+        value = Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return None
+    normalised = value.normalize()
+    # `normalize()` scrie numerele mari în notație exponențială (`1E+3`).
+    return f"{normalised:f}"
 
 
 def _party(root: object, container: str) -> Party:
@@ -237,6 +357,7 @@ def parse(content: bytes) -> EInvoice:
     currency = _text(root.find(f"{CBC}DocumentCurrencyCode"))
 
     return EInvoice(
+        lines=_lines(root, is_credit_note),
         number=number,
         series=series,
         issue_date=issue_date,

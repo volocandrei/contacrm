@@ -4,8 +4,8 @@ import { Bell, LogOut, Moon, Search, Sun, User } from "lucide-react";
 import { CommandPalette } from "@/components/command-palette";
 import { AssistantDock } from "@/features/assistant/assistant-dock";
 import { useSidebarCounts } from "@/api/hooks";
-import { apiMode } from "@/api/client";
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { DemoBanner } from "@/components/layout/demo-banner";
 import { useAuth } from "@/features/auth/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { ROLE_LABEL } from "@/lib/labels";
@@ -161,11 +161,7 @@ export function AppShell() {
           </div>
         </header>
 
-        {apiMode() === "mock" && (
-          <p className="border-b border-amber-200 bg-amber-50 px-6 py-1.5 text-center text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
-            Mod development — date sintetice, backend simulat în browser
-          </p>
-        )}
+        <DemoBanner />
 
         <main className="flex-1 overflow-auto p-6">
           <Outlet />

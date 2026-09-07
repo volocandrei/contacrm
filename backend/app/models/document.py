@@ -318,6 +318,16 @@ class Document(Base, OrganizationMixin, TimestampMixin, SoftDeleteMixin):
         cascade="all, delete-orphan",
         order_by="DocumentVersion.version_number",
     )
+    #: Liniile facturii, în ordinea din document (§9).
+    #:
+    #: `lazy="selectin"` nu, deliberat: liniile se citesc pe **fișa** unui
+    #: document, nu în listă. Un `selectin` le-ar fi adus la fiecare listare de
+    #: cincizeci de documente, pentru un ecran care nu le arată.
+    lines: Mapped[list[DocumentLine]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        order_by="DocumentLine.position",
+    )
 
     @property
     def confidence(self) -> float | None:
@@ -456,3 +466,64 @@ class DocumentProcessingJob(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<DocumentProcessingJob {self.document_id} #{self.attempt} {self.status}>"
+
+
+class DocumentLine(Base):
+    """O linie de factură: ce s-a vândut, cât, cu ce cotă de TVA (§9).
+
+    **De ce un tabel și nu un JSON pe document.** Pentru că se interoghează. Cea
+    mai frecventă întrebare a unui cabinet la sfârșit de lună nu este „ce scrie pe
+    factura asta", ci „cât TVA la 21% și cât la 11%, pe toate facturile lunii" —
+    adică o agregare pe cotă, peste toate documentele. Dintr-un JSONB ar fi ieșit,
+    dar prost și fără index; iar decontul de TVA nu este locul unde se improvizează.
+
+    **De unde vin liniile.** Deocamdată **numai din facturi electronice** (XML
+    UBL), unde fiecare valoare stă într-un element cu nume și nu există „80%
+    sigur". Din PDF-uri nu se citesc și nu se vor ghici: o linie inventată intră
+    direct în decont.
+
+    **Sumele sunt NUMERIC**, ca peste tot (§72). Cota este `Numeric(5, 2)`: există
+    cote cu zecimale în alte țări, iar o factură intracomunitară nu este un caz
+    exotic pentru un cabinet.
+    """
+
+    __tablename__ = "document_lines"
+    __table_args__ = (
+        # Ordinea din document, nu una inventată de noi.
+        UniqueConstraint("document_id", "position", name="uq_document_lines_document_position"),
+        CheckConstraint("position >= 1", name="position_positive"),
+        # Cota nu poate fi negativă. Poate fi zero — scutit, taxare inversă.
+        CheckConstraint("vat_rate IS NULL OR vat_rate >= 0", name="vat_rate_not_negative"),
+        Index("ix_document_lines_document_id", "document_id"),
+        # Pentru raportul pe cote: „cât la 21%, cât la 11%", peste o lună întreagă.
+        Index("ix_document_lines_vat_rate", "vat_rate"),
+    )
+
+    id: Mapped[uuid_pk]
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Poziția în document, de la 1. Separată de `number`, care este ce scrie pe
+    #: factură: unele documente numerotează `1.1`, `A`, sau deloc.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    number: Mapped[str | None] = mapped_column(String(32), default=None)
+    description: Mapped[str | None] = mapped_column(String(512), default=None)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), default=None)
+    #: Codul UN/ECE (`H87` = bucată, `HUR` = oră), așa cum vine. Traducerea lui ar
+    #: fi o listă de o mie de coduri, iar contabilul recunoaște codul.
+    unit_code: Mapped[str | None] = mapped_column(String(16), default=None)
+    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), default=None)
+    #: Valoarea liniei **fără** TVA, după reducere (`LineExtensionAmount`).
+    net_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), default=None)
+    #: Cota, ca număr: `21`, `11`, `0`. Fără semnul procent.
+    vat_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=None)
+    vat_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), default=None)
+    gross_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), default=None)
+    #: Categoria UBL (`S` cotă standard, `AE` taxare inversă, `E` scutit, `Z` cotă
+    #: zero). Explică un `0` care altfel arată ca o eroare de citire.
+    vat_category: Mapped[str | None] = mapped_column(String(8), default=None)
+
+    document: Mapped[Document] = relationship(back_populates="lines")
+
+    def __repr__(self) -> str:
+        return f"<DocumentLine {self.position} doc={self.document_id} {self.vat_rate}%>"

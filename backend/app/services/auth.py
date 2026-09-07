@@ -32,6 +32,7 @@ from app.core.security import (
     password_needs_rehash,
     verify_password,
 )
+from app.domain.passwords import ensure_strong
 from app.domain.permissions import sorted_permissions
 from app.models.user import RefreshToken, User
 from app.repositories.user import UserRepository
@@ -57,6 +58,19 @@ class IssuedTokens:
 class AuthSession:
     user: CurrentUserOut
     tokens: IssuedTokens
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveSession:
+    """O fereastră deschisă pe cont. Fără niciun token — doar urma ei."""
+
+    family_id: uuid.UUID
+    started_at: datetime
+    last_seen_at: datetime
+    expires_at: datetime
+    ip: str | None
+    user_agent: str | None
+    current: bool
 
 
 class AuthService:
@@ -113,6 +127,159 @@ class AuthService:
             user_agent=user_agent,
         )
         logger.info("login_ok", user_id=str(user.id), role=user.primary_role.value)
+        return AuthSession(user=self.describe(user), tokens=tokens)
+
+    def _family_of(self, refresh_token: str | None) -> uuid.UUID | None:
+        """Din ce sesiune vine cererea de față, dacă se poate ști.
+
+        Un token expirat, revocat sau lipsă întoarce `None` — nu o eroare: cine
+        întreabă ce sesiuni are deschise nu trebuie refuzat pentru că tocmai i-a
+        expirat cookie-ul de reîmprospătare.
+        """
+        if not refresh_token:
+            return None
+        try:
+            claims = decode_token(refresh_token, "refresh")
+        except TokenError:
+            return None
+        stored = self.users.get_refresh_token(claims.token_id)
+        return stored.family_id if stored is not None else None
+
+    # ── Sesiuni ─────────────────────────────────────────────────────────────
+
+    def sessions(self, user: User, *, current_token: str | None = None) -> list[ActiveSession]:
+        """Ferestrele deschise pe contul acesta, cea curentă întâi.
+
+        **De ce este un ecran, nu o curiozitate.** Întrebarea „mai are cineva
+        sesiune deschisă pe contul meu?" nu avea până acum niciun răspuns în
+        aplicație. Ea se pune exact în ziua proastă: după un laptop uitat
+        deschis, după o parolă tastată pe alt calculator, după un email dubios.
+
+        O sesiune este o **familie** de tokenuri, nu un rând: tokenul se rotește
+        la fiecare reîmprospătare, deci o fereastră lăsată deschisă o zi lasă în
+        urmă zeci de rânduri. Se arată începutul familiei, ultima activitate,
+        adresa și browserul — niciodată vreun token.
+        """
+        now = datetime.now(UTC)
+        current_family = self._family_of(current_token)
+
+        grouped: dict[uuid.UUID, list[RefreshToken]] = {}
+        for token in self.users.active_tokens_for_user(user.id, now=now):
+            grouped.setdefault(token.family_id, []).append(token)
+
+        found = [
+            ActiveSession(
+                family_id=family,
+                started_at=min(token.created_at for token in tokens),
+                last_seen_at=max(token.created_at for token in tokens),
+                expires_at=max(token.expires_at for token in tokens),
+                ip=tokens[0].ip,
+                user_agent=tokens[0].user_agent,
+                current=family == current_family,
+            )
+            for family, tokens in grouped.items()
+        ]
+        # Cea curentă întâi, apoi de la cea mai recentă: omul caută intrusul, iar
+        # intrusul este cel pe care nu-l recunoaște, nu cel de sus.
+        found.sort(key=lambda item: (not item.current, item.last_seen_at), reverse=False)
+        found.sort(key=lambda item: item.current, reverse=True)
+        return found
+
+    def revoke_other_sessions(
+        self,
+        user: User,
+        current_token: str | None,
+        *,
+        ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> int:
+        """Închide toate celelalte ferestre. Întoarce câte.
+
+        Nu cere parola: cine este deja autentificat poate oricum face totul cu
+        contul. Ce ar fi cerut parola este o acțiune **distructivă pentru date**;
+        asta doar deconectează, iar a o îngreuna ar însemna că omul care bănuiește
+        ceva stă să-și amintească parola în loc să apese.
+        """
+        keep = self._family_of(current_token)
+
+        if keep is None:
+            # Fără o sesiune curentă identificabilă, „celelalte" înseamnă toate.
+            closed = self.users.revoke_all_for_user(user.id)
+        else:
+            closed = self.users.revoke_families_except(user.id, keep)
+
+        self.audit.record(
+            organization_id=user.organization_id,
+            action="USER_SESSIONS_REVOKED",
+            entity_type="User",
+            entity_id=str(user.id),
+            user_id=user.id,
+            user_name=user.full_name,
+            detail=f"{closed} sesiuni închise",
+            ip=ip,
+            user_agent=user_agent,
+        )
+        logger.info("sessions_revoked", user_id=str(user.id), closed=closed)
+        return closed
+
+    # ── Schimbarea parolei ──────────────────────────────────────────────────
+
+    def change_password(
+        self,
+        user: User,
+        current_password: str,
+        new_password: str,
+        *,
+        ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> AuthSession:
+        """Schimbarea parolei de către proprietarul contului.
+
+        **De ce trebuie să existe.** Până acum exista doar resetarea făcută de un
+        administrator asupra altcuiva. Pe o instalare proaspătă administratorul
+        este unul singur, deci parola pusă la instalare nu mai putea fi schimbată
+        din aplicație de nimeni — nici de el. Iar parola aceea păzește documentele
+        financiare ale tuturor clienților cabinetului.
+
+        **Se cere parola veche**, spre deosebire de resetare. Nu ca formalitate: o
+        filă lăsată deschisă pe un calculator din birou este exact scenariul în
+        care cineva ar schimba parola și ar păstra contul. Cine o știe pe cea
+        veche este proprietarul.
+
+        **Toate celelalte sesiuni cad.** Motivul obișnuit pentru care cineva își
+        schimbă parola este bănuiala că altcineva o are. Dacă sesiunile vechi
+        rămân valabile, schimbarea nu a rezolvat nimic: tokenul de reîmprospătare
+        furat mai trăiește două săptămâni. Sesiunea celui care apasă se reface pe
+        loc — altfel s-ar deconecta singur exact când face lucrul corect.
+        """
+        if not verify_password(current_password, user.password_hash):
+            logger.info("password_change_rejected", reason="bad_current", user_id=str(user.id))
+            raise UnauthorizedError("Parola actuală nu este corectă.")
+
+        ensure_strong(new_password, email=user.email, full_name=user.full_name)
+
+        user.password_hash = hash_password(new_password)
+        self.session.flush()
+
+        revoked = self.users.revoke_all_for_user(user.id)
+
+        now = datetime.now(UTC)
+        tokens = self._issue(user, family_id=uuid.uuid4(), ip=ip, user_agent=user_agent, now=now)
+
+        self.audit.record(
+            organization_id=user.organization_id,
+            action="USER_PASSWORD_CHANGED",
+            entity_type="User",
+            entity_id=str(user.id),
+            user_id=user.id,
+            user_name=user.full_name,
+            # Nici parola veche, nici cea nouă. Câte sesiuni au căzut este exact
+            # ce se caută într-un jurnal după o bănuială de acces străin.
+            detail=f"Parolă schimbată de proprietar; {revoked} sesiuni închise",
+            ip=ip,
+            user_agent=user_agent,
+        )
+        logger.info("password_changed", user_id=str(user.id), revoked=revoked)
         return AuthSession(user=self.describe(user), tokens=tokens)
 
     # ── Refresh ─────────────────────────────────────────────────────────────

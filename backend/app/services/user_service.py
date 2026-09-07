@@ -33,8 +33,10 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode, NotFoundError, ValidationError
 from app.core.security import hash_password
+from app.domain.passwords import PasswordTooWeakError, ensure_strong
 from app.domain.permissions import RoleCode
 from app.models.user import Role, User
+from app.repositories.user import UserRepository
 from app.services.audit import AuditService
 
 #: Aceeași lungime minimă ca la `create-admin`. Un prag mai mic aici ar fi
@@ -76,11 +78,10 @@ class UserService:
         password = str(values.get("password") or "")
         role = self._role(values.get("role"))
 
-        if len(password) < MIN_PASSWORD_LENGTH:
-            raise ValidationError(
-                f"Parola are minimum {MIN_PASSWORD_LENGTH} caractere.",
-                {"password": ["Prea scurtă."]},
-            )
+        # Aceeași regulă ca peste tot: contul nou nu are voie să fie mai slab
+        # decât cel schimbat. Numele și adresa se dau explicit, fiindcă
+        # utilizatorul încă nu există ca rând în bază.
+        self._reject_weak(password, email=email, full_name=full_name)
         self._assert_email_is_free(organization_id, email)
 
         user = User(
@@ -172,14 +173,18 @@ class UserService:
         moment în care cineva capătă acces la contul altcuiva.
         """
         user = self._user(organization_id, user_id)
-        if len(password) < MIN_PASSWORD_LENGTH:
-            raise ValidationError(
-                f"Parola are minimum {MIN_PASSWORD_LENGTH} caractere.",
-                {"password": ["Prea scurtă."]},
-            )
+        self._reject_weak(password, email=user.email, full_name=user.full_name)
 
         user.password_hash = hash_password(password)
         self.session.flush()
+
+        # **Sesiunile celui resetat cad.** Motivul obișnuit al unei resetări este
+        # că cineva a pierdut accesul — iar celălalt motiv, mai rar și mai grav,
+        # este că altcineva l-a căpătat. În al doilea caz o parolă nouă nu
+        # rezolvă nimic dacă tokenul de reîmprospătare furat mai trăiește două
+        # săptămâni. Colegul se autentifică din nou cu parola primită.
+        revoked = UserRepository(self.session).revoke_all_for_user(user.id)
+
         self.audit.record(
             organization_id=organization_id,
             action="USER_PASSWORD_RESET",
@@ -188,11 +193,24 @@ class UserService:
             user_id=actor.user.id,
             user_name=actor.user.full_name,
             # Nici parola veche, nici cea nouă: auditul spune că s-a întâmplat.
-            detail=f"Parolă resetată pentru {user.full_name} ({user.email})",
+            detail=(
+                f"Parolă resetată pentru {user.full_name} ({user.email}); {revoked} sesiuni închise"
+            ),
             ip=actor.ip,
             user_agent=actor.user_agent,
         )
         return user
+
+    def _reject_weak(self, password: str, *, email: str, full_name: str) -> None:
+        """Aceeași regulă ca la schimbarea proprie (`app/domain/passwords.py`).
+
+        Un prag mai slab aici ar fi însemnat că drumul comod — cel prin care se
+        creează efectiv conturile — produce parole mai proaste decât cel incomod.
+        """
+        try:
+            ensure_strong(password, email=email, full_name=full_name)
+        except PasswordTooWeakError as exc:
+            raise ValidationError(" ".join(exc.reasons), {"password": exc.reasons}) from exc
 
     # ── Ajutoare ────────────────────────────────────────────────────────────
 

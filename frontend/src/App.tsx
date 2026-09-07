@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/app-shell";
 import { AuditLogPage, RolesPage, SettingsPage, UsersPage } from "@/features/admin/admin-pages";
+import { SecurityPage } from "@/features/admin/security-page";
 import { AnafPage } from "@/features/admin/anaf-page";
 import { DrivePage } from "@/features/admin/drive-page";
 import { LoginPage } from "@/features/auth/login-page";
@@ -121,6 +122,7 @@ function App() {
           {/* Administrare */}
           <Route path="/administrare/utilizatori" element={<UsersPage />} />
           <Route path="/administrare/roluri" element={<RolesPage />} />
+          <Route path="/administrare/securitate" element={<SecurityPage />} />
           <Route path="/administrare/setari" element={<SettingsPage />} />
           <Route path="/administrare/surse" element={<DrivePage />} />
           <Route path="/administrare/e-factura" element={<AnafPage />} />

@@ -8,9 +8,11 @@ răspunsului rămâne exact cel așteptat și frontend-ul nu are nimic de schimb
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Final
 
 from fastapi import APIRouter, Request, Response
+from pydantic import Field
 
 from app.api.deps import (
     ACCESS_COOKIE,
@@ -22,11 +24,13 @@ from app.api.deps import (
 )
 from app.api.route import CommittingRoute
 from app.core.config import settings
-from app.core.errors import AppError, ErrorCode
+from app.core.errors import AppError, ErrorCode, ValidationError
 from app.core.logging import get_logger
 from app.core.rate_limit import FixedWindowLimiter
+from app.domain.passwords import MIN_LENGTH, PasswordTooWeakError
 from app.schemas.auth import CurrentUserOut, LoginRequest, LogoutResponse
-from app.services.auth import AuthService, IssuedTokens
+from app.schemas.common import ApiModel
+from app.services.auth import ActiveSession, AuthService, IssuedTokens
 
 logger = get_logger(__name__)
 
@@ -165,6 +169,109 @@ def logout(request: Request, response: Response, session: DbSession) -> LogoutRe
     AuthService(session).logout(refresh_token_from(request), user)
     _clear_session_cookies(response)
     return LogoutResponse()
+
+
+class PasswordChangeRequest(ApiModel):
+    """Parola veche și cea nouă. Lungimea se verifică și aici, și în domeniu.
+
+    Aici, ca cererea evident greșită să nu ajungă până la hashing; acolo, ca
+    regula să rămână una singură indiferent pe ce drum se schimbă o parolă.
+    """
+
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=MIN_LENGTH, max_length=1024)
+
+
+@router.post("/auth/password", response_model=CurrentUserOut)
+def change_password(
+    payload: PasswordChangeRequest,
+    request: Request,
+    response: Response,
+    session: DbSession,
+    user: CurrentUser,
+) -> CurrentUserOut:
+    """Îți schimbi propria parolă.
+
+    Este singurul drum prin care administratorul unei instalări proaspete își
+    poate schimba parola: resetarea din *Administrare → Utilizatori* o face un
+    administrator **altcuiva**, iar la început administratorul este unul singur.
+
+    Reușita închide toate celelalte sesiuni și o deschide pe a ta din nou — vezi
+    `AuthService.change_password` pentru de ce amândouă.
+    """
+    try:
+        result = AuthService(session).change_password(
+            user,
+            payload.current_password,
+            payload.new_password,
+            ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent"),
+        )
+    except PasswordTooWeakError as exc:
+        # Toate motivele deodată: cine primește unul, îl repară și primește
+        # următorul, încearcă a treia oară ceva ce i se putea spune din prima.
+        raise ValidationError(" ".join(exc.reasons), {"newPassword": exc.reasons}) from exc
+
+    _set_session_cookies(response, result.tokens)
+    return result.user
+
+
+class SessionOut(ApiModel):
+    """O fereastră deschisă pe cont. Fără niciun token, nici măcar trunchiat."""
+
+    id: str
+    started_at: datetime
+    last_seen_at: datetime
+    expires_at: datetime
+    ip: str | None
+    user_agent: str | None
+    current: bool
+
+
+class RevokedOut(ApiModel):
+    closed: int
+
+
+def _session_out(item: ActiveSession) -> SessionOut:
+    return SessionOut(
+        # Id-ul familiei, nu al vreunui token: nu deschide nimic, dar identifică
+        # rândul dacă cineva raportează ce a văzut pe ecran.
+        id=str(item.family_id),
+        started_at=item.started_at,
+        last_seen_at=item.last_seen_at,
+        expires_at=item.expires_at,
+        ip=item.ip,
+        user_agent=item.user_agent,
+        current=item.current,
+    )
+
+
+@router.get("/auth/sessions", response_model=list[SessionOut])
+def list_sessions(request: Request, session: DbSession, user: CurrentUser) -> list[SessionOut]:
+    """Ce ferestre sunt deschise pe contul meu, chiar acum.
+
+    Întrebarea „mai are cineva sesiune pe contul meu?" nu avea până acum niciun
+    răspuns în aplicație, iar ea se pune exact în ziua proastă: după un laptop
+    lăsat deschis, după o parolă tastată pe alt calculator.
+    """
+    found = AuthService(session).sessions(user, current_token=refresh_token_from(request))
+    return [_session_out(item) for item in found]
+
+
+@router.post("/auth/sessions/revoke-others", response_model=RevokedOut)
+def revoke_other_sessions(request: Request, session: DbSession, user: CurrentUser) -> RevokedOut:
+    """Închide toate celelalte ferestre; a mea rămâne.
+
+    Perechea butonului de mai sus: cine vede o sesiune pe care nu o recunoaște
+    trebuie să o poată închide de acolo, nu prin schimbarea parolei.
+    """
+    closed = AuthService(session).revoke_other_sessions(
+        user,
+        refresh_token_from(request),
+        ip=client_ip(request),
+        user_agent=request.headers.get("User-Agent"),
+    )
+    return RevokedOut(closed=closed)
 
 
 @router.get("/me", response_model=CurrentUserOut)

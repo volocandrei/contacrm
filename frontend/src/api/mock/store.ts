@@ -6,6 +6,7 @@
  * Starea trăiește doar în tab-ul curent: la reîncărcare se reia de la setul sintetic.
  */
 import { ApiError, type Paginated } from "@/api/types";
+import { passwordProblems } from "@/lib/password";
 import {
   ACTIVE_CLIENTS,
   AUDIT_LOGS,
@@ -29,6 +30,7 @@ import { DOCUMENT_STATUS_LABEL, ROLE_LABEL } from "@/lib/labels";
 import { ROLE_CODE } from "@/types/domain";
 import type {
   AccountingPeriod,
+  ActiveSession,
   AnafMandate,
   AnafStatus,
   AnafSyncResult,
@@ -389,6 +391,68 @@ export function mockLogin(email: string): CurrentUser {
 }
 
 export function mockCurrentUser(): CurrentUser {
+  return currentUser;
+}
+
+/**
+ * Sesiunile deschise, în backendul simulat.
+ *
+ * **Ce reproduce și ce nu.** Reproduce *forma* răspunsului și regulile care se
+ * văd pe ecran: sesiunea curentă este marcată, „închide celelalte" o păstrează pe
+ * a mea, iar niciun token nu apare în răspuns. Nu reproduce criptografia — aici
+ * nu există tokenuri deloc. Contractul pe care îl apără este cel al interfeței
+ * (§14), nu securitatea, care trăiește în backend.
+ */
+let mockSessions: ActiveSession[] = [
+  {
+    id: "session-curenta",
+    startedAt: MOCK_NOW,
+    lastSeenAt: MOCK_NOW,
+    expiresAt: new Date(new Date(MOCK_NOW).getTime() + 14 * 86_400_000).toISOString(),
+    ip: "192.0.2.10",
+    userAgent: "Firefox 141 pe Windows",
+    current: true,
+  },
+  {
+    id: "session-telefon",
+    startedAt: new Date(new Date(MOCK_NOW).getTime() - 3 * 86_400_000).toISOString(),
+    lastSeenAt: new Date(new Date(MOCK_NOW).getTime() - 86_400_000).toISOString(),
+    expiresAt: new Date(new Date(MOCK_NOW).getTime() + 11 * 86_400_000).toISOString(),
+    ip: "192.0.2.44",
+    userAgent: "Chrome pe Android",
+    current: false,
+  },
+];
+
+export function listSessions(): ActiveSession[] {
+  return mockSessions.map((item) => ({ ...item }));
+}
+
+export function revokeOtherSessions(): { closed: number } {
+  const closed = mockSessions.filter((item) => !item.current).length;
+  mockSessions = mockSessions.filter((item) => item.current);
+  recordAudit("USER_SESSIONS_REVOKED", "User", currentUser.id, `${closed} sesiuni închise`);
+  return { closed };
+}
+
+/**
+ * Schimbarea propriei parole.
+ *
+ * Verifică **regulile pe care le vede omul** — parola veche cerută, politica
+ * aplicată, celelalte sesiuni închise — cu aceleași mesaje ca serverul, ca
+ * ecranul să se poată dezvolta fără backend. Parola nu se stochează nicăieri:
+ * backendul simulat nu are parole.
+ */
+export function changeOwnPassword(currentPassword: string, newPassword: string): CurrentUser {
+  if (!currentPassword.trim()) {
+    throw new ApiError("UNAUTHORIZED", "Parola actuală nu este corectă.", 401);
+  }
+  const reasons = passwordProblems(newPassword, currentUser.email, currentUser.fullName);
+  if (reasons.length > 0) {
+    throw new ApiError("VALIDATION_ERROR", reasons.join(" "), 422, { newPassword: reasons });
+  }
+  revokeOtherSessions();
+  recordAudit("USER_PASSWORD_CHANGED", "User", currentUser.id, "Parolă schimbată de proprietar");
   return currentUser;
 }
 
@@ -882,6 +946,9 @@ export function uploadDocument(input: UploadInput): StoredDocument {
 
   const document: StoredDocument = {
     id,
+    // Un document proaspăt urcat nu are linii: ele apar abia dacă providerul
+    // citește o factură electronică.
+    lines: [],
     originalFilename: input.filename,
     storedFilename: null,
     clientId: null,

@@ -20,6 +20,7 @@ from app.core.logging import get_logger
 from app.domain import efactura as ef
 from app.domain.enums import FieldSource
 from app.services.extraction.base import (
+    ExtractedLine,
     ExtractedValue,
     ExtractionError,
     ExtractionInput,
@@ -120,6 +121,30 @@ class EFacturaExtractionProvider:
             fields={name: _empty() for name in FIELDS},
         )
 
+    @staticmethod
+    def _lines(invoice: ef.EInvoice) -> tuple[ExtractedLine, ...]:
+        """Liniile citite din XML, în forma pe care o scrie procesarea.
+
+        Traducere unu-la-unu, fără nicio derivare: TVA-ul pe linie și totalul cu
+        TVA **nu se calculează aici**, chiar dacă s-ar putea. Ce lipsește din
+        document lipsește și din registru — un număr calculat de noi și pus lângă
+        unul citit de pe factură ar arăta identic, iar contabilul nu ar avea cum
+        să le deosebească.
+        """
+        return tuple(
+            ExtractedLine(
+                number=line.number,
+                description=line.description,
+                quantity=line.quantity,
+                unit_code=line.unit_code,
+                unit_price=line.unit_price,
+                net_amount=line.net_amount,
+                vat_rate=line.vat_rate,
+                vat_category=line.vat_category,
+            )
+            for line in invoice.lines
+        )
+
     def _to_result(self, invoice: ef.EInvoice, duration_ms: int) -> ExtractionResult:
         fields = {name: _empty() for name in FIELDS}
         fields["documentDate"] = _read(invoice.issue_date)
@@ -159,6 +184,7 @@ class EFacturaExtractionProvider:
             # ar putea alege unul pe care scrierea îl refuză.
             document_type_candidates=candidates if len(candidates) == len(INVOICE_CODES) else (),
             fields=fields,
+            lines=self._lines(invoice),
         )
 
 

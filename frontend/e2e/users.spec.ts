@@ -12,7 +12,14 @@ import { ACCOUNTS, loginAs, unique } from "./support";
 test("un coleg adăugat din interfață se poate autentifica imediat", async ({ page }) => {
   const marker = unique().toLowerCase();
   const email = `coleg.${marker}@contacrm.test`;
-  const password = `parola-coleg-${marker}`;
+  // Fără marker și fără cuvântul „coleg": adresa este `coleg.<marker>@…`, iar
+  // politica refuză acum o parolă care conține propria identitate — și markerul
+  // face parte din ea. Vezi `backend/app/domain/passwords.py`.
+  //
+  // Testul nu a fost slăbit; s-a schimbat data de test, fiindcă regula nouă a
+  // prins-o pe bună dreptate: o parolă care conține numele contului este exact ce
+  // încearcă primul cineva care are lista de utilizatori.
+  const password = "iarna-devreme-pe-strada-7";
 
   await loginAs(page, ACCOUNTS.admin);
   await page.goto("/administrare/utilizatori");

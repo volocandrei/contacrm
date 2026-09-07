@@ -3,6 +3,7 @@ import { api, request, uploadCsv } from "@/api/client";
 import type { Paginated, QueryParams } from "@/api/types";
 import type {
   AccountingPeriod,
+  ActiveSession,
   AnafMandate,
   AnafStatus,
   AnafSyncResult,
@@ -84,6 +85,22 @@ export const auth = {
     api.post<CurrentUser>("/auth/login", { email, password }),
   logout: () => api.post<{ ok: boolean }>("/auth/logout"),
   me: () => api.get<CurrentUser>("/me"),
+
+  /**
+   * Îți schimbi propria parolă.
+   *
+   * Este singurul drum prin care administratorul unei instalări proaspete își
+   * poate schimba parola: resetarea din *Utilizatori* o face un administrator
+   * **altcuiva**, iar la început administratorul este unul singur.
+   */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post<CurrentUser>("/auth/password", { currentPassword, newPassword }),
+
+  /** Ferestrele deschise pe contul meu, cea curentă întâi. */
+  sessions: () => api.get<ActiveSession[]>("/auth/sessions"),
+
+  /** Închide toate celelalte ferestre; a mea rămâne. */
+  revokeOtherSessions: () => api.post<{ closed: number }>("/auth/sessions/revoke-others"),
 };
 
 export const reports = {

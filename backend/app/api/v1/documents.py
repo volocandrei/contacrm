@@ -45,6 +45,7 @@ from app.schemas.document import (
     DocumentFileOut,
     DocumentFilters,
     DocumentHistoryEntryOut,
+    DocumentLineOut,
     DocumentListItemOut,
     DocumentOcrOut,
     DocumentTypeOut,
@@ -235,6 +236,22 @@ def _to_detail(session: DbSession, user: User, row: DocumentRow) -> DocumentDeta
         )[1],
         history=_history(session, document),
         files=_files(session, document),
+        lines=[
+            DocumentLineOut(
+                position=line.position,
+                number=line.number,
+                description=line.description,
+                quantity=line.quantity,
+                unit_code=line.unit_code,
+                unit_price=line.unit_price,
+                net_amount=line.net_amount,
+                vat_rate=line.vat_rate,
+                vat_amount=line.vat_amount,
+                gross_amount=line.gross_amount,
+                vat_category=line.vat_category,
+            )
+            for line in document.lines
+        ],
     )
 
 

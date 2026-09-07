@@ -25,6 +25,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import select
@@ -39,6 +40,7 @@ from app.domain.periods import ReferencePeriodStrategy, derive_reference_month
 from app.models.document import (
     Document,
     DocumentIntake,
+    DocumentLine,
     DocumentProcessingJob,
     DocumentType,
 )
@@ -53,6 +55,7 @@ from app.services.document_validation import DocumentValidationService, Validati
 from app.services.duplicates import DuplicateDetectionService, DuplicateResult
 from app.services.extraction.base import (
     DocumentExtractionProvider,
+    ExtractedLine,
     ExtractionError,
     ExtractionInput,
     ExtractionResult,
@@ -83,6 +86,20 @@ class ProcessingOutcome:
     skipped: bool = False
     reason: str | None = None
     error_code: DocumentErrorCode | None = None
+
+
+def _decimal(raw: str | None) -> Decimal | None:
+    """Un șir citit de provider, ca număr. Ce nu se poate citi rămâne absent.
+
+    Zero ar fi o afirmație: „linia costă nimic" și „nu s-a putut citi cât costă"
+    sunt lucruri diferite, iar al doilea trebuie să se vadă pe ecran ca gol.
+    """
+    if raw is None or raw == "":
+        return None
+    try:
+        return Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return None
 
 
 class DocumentProcessingService:
@@ -283,6 +300,51 @@ class DocumentProcessingService:
         document.ai_classification_confidence = result.classification_confidence
         document.ai_extraction_confidence = result.extraction_confidence
         document.extraction_duration_ms = result.duration_ms
+
+        self._apply_lines(document, result.lines)
+
+    def _apply_lines(self, document: Document, lines: tuple[ExtractedLine, ...]) -> None:
+        """Scrie liniile documentului, înlocuindu-le pe cele de dinainte.
+
+        **Înlocuire, nu adăugare.** O reprocesare citește același document și
+        produce aceleași linii; adăugate, ar dubla baza de TVA a lunii la fiecare
+        reîncercare — o greșeală care nu s-ar vedea pe ecranul documentului, ci
+        abia în decont.
+
+        **Zero linii nu șterge nimic.** Un provider care nu știe să citească linii
+        — `pdf_text`, `mock` — întoarce o listă goală. Dacă asta ar șterge liniile
+        citite dintr-un XML, o reprocesare cu alt provider ar pierde tăcut singurele
+        date de încredere pe care le avem. Se șterge numai când vine ceva în loc.
+
+        Sumele se convertesc **aici**, o singură dată: providerii lucrează cu
+        șiruri, ca să nu decidă ei rotunjirea.
+        """
+        if not lines:
+            return
+
+        for existing in list(document.lines):
+            self.session.delete(existing)
+        # `flush` înainte de a insera: unicitatea `(document_id, position)` este
+        # verificată de bază la scriere, iar ștergerea trebuie să ajungă prima.
+        self.session.flush()
+
+        for position, line in enumerate(lines, start=1):
+            document.lines.append(
+                DocumentLine(
+                    document_id=document.id,
+                    position=position,
+                    number=(line.number or None),
+                    description=(line.description or None),
+                    quantity=_decimal(line.quantity),
+                    unit_code=(line.unit_code or None),
+                    unit_price=_decimal(line.unit_price),
+                    net_amount=_decimal(line.net_amount),
+                    vat_rate=_decimal(line.vat_rate),
+                    vat_amount=_decimal(line.vat_amount),
+                    gross_amount=_decimal(line.gross_amount),
+                    vat_category=(line.vat_category or None),
+                )
+            )
 
     def _match_client(self, document: Document, result: ExtractionResult) -> None:
         """Găsește clientul după codul fiscal de pe document (§8).

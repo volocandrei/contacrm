@@ -41,6 +41,18 @@ const routes: Route[] = [
   { method: "POST", pattern: "/auth/login", handler: ({ body }) => store.mockLogin(str(body, "email")) },
   { method: "POST", pattern: "/auth/logout", handler: () => ({ ok: true }) },
   { method: "GET", pattern: "/me", handler: () => store.mockCurrentUser() },
+  {
+    method: "POST",
+    pattern: "/auth/password",
+    handler: ({ body }) =>
+      store.changeOwnPassword(str(body, "currentPassword"), str(body, "newPassword")),
+  },
+  { method: "GET", pattern: "/auth/sessions", handler: () => store.listSessions() },
+  {
+    method: "POST",
+    pattern: "/auth/sessions/revoke-others",
+    handler: () => store.revokeOtherSessions(),
+  },
 
   /* Dashboard */
   { method: "GET", pattern: "/dashboard", handler: () => store.getDashboard() },

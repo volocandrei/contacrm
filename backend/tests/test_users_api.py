@@ -36,7 +36,15 @@ pytestmark = requires_db
 pytest_plugins = ("tests.test_crm_api",)
 
 URL = "/api/v1/users"
-GOOD_PASSWORD = "parola-noua-de-coleg-2026"
+#: Parola folosita de testele care nu verifica parola.
+#:
+#: Era `parola-noua-de-coleg-2026`, si a incetat sa treaca atunci cand politica a
+#: inceput sa refuze parolele care contin propria identitate: adresa colegului
+#: este `coleg.nou@...`, iar parola continea `coleg`. Testele nu au fost slabite —
+#: regula noua le-a prins pe bune, iar o parola care contine numele contului este
+#: exact ce nu vrem intr-un cabinet. Ce s-a schimbat este data de test, nu
+#: asertiunea. Vezi `app/domain/passwords.py` si `TestThePasswordPolicy` mai jos.
+GOOD_PASSWORD = "iarna-devreme-pe-strada-7"
 
 
 def create(api: TestClient, **overrides: object) -> object:

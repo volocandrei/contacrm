@@ -46,6 +46,7 @@ import { describeError } from "@/lib/errors";
 import { formatDateTime, formatFileSize } from "@/lib/format";
 import { buttonPrimary, focusRing, iconChip, mutedText, pillClass, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
+import { InvoiceLines } from "@/features/documents/invoice-lines";
 import type {
   DocumentAction,
   DocumentDetail,
@@ -374,6 +375,8 @@ function ReviewScreen({
       )}
 
       {document.files.length > 0 && <FilesBlock document={document} />}
+
+      <InvoiceLines lines={document.lines} currency={document.fields.currency?.value ?? null} />
 
       {feedback && (
         <div

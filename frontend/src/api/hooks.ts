@@ -10,6 +10,7 @@ import type { QueryParams } from "@/api/types";
 import {
   administration,
   assistant,
+  auth,
   clients,
   contacts,
   dashboard,
@@ -1017,6 +1018,44 @@ export function useUpdateTaskStatus() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+/**
+ * Schimbarea propriei parole (§1).
+ *
+ * La succes se invalidează tot: sesiunea rămâne a mea, dar celelalte s-au închis,
+ * iar lista lor este chiar ce se uită omul imediat după.
+ */
+export function useChangePassword() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      currentPassword,
+      newPassword,
+    }: {
+      currentPassword: string;
+      newPassword: string;
+    }) => auth.changePassword(currentPassword, newPassword),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
+  });
+}
+
+/** Ferestrele deschise pe contul meu. */
+export function useSessions() {
+  return useQuery({ queryKey: ["sessions"], queryFn: () => auth.sessions() });
+}
+
+/** Închide toate celelalte ferestre; a mea rămâne. */
+export function useRevokeOtherSessions() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => auth.revokeOtherSessions(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
     },
   });
 }

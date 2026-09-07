@@ -138,6 +138,33 @@ class DocumentFileOut(ApiModel):
     created_at: datetime
 
 
+class DocumentLineOut(ApiModel):
+    """O linie de factură, așa cum o arată fișa documentului (§9).
+
+    **De ce cota stă pe linie, nu pe document.** Pe aceeași factură pot fi 21%
+    pentru un produs, 11% pentru altul și 0% pentru un serviciu scutit. Un singur
+    procent la nivel de document este o medie fără sens contabil, iar decontul le
+    cere separat.
+
+    Câmpurile lipsă sunt `null`, nu zero: „nu scrie pe document" și „scrie zero"
+    se citesc diferit de un contabil.
+    """
+
+    position: int
+    number: str | None
+    description: str | None
+    quantity: Decimal | None
+    unit_code: str | None
+    unit_price: Decimal | None
+    net_amount: Decimal | None
+    vat_rate: Decimal | None
+    vat_amount: Decimal | None
+    gross_amount: Decimal | None
+    #: `S` cotă standard, `AE` taxare inversă, `E` scutit, `Z` cotă zero.
+    #: Explică un `0%` care altfel arată ca o eroare de citire.
+    vat_category: str | None
+
+
 class DocumentDetailOut(DocumentListItemOut):
     mime_type: str
     file_size: int
@@ -161,6 +188,9 @@ class DocumentDetailOut(DocumentListItemOut):
     #: goală pentru documentele obișnuite: acolo fișierul este unul singur și se
     #: ia de la `/download`.
     files: list[DocumentFileOut]
+    #: Liniile facturii, în ordinea din document. Goală pentru documentele care
+    #: nu sunt facturi electronice: din PDF liniile nu se citesc, și nu se ghicesc.
+    lines: list[DocumentLineOut]
 
 
 # ── Filtre și sortare ────────────────────────────────────────────────────────

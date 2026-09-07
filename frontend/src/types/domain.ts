@@ -272,6 +272,25 @@ export type Permission =
   | "admin:settings"
   | "audit:read";
 
+/**
+ * O fereastră deschisă pe contul meu.
+ *
+ * Nu conține niciun token, nici măcar trunchiat: ecranul răspunde la „mai are
+ * cineva sesiune pe contul meu?", nu livrează cheile. `id` este familia de
+ * tokenuri — identifică rândul dacă cineva raportează ce a văzut, dar nu deschide
+ * nimic.
+ */
+export type ActiveSession = {
+  id: string;
+  startedAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  ip: string | null;
+  userAgent: string | null;
+  /** Fereastra din care vine cererea de acum. Nu se poate închide de la butonul comun. */
+  current: boolean;
+};
+
 export type CurrentUser = {
   id: string;
   fullName: string;
@@ -665,6 +684,44 @@ export type DocumentDetail = DocumentListItem & {
    * sigiliul ANAF și PDF-ul tipăribil. Goală pentru restul documentelor.
    */
   files: DocumentFile[];
+  /**
+   * Liniile facturii: ce s-a vândut, cât, cu ce cotă de TVA (§9).
+   *
+   * Goală pentru documentele care nu sunt facturi electronice — din PDF liniile
+   * nu se citesc, și nu se ghicesc: o linie inventată intră direct în decont.
+   */
+  lines: DocumentLine[];
+};
+
+/**
+ * O linie de factură.
+ *
+ * **De ce cota stă aici și nu pe document.** Pe aceeași factură pot fi 21% pentru
+ * un produs, 11% pentru altul și 0% pentru un serviciu scutit. Un singur procent
+ * la nivel de document este o medie fără sens contabil, iar decontul le cere
+ * separat.
+ *
+ * Sumele sunt șiruri, ca peste tot în contract (§72): un `number` în JSON pierde
+ * bani la a doua zecimală. `null` înseamnă „nu scrie pe document" — diferit de
+ * zero, care este o afirmație.
+ */
+export type DocumentLine = {
+  position: number;
+  /** Numărul de pe document. Unele facturi numerotează `1.1`, `A`, sau deloc. */
+  number: string | null;
+  description: string | null;
+  quantity: string | null;
+  /** Codul UN/ECE: `H87` bucată, `HUR` oră. Se arată așa cum vine. */
+  unitCode: string | null;
+  unitPrice: string | null;
+  /** Valoarea liniei **fără** TVA, după reducere. */
+  netAmount: string | null;
+  /** Cota, ca număr: `21`, `11`, `0`. Fără semnul procent. */
+  vatRate: string | null;
+  vatAmount: string | null;
+  grossAmount: string | null;
+  /** `S` standard, `AE` taxare inversă, `E` scutit, `Z` cotă zero. */
+  vatCategory: string | null;
 };
 
 /** Un fișier al documentului. Eticheta vine de la server, nu dintr-o hartă locală. */

@@ -91,6 +91,46 @@ class UserRepository:
             token.revoked_at = now
         return len(tokens)
 
+    def active_tokens_for_user(self, user_id: uuid.UUID, *, now: datetime) -> list[RefreshToken]:
+        """Tokenurile care încă pot fi folosite, cele mai noi întâi.
+
+        „Sesiune" nu este un rând, ci o **familie**: un token se rotește la fiecare
+        reîmprospătare, deci o singură fereastră de browser lasă în urmă zeci de
+        rânduri. Gruparea o face serviciul; aici se citește doar ce este viu.
+        """
+        return list(
+            self.session.scalars(
+                select(RefreshToken)
+                .where(
+                    RefreshToken.user_id == user_id,
+                    RefreshToken.revoked_at.is_(None),
+                    RefreshToken.expires_at > now,
+                )
+                .order_by(RefreshToken.created_at.desc())
+            )
+        )
+
+    def revoke_families_except(self, user_id: uuid.UUID, keep: uuid.UUID) -> int:
+        """Închide toate sesiunile utilizatorului, în afară de una.
+
+        `keep` este familia celui care apasă: altfel s-ar deconecta singur exact
+        când face lucrul corect.
+        """
+        now = datetime.now(UTC)
+        tokens = list(
+            self.session.scalars(
+                select(RefreshToken).where(
+                    RefreshToken.user_id == user_id,
+                    RefreshToken.family_id != keep,
+                    RefreshToken.revoked_at.is_(None),
+                )
+            )
+        )
+        families = {token.family_id for token in tokens}
+        for token in tokens:
+            token.revoked_at = now
+        return len(families)
+
     def revoke_all_for_user(self, user_id: uuid.UUID) -> int:
         now = datetime.now(UTC)
         tokens = list(

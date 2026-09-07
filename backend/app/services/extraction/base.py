@@ -44,6 +44,33 @@ class ExtractionInput:
 
 
 @dataclass(frozen=True, slots=True)
+class ExtractedLine:
+    """O linie de document, așa cum a citit-o providerul.
+
+    **Valorile rămân șiruri**, ca restul extracției: conversia la `Decimal` se
+    face o singură dată, la scriere, cu regulile de rotunjire ale aplicației. Un
+    provider care ar întoarce numere ar decide, fără să știe, cum se rotunjește.
+
+    **Nu are `confidence`.** Liniile vin azi doar din facturi electronice, unde
+    fiecare valoare stă într-un element cu nume: nu există „80% sigur că scrie
+    21%". Un provider care ar ghici linii dintr-un PDF nu are ce căuta aici până
+    când nu are și un mod de a spune cât de sigur este — iar o linie ghicită
+    intră direct în decontul de TVA.
+    """
+
+    number: str | None = None
+    description: str | None = None
+    quantity: str | None = None
+    unit_code: str | None = None
+    unit_price: str | None = None
+    net_amount: str | None = None
+    vat_rate: str | None = None
+    vat_amount: str | None = None
+    gross_amount: str | None = None
+    vat_category: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ExtractionResult:
     """Tot ce a produs providerul dintr-un document."""
 
@@ -73,6 +100,10 @@ class ExtractionResult:
 
     # Câmpuri, cheiate pe numele din API (`documentDate`, `totalAmount`, …).
     fields: Mapping[str, ExtractedValue] = field(default_factory=dict)
+
+    # Liniile documentului, în ordinea din el. Goală înseamnă „providerul nu le-a
+    # citit", nu „documentul nu are" — vezi `ExtractedLine`.
+    lines: tuple[ExtractedLine, ...] = ()
 
     @property
     def extraction_confidence(self) -> float | None:

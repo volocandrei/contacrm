@@ -2357,6 +2357,7 @@ Niciuna nu blochează deploy-ul.
 
 | Element | Notă |
 |---|---|
+| liniile de factură se citesc doar din XML | Din PDF nu se citesc și nu se ghicesc — o linie inventată intră direct în decontul de TVA. Ridicarea cere un provider care poate spune **cât de sigur** este pe fiecare linie, nu doar să producă rânduri |
 | panoul costă 30 de interogări | a crescut de la 24 când s-a reparat numărul de clienți cu documente lipsă (auditul funcțional). Recuperabil cu o interogare agregată; pragul din `test_documents_volume.py` este 34 și există ca să prindă un `N+1`, nu ca să măsoare |
 | retenția automată nu există | `RETENTION_ENABLED` și cele trei durate din `.env.example` sunt marcate NEIMPLEMENTAT, iar eticheta de pe ecran spune „(neimplementată)". Un cabinet cu obligație de ștergere o face de mână |
 | contoarele de rată stau în proces | autentificare, portal, asistent. Cu două procese de API sunt două contoare — trebuie dublate la marginea rețelei acolo unde există un proxy |
