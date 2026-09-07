@@ -367,6 +367,18 @@ Postgres exact cum rulează azi local, fără cron și fără S3 — `docker-com
 descrie deja stiva completă, worker inclus. Procesarea pornește imediat, nu la
 următoarea bătaie de ceas.
 
+**Configurarea merge într-un `.env` lângă `docker-compose.yml`**, iar containerele
+îl primesc întreg (`env_file`). Nu există o listă de variabile de ținut la zi în
+compose — a existat, și tocmai de aceea rămânea în urmă: fiecare funcție nouă își
+aducea variabilele ei, nimeni nu le adăuga și acolo, iar containerul pornea cu
+valorile implicite. Ultima dată lipseau `SECRET_KEY`, `PUBLIC_BASE_URL`,
+`CRON_SECRET` și tot SMTP-ul, adică exact ce oprește pornirea în producție.
+
+Singurele valori scrise în compose sunt cele care ar fi greșite **înăuntrul**
+containerului: `DATABASE_URL` (baza se cheamă `postgres` în rețeaua compose, nu
+`localhost`), `STORAGE_PATH` și `ARCHIVE_ROOT` (documentele stau într-un volum).
+Fără `.env`, stiva pornește ca până acum, pe valorile de development.
+
 Vercel câștigă la altceva: frontend și API pe aceeași origine, fără nimic de
 administrat. Alege în funcție de care dintre cele două contează mai mult.
 

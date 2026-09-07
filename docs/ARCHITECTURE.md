@@ -50,7 +50,7 @@ CONTACRM/
 ├── backend/                   # ✅ FastAPI + SQLAlchemy 2 + Alembic
 │   ├── app/
 │   │   ├── api/v1/            # ✅ routere subțiri, fără business logic + router.py
-│   │   ├── core/              # ✅ config, logging, errors, db, middleware
+│   │   ├── core/              # ✅ config, logging, errors, db, middleware, clock, locks
 │   │   ├── models/            # ✅ organization, user, audit, client/contact/note/tag, task
 │   │   ├── schemas/           # ✅ ApiModel, Paginated, PageParams
 │   │   ├── repositories/      # ✅ user, client, task — filtrarea pe organization_id

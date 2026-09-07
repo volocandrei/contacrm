@@ -422,7 +422,7 @@ const SETTING_LABEL: Record<string, string> = {
   REFERENCE_PERIOD_STRATEGY: "Regula lunii contabile",
   DEFAULT_TIMEZONE: "Fus orar",
   NOTIFICATIONS_ENABLED: "Trimitere notificări",
-  RETENTION_ENABLED: "Ștergere automată",
+  RETENTION_ENABLED: "Ștergere automată (neimplementată)",
   TRUSTED_PROXY_COUNT: "Proxy-uri de încredere în față",
   ONEDRIVE: "Integrare OneDrive",
 };

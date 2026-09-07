@@ -937,6 +937,48 @@ class TestTheArchive:
 
         assert any(name.endswith("2026-08-14_Facturaintrare_AlfaConta_FCT1.pdf") for name in names)
 
+    def test_a_hostile_filename_does_not_become_a_path_inside_the_archive(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        storage: LocalStorageProvider,
+        client_row: Client,
+    ) -> None:
+        """Numele venit de la client nu are voie sa scrie in afara dosarului lui.
+
+        **De unde vine numele.** `original_filename` este exact ce a scris cel
+        care a incarcat fisierul, taiat la 512 de caractere si nimic mai mult.
+        Prin portal, acela este clientul: oricine are linkul alege numele.
+
+        **Ce se intampla daca ajunge intreg in arhiva.** Intrarea din ZIP devine
+        `Client/2026-08/../../../ceva.pdf`. La dezarhivare, un program care nu
+        curata caile scrie fisierul in afara dosarului ales — trei niveluri mai
+        sus, peste ce se afla acolo. Este `zip slip`, si nu depinde de noi: depinde
+        de programul cu care contabilul deschide arhiva.
+
+        **De ce s-a intamplat.** Aceeasi expresie —
+        `stored_filename or original_filename` — este curatata la descarcare, in
+        `document_delivery.safe_filename`, si era luata bruta aici. Doua drumuri
+        pentru acelasi nume, unul pazit si unul nu.
+        """
+        stored(db, org, storage, client_row, name="../../../evil.pdf")
+        stored(db, org, storage, client_row, name="C:" + chr(92) + "Windows" + chr(92) + "x.pdf")
+
+        with self._open(api) as archive:
+            names = archive.namelist()
+
+        for name in names:
+            assert ".." not in name.split("/"), name
+            assert chr(92) not in name, name
+            assert not name.startswith("/"), name
+            # Fiecare document sta sub dosarul clientului si al lunii lui.
+            if name.endswith(".pdf"):
+                assert name.startswith("Alfa Conta SRL/2026-08/"), name
+
+        # Si nu se pierde niciunul pe drum: doua documente, doua fisiere.
+        assert sum(1 for name in names if name.endswith(".pdf")) == 2
+
     def test_two_documents_with_the_same_name_both_survive(
         self,
         api: TestClient,

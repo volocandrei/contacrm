@@ -50,7 +50,9 @@ from datetime import UTC, date, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core import clock
 from app.core.config import settings
+from app.core.locks import try_lock_organization
 from app.core.logging import get_logger
 from app.domain.enums import ReminderStatus
 from app.domain.periods import ChecklistEntry, filing_deadline
@@ -262,6 +264,26 @@ class ReminderService:
         Un client care eșuează nu-i oprește pe ceilalți: un server de mail care
         refuză o adresă nu este un motiv ca restul să rămână neanunțați.
         """
+        # **Un singur trimitator odata, per cabinet.** Tot ce urmeaza citeste din
+        # baza ce s-a trimis pana acum — cererea, ultimul reminder, contorul lunii
+        # — deci tot ce urmeaza presupune ca cine a scris inaintea noastra a
+        # apucat sa comita. Doua batai suprapuse rup presupunerea: amandoua citesc
+        # „nu s-a trimis nimic", amandoua hotarasc ca este de trimis, iar clientul
+        # primeste acelasi mesaj de doua ori. Masurat: patru batai deodata, patru
+        # mesaje.
+        #
+        # Se intampla fara nimic exotic — un cron care bate peste o rulare mai
+        # lunga decat crede el, un „reincearca" apasat, doua procese de API — iar
+        # paguba nu apare in nicio consola: apare la client, care muta adresa
+        # cabinetului in spam.
+        #
+        # Nu se asteapta. Cine pierde intoarce zero, si asta este raspunsul corect:
+        # altcineva trimite chiar acum. Incuietoarea se elibereaza la commit, adica
+        # exact dupa ce randurile devin vizibile pentru urmatorul.
+        if not try_lock_organization(self.session, self.organization_id, "reminders"):
+            logger.info("reminders_already_running", organization_id=str(self.organization_id))
+            return SendReport(sent=0, failed=0, skipped=0)
+
         reference_month = self.month()
         if reference_month is None:
             return SendReport(sent=0, failed=0, skipped=0)
@@ -426,7 +448,7 @@ def run_reminders(sender: EmailSender, *, today: date | None = None) -> SendRepo
     if not settings.client_reminders_enabled:
         return SendReport(sent=0, failed=0, skipped=0)
 
-    when = today or datetime.now(UTC).date()
+    when = today or clock.today()
     sent = failed = skipped = 0
     with session_scope() as session:
         for organization_id in session.scalars(select(Organization.id)):

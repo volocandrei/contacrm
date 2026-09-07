@@ -212,3 +212,51 @@ class TestWhenTheModelIsAway:
         assert body["text"].startswith(assistant_route.FALLBACK_NOTE)
         # Și tot răspunde la întrebare, nu doar anunță pana.
         assert "Termenul pentru luna" in body["text"]
+
+
+class TestTheCounter:
+    """Câte întrebări se pot pune într-un minut, și de ce există o limită.
+
+    Restul aplicației nu numără cererile unui om autentificat: o sută de documente
+    încărcate de un contabil sunt exact munca lui. Aici este altfel. Cu
+    `ASSISTANT_PROVIDER=anthropic`, fiecare întrebare pleacă la un furnizor care se
+    plătește la apel, iar o întrebare poate cere până la trei runde de unelte. O
+    filă lăsată deschisă cu un `setInterval`, sau un script cu bucla greșită,
+    cheltuiește bani reali fără să spargă nimic și fără să apară în vreo consolă —
+    se vede pe factura de la sfârșitul lunii.
+    """
+
+    def test_after_the_limit_the_next_question_is_refused_with_when_to_return(
+        self, api: TestClient, admin: User
+    ) -> None:
+        login(api, admin.email)
+
+        for _ in range(assistant_route.QUESTIONS_PER_MINUTE):
+            assert api.post(URL, json={"message": "când e termenul?"}).status_code == 200
+
+        refused = api.post(URL, json={"message": "când e termenul?"})
+
+        assert refused.status_code == 429
+        # Nu doar „nu": și când se poate reveni, altfel omul reîncearcă orbește.
+        assert int(refused.headers["Retry-After"]) > 0
+
+    def test_the_counter_is_per_person_not_per_office(
+        self,
+        api: TestClient,
+        db: Session,
+        org: Organization,
+        roles: dict[RoleCode, Role],
+        admin: User,
+    ) -> None:
+        """Un cabinet întreg în spatele aceleiași adrese nu se blochează reciproc."""
+        colleague = make_user(db, org, roles, email="coleg@contacrm.test", role=RoleCode.ADMIN)
+        db.commit()
+
+        login(api, admin.email)
+        for _ in range(assistant_route.QUESTIONS_PER_MINUTE):
+            api.post(URL, json={"message": "când e termenul?"})
+        assert api.post(URL, json={"message": "când e termenul?"}).status_code == 429
+
+        login(api, colleague.email)
+
+        assert api.post(URL, json={"message": "când e termenul?"}).status_code == 200

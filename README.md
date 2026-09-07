@@ -118,7 +118,10 @@ CONTACRM/
 │   ├── DEPLOY.md           # punerea în funcțiune
 │   ├── RUNBOOK.md          # operare, copii de siguranță, restaurare, incidente
 │   ├── STATUS.md           # starea proiectului, pornire pe o mașină nouă
-│   ├── FINAL_PRODUCTION_AUDIT.md
+│   ├── FINAL_PRODUCTION_AUDIT.md   # audit de producție (2 runde, defecte + verdict)
+│   ├── ULTIMATE_APPLICATION_FUNCTIONAL_AUDIT.md
+│   ├── CREDENTIALE.md      # ce credențiale se adună și de la cine
+│   ├── SAGA.md
 │   └── adr/                # ADR-001 … ADR-009
 ├── docker-compose.yml      # postgres (+ migrate, backend, worker pe profilul `api`)
 ├── .env.example            # toate variabilele de configurare (fără valori reale)

@@ -2357,6 +2357,9 @@ Niciuna nu blochează deploy-ul.
 
 | Element | Notă |
 |---|---|
+| panoul costă 30 de interogări | a crescut de la 24 când s-a reparat numărul de clienți cu documente lipsă (auditul funcțional). Recuperabil cu o interogare agregată; pragul din `test_documents_volume.py` este 34 și există ca să prindă un `N+1`, nu ca să măsoare |
+| retenția automată nu există | `RETENTION_ENABLED` și cele trei durate din `.env.example` sunt marcate NEIMPLEMENTAT, iar eticheta de pe ecran spune „(neimplementată)". Un cabinet cu obligație de ștergere o face de mână |
+| contoarele de rată stau în proces | autentificare, portal, asistent. Cu două procese de API sunt două contoare — trebuie dublate la marginea rețelei acolo unde există un proxy |
 | `QueryBoundary` (`components/page.tsx`) | scris ca să elimine triada `isLoading/error/empty`, dar nefolosit — cele 8 pagini o repetă manual |
 | ~~`react-hook-form`, `zod`, `@hookform/resolvers`~~ | scoase la auditul de producție: nimic nu le importa |
 | ~~primitivele shadcn (`button`, `card`, `badge`, `separator`)~~ | scoase odată cu pagina `/demo`, singura care le folosea. `components.json` rămâne: `npx shadcn add <componentă>` le aduce înapoi când chiar sunt necesare |

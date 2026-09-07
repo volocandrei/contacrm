@@ -1,12 +1,457 @@
 # Audit de pregătire pentru producție
 
+**Data:** 7 septembrie 2026 · **Versiune auditată:** `3650235`, plus reparațiile
+descrise aici · **Metodă:** inspecție, apoi rulare — PostgreSQL real, server real,
+browser real, `docker compose` real, copie de siguranță făcută și restaurată.
+
+> Este a **doua** rundă. Prima, din 3 septembrie (`5920bde`, M10), este păstrată
+> integral în anexa de la sfârșitul fișierului. Între ele au intrat în aplicație
+> e-Factura, asistentul, onorariile, obligațiile, șabloanele de așteptări, linkul
+> de trimitere, importul de clienți, reminderele automate, WhatsApp, cutiile IMAP
+> și ecranul de surse — adică peste optzeci de commituri pe care primul audit nu
+> avea cum să le vadă. Runda asta se uită **mai ales** la ele (§114).
+
+---
+
+## Rezumat
+
+**Verdict: PREGĂTIT, CU REZERVE.**
+
+Am găsit **zece probleme reale**. Toate sunt reparate, fiecare cu un test care
+cade fără reparație. Patru dintre ele ar fi lovit un cabinet real în primele
+săptămâni, iar două nu s-ar fi văzut niciodată dintr-o consolă — s-ar fi văzut în
+registre și la clienți:
+
+- **un registru exportat putea executa o comandă pe calculatorul contabilului**,
+  cu textul venit dintr-o factură trimisă de client (P-01);
+- **un onorariu marcat plătit după miezul nopții intra în luna trecută** (P-06);
+- **clientul primea aceeași reamintire de patru ori** când două bătăi de
+  planificator se suprapuneau — măsurat, nu presupus (P-03);
+- **stiva din `docker compose`, exact cea din documentație, nu putea porni în
+  producție**: nu primea `SECRET_KEY` și `PUBLIC_BASE_URL` (P-07).
+
+Niciuna nu fusese prinsă de cele 1.661 de teste existente, și fiecare din același
+motiv: testele verifică ce face un modul, nu ce se întâmplă **între** module — la
+granița dintre aplicație și Excel, dintre două bătăi de cron, dintre ceasul
+serverului și calendarul cabinetului, dintre `docker-compose.yml` și codul care îl
+citește.
+
+### Cifre
+
+| | Înainte | După |
+|---|---|---|
+| Teste backend | 1.661 | 1.690 |
+| Teste frontend | 330 | 330 |
+| Teste end-to-end | 86 | 86 |
+| Defecte deschise găsite de audit | — | 0 |
+| Vulnerabilități în dependențe (npm + PyPI) | 0 | 0 |
+| Secrete în repository | 0 | 0 |
+| Module backend neimportate nicăieri | 0 | 0 |
+| Rute cerute de frontend și inexistente | 0 | 0 |
+| Variabile de mediu enumerate și necitite | 4 | 0 (marcate) |
+
+### Ce s-a verificat rulând, nu citind
+
+- **Concurență adevărată**, pe fire cu conexiuni proprii: patru bătăi de
+  planificator peste aceleași remindere, patru încărcări simultane ale acelorași
+  octeți.
+- **Copie de siguranță și restaurare**, cu chiar comenzile din `docs/RUNBOOK.md`:
+  `pg_dump` → bază nouă → `pg_restore` → `alembic upgrade head` →
+  `check-storage`. Și, separat, cu stocarea dintr-un alt moment, ca să se vadă că
+  verificarea chiar verifică: iese cu cod `1` și numește documentul lipsă.
+- **Instalare complet nouă**: bază goală, migrări de la zero, roluri, primul
+  cabinet, primul client.
+- **`docker compose config`** cu și fără `.env`, ca să se vadă ce ajunge efectiv
+  în container.
+- **Auditul dependențelor**: `npm audit` (232 de pachete) și `pip-audit` (125).
+- **Contractul cu frontendul**: fiecare cale cerută din `src/api/` căutată în
+  schema OpenAPI a serverului.
+
+---
+
+## Defecte găsite
+
+### P-01 · P1 · SECURITATE · Un registru exportat putea executa o comandă
+
+**Ce se întâmpla.** Toate cele patru exporturi — registrul lunii, onorariile,
+raportul, modelul de import — sunt CSV-uri făcute anume ca să se deschidă în
+Excel. Excel tratează o celulă care începe cu `=`, `+`, `-` sau `@` drept
+**formulă**, nu drept text. Iar formulele nu se opresc la aritmetică:
+`=cmd|...!A1` cere pornirea unui program, iar `=HYPERLINK("http://…"&A2)` scoate
+conținutul celulei vecine pe internet la o apăsare, fără niciun macro.
+
+**De ce nu este teoretic aici.** Textul din registru nu este scris de cabinet.
+Coloana `Furnizor` vine din **citirea unui document trimis de client** — deci de
+la oricine are linkul de încărcare, iar cine emite o factură alege ce scrie în ea.
+Drumul este complet și nu are nicio poartă pe el: document ostil → extracție →
+registru → fișier → Excelul contabilului.
+
+**Cauza.** `csv.writer` rezolvă separatorii și ghilimelele din interiorul valorii,
+adică integritatea **coloanelor**. Ce face Excel cu valoarea după ce o citește este
+altă întrebare, la care nimeni nu răspunsese.
+
+**Reparația.** În `excel_csv.render`, nu la fiecare export: sunt patru și vor fi
+mai multe, iar o regulă aplicată la fiecare capăt se respectă pe primele trei.
+Celulele care încep cu un caracter de formulă primesc un apostrof — semnul pe care
+Excel îl citește ca „ce urmează este text" — și nimic nu se pierde din ce scria
+acolo. Numerele trec neatinse: `-1234,56` începe cu `-` și trebuie să rămână
+adunabil, altfel reintroducem exact paguba pe care fișierul o numește, cu trei
+paragrafe mai sus, cea mai perfidă.
+
+**Test.** `backend/tests/test_export_safety.py` — 14 teste: trei sarcini reale,
+cinci caractere de început, drumul întreg prin registru și prin onorarii, plus
+patru care apără ce nu are voie să se strice (numărul negativ, data, textul
+obișnuit, `;` în denumire). Toate cele zece de injecție cădeau înainte de
+reparație.
+
+### P-02 · P2 · SECURITATE · Numele venit de la client devenea cale în arhivă
+
+**Ce se întâmpla.** Arhiva unei luni compunea intrarea din ZIP din
+`stored_filename or original_filename`, luat brut. `original_filename` este exact
+ce a scris cel care a încărcat fișierul, tăiat la 512 de caractere și nimic mai
+mult — iar prin portal acela este clientul. Un fișier numit `../../../ceva.pdf`
+producea intrarea `Alfa Conta SRL/2026-08/../../../ceva.pdf`. Verificat: exact așa
+arăta.
+
+**Ce ar fi însemnat.** La dezarhivare, un program care nu curăță căile scrie
+fișierul în afara dosarului ales — trei niveluri mai sus, peste ce se află acolo.
+Este `zip slip`, și nu depinde de noi: depinde de programul cu care contabilul
+deschide arhiva.
+
+**Cauza, și de ce merită numită.** Aceeași expresie era **curățată** la descărcare,
+în `document_delivery.safe_filename`, și luată brută în arhivă. Două drumuri
+pentru același nume, unul păzit și unul nu.
+
+**Reparația.** Arhiva folosește aceeași funcție ca descărcarea. Efect secundar
+bun: fișierul din arhivă se numește acum exact ca cel descărcat separat — al
+treilea nume pentru același document nu mai există.
+
+**Test.** `test_reports_api.py::TestTheArchive::test_a_hostile_filename_…` — două
+nume ostile (`../` și cale Windows), și verificarea că niciun document nu se
+pierde pe drum.
+
+### P-03 · MAJOR · Clientul primea aceeași reamintire de patru ori
+
+**Ce se întâmpla.** `ReminderService.send` citește din bază tot ce s-a trimis până
+acum — cererea, ultima reamintire, contorul lunii — deci **presupune** că cine a
+scris înaintea lui a apucat să comită. Două bătăi suprapuse rup presupunerea:
+amândouă citesc „nu s-a trimis nimic", amândouă hotărăsc că este de trimis.
+Măsurat pe patru bătăi simultane, cu sesiuni și conexiuni proprii: **patru
+mesaje** către același client și **patru** rânduri de urmă.
+
+**De ce se întâmplă fără nimic exotic.** Un cron care bate peste o rulare mai
+lungă decât crede el, un „reîncearcă" apăsat, două procese de API — iar
+documentația de livrare chiar recomandă mai multe.
+
+**De ce contează mai mult decât pare.** O reamintire în plus nu produce nicio
+eroare. Produce un client care mută adresa cabinetului în spam, și după aceea nu
+mai citește nici ce scrie omul. Este exact paguba pe care `test_reminders.py` o
+descrie în capul lui, ajunsă pe alt drum.
+
+**Reparația.** `try_lock_organization(session, org, "reminders")` — aceeași
+încuietoare consultativă pe care o foloseau deja sincronizările cu OneDrive și
+ANAF. Nu se așteaptă: cine pierde întoarce zero, ceea ce este răspunsul corect —
+altcineva trimite chiar acum. Se eliberează la commit, adică exact după ce
+rândurile devin vizibile pentru următorul.
+
+**Test.** `backend/tests/test_reminders_concurrency.py`, patru fire cu sesiuni
+proprii.
+
+### P-04 · MINOR · Același lucru la rezumatul zilnic
+
+Rezumatul de dimineață către colegi nu lasă nicio urmă în bază — este o fotografie
+a momentului — deci acolo încuietoarea nu dublează o regulă de business, ci
+**este** singura care există. Două bătăi suprapuse ar fi trimis de două ori
+aceeași dimineață fiecărui coleg. Aceeași reparație, un rând.
+
+### P-05 · MAJOR · Un cabinet cu o parolă schimbată oprea emailul tuturor
+
+**Ce se întâmpla.** Cele trei runnere periodice — OneDrive, ANAF, IMAP — arată la
+fel, dar cel de IMAP, cel mai nou, nu avea niciuna dintre cele trei protecții pe
+care le au celelalte două:
+
+1. **fără sesiune pe cabinet** — o singură tranzacție peste toate, deci o eroare
+   la ultimul anula și avansul cursorului la primele: mesaje deja descărcate,
+   luate din nou la bătaia următoare;
+2. **fără încuietoare** — două bătăi suprapuse deschideau aceeași cutie de două
+   ori și scriau amândouă `last_uid`; cine comite al doilea îl suprascrie pe
+   primul, deci cursorul poate sări înapoi;
+3. **fără prinderea excepției** — și asta este cea gravă: o parolă de aplicație
+   schimbată la un singur client oprea preluarea emailului pentru **toată
+   instalarea**. Excepția urca până în ruta de cron, iar cabinetele de după el nu
+   mai erau atinse. Nici în bătaia următoare, fiindcă ordinea este aceeași.
+
+**Reparația.** `run_imap_sync` are acum exact forma lui `run_drive_sync`.
+
+**Test.** `backend/tests/test_imap_runner.py` — un cabinet care cade nu-i oprește
+pe ceilalți; un cabinet ocupat se sare, nu se sincronizează a doua oară.
+
+### P-06 · MAJOR · INTEGRITATEA DATELOR · Ziua serverului nu este ziua cabinetului
+
+**Ce se întâmpla.** Panoul principal calcula „azi" cu
+`ZoneInfo("Europe/Bucharest")`. Restul aplicației — unsprezece locuri — îl calcula
+cu `datetime.now(UTC).date()`. Două răspunsuri diferite la aceeași întrebare, în
+același produs.
+
+Diferența se vede între miezul nopții și ora 2 sau 3, când ziua locală s-a
+schimbat și cea UTC încă nu. Acolo:
+
+- **un onorariu marcat plătit la 01:00 pe 1 septembrie se scria „31 august"** —
+  adică în luna trecută a cabinetului, după ce ea fusese închisă;
+- **o reamintire trimisă de planificator la 01:30 pe 26** se compara cu ziua 25 și
+  pleca la client **după termen**, cu fraza „ca să depunem la timp";
+- o declarație apărea scadentă cu o zi mai târziu decât este.
+
+Nimic din toate astea nu apare în vreo consolă. Se vede în registre.
+
+**Reparația.** `app/core/clock.py`: un singur loc din care se citește ceasul, și o
+singură definiție a zilei cabinetului. Momentele rămân în UTC — un `received_at`
+fără fus nu se poate compara cu nimic; se schimbă doar **derivarea zilei**.
+
+**Test.** `backend/tests/test_clock.py` — noaptea de vară (trei ore), cea de iarnă
+(două), ziua termenului, și verificarea că în restul zilei nu se schimbă nimic.
+
+### P-07 · MAJOR · DEPLOYMENT · Stiva din documentație nu putea porni în producție
+
+**Ce se întâmpla.** `docs/DEPLOY.md` spune că un VPS cu `docker compose` rulează
+aplicația întreagă. Compose însă trimite în container doar ce îi enumeri, iar
+enumerarea rămăsese în urmă: lipseau `SECRET_KEY`, `PUBLIC_BASE_URL`,
+`CRON_SECRET` și tot SMTP-ul.
+
+**Ce ar fi însemnat.** Primele două opresc pornirea în producție — `SECRET_KEY`
+implicit și `PUBLIC_BASE_URL` pe localhost sunt refuzate de
+`assert_production_ready`, și pe bună dreptate. Deci drumul scris în documentație
+nu ducea nicăieri, iar asta se afla la primul `docker compose up` pe serverul
+cabinetului. Celelalte două înseamnă un cabinet care pornește, dar nu poate
+trimite nimic și nu are cron.
+
+**Cauza este forma, nu neglijența.** Lista trebuia ținută la zi de mână, iar
+fiecare funcție nouă își aducea variabilele ei. A mai fost reparată o dată, pentru
+integrările Microsoft, cu un commit al ei — și a rămas în urmă din nou.
+
+**Reparația.** `env_file: .env` (cu `required: false`, ca `docker compose up` să
+meargă și fără fișier, ca până acum). În `environment:` rămân doar cele trei
+valori care ar fi **greșite înăuntrul** containerului: `DATABASE_URL`,
+`STORAGE_PATH`, `ARCHIVE_ROOT`.
+
+**Verificat rulând:** `docker compose --profile api config`, cu și fără `.env` —
+cele patru variabile ajung acum în container, iar cele trei suprascrieri câștigă.
+
+**Test.** `backend/tests/test_deployment_config.py` — verifică **mecanismul**, nu
+inventarul: o listă de variabile ar avea exact problema pe care o repară.
+
+### P-08 · P2 · Asistentul putea cheltui bani la nesfârșit
+
+Cu `ASSISTANT_PROVIDER=anthropic`, fiecare întrebare pleacă la un furnizor care se
+plătește la apel, iar o întrebare poate cere până la trei runde de unelte. Nu
+exista niciun contor. O filă lăsată deschisă cu un `setInterval`, sau un script cu
+bucla greșită, cheltuiește bani reali fără să spargă nimic și fără să apară în
+vreo consolă — se vede pe factura de la sfârșitul lunii.
+
+Douăzeci de întrebări pe minut, **pe utilizator** (nu pe adresă: un cabinet întreg
+în spatele aceluiași IP nu trebuie să se blocheze reciproc), cu `Retry-After` în
+răspuns. Este al treilea contor din aplicație, după autentificare și portal, și
+ultimul: restul rutelor rămân fără, deliberat — o sută de documente încărcate de
+un contabil sunt exact munca lui, iar un contor acolo ar opri lucrul, nu un abuz.
+
+**Test.** `test_assistant_api.py::TestTheCounter` — două teste, amândouă
+verificate prin mutație.
+
+### P-09 · MINOR · ONESTITATE · Un comutator care nu face nimic
+
+Ecranul de administrare arăta un card „Retenție" cu „Ștergere automată: nu". Un
+administrator ar fi tras concluzia firească: pus pe „da", documentele vechi se
+șterg. **Nu există niciun cod de retenție.** Iar `.env.example` enumera pe deasupra
+trei durate (`RETENTION_DOCUMENTS_YEARS` și celelalte două) pentru care nu există
+nici măcar câmpuri în `Settings` — exact greșeala pe care același fișier o
+condamnă explicit cu două secțiuni mai devreme.
+
+Marcat, nu șters — aceeași alegere ca la WhatsApp, din același motiv: planul
+rămâne vizibil, iar nimeni nu pierde o după-amiază presupunând că funcționează.
+Eticheta de pe ecran spune acum „Ștergere automată (neimplementată)".
+
+### P-10 · COSMETIC · O documentație care se contrazicea cu propriul cod
+
+Docstringul portalului spunea că limitarea de rată stă „pe token și pe adresă";
+comentariul de trei rânduri mai jos, corect, spunea „pe link, nu pe adresă", iar
+codul face al doilea lucru. Corectat, cu motivul păstrat.
+
+---
+
+## Securitate
+
+**Verificat și în regulă:** autentificare (Argon2id, contor pe eșecuri, rotația
+sesiunii), RBAC pe toate cele șase roluri, izolarea între cabinete pe toate rutele
+cu id (`tests/test_client_isolation.py` mătură schema OpenAPI, deci acoperă și
+rutele care se vor adăuga), IDOR cu răspuns `404` și nu `403`, antetele de
+securitate pe toate răspunsurile inclusiv cele de eroare, CORS cu origini
+enumerate și fără caracter universal, tokenuri care nu apar niciodată în URL,
+previzualizare pe cookie, traversarea de cale imposibilă prin construcție (cheia
+de stocare este generată, nu compusă din numele primit), executabil deghizat în
+`.pdf` respins după octeți, metacaractere de căutare tratate ca text.
+
+**Reparat aici:** P-01 (injecție de formulă), P-02 (zip slip), P-08 (contor pe
+apelurile plătite).
+
+**Secrete:** căutare peste toate fișierele urmărite de git — chei, parole,
+tokenuri, șiruri de conexiune, certificate. **Niciunul.** `docs/CREDENTIALE.md`
+este o listă de cumpărături, nu un seif. Singura cheie din repository este cea de
+test din `tests/conftest.py`, marcată ca atare și folosită doar de suită.
+
+**Dependențe:** `npm audit` — 0 vulnerabilități în 232 de pachete. `pip-audit` — 0
+vulnerabilități cunoscute în cele 125 de pachete de producție.
+
+## Baza de date
+
+Schema se construiește în teste **rulând migrările**, nu din metadata ORM, iar
+`tests/test_migrations.py` compară cele două și cade la orice abatere. Migrările
+au fost aplicate pe o bază goală, de la zero, de trei ori în cursul auditului
+(suită, restaurare, instalare nouă). Invariantele care contează sunt în bază, nu
+doar în cod: `DONE ⇔ completed_at`, unicitatea CUI pentru clienții activi (index
+parțial, deci ștergerea logică nu blochează), apartenența la organizație, cheile
+străine.
+
+## API
+
+102 de rute. Fiecare cale cerută din `frontend/src/api/` a fost căutată în schema
+OpenAPI a serverului: **toate există**. Rutele interne (`/internal/*`) sunt în
+afara schemei publice, deliberat.
+
+## Frontend
+
+Lint curat, `tsc --noEmit` curat, 330 de teste, build reușit. Niciun
+`dangerouslySetInnerHTML`, niciun `any`, niciun `@ts-ignore`. `localStorage` este
+folosit doar pentru preferințe de interfață, cu `try/catch` — cine este
+utilizatorul îl spune serverul.
+
+## Documente
+
+Ciclul complet — încărcare, procesare, verificare, aprobare, arhivare, descărcare
+— a fost parcurs în browser real de suita end-to-end. Detecția duplicatelor este
+serializată cu o încuietoare pe conținut, iar patru încărcări simultane ale
+acelorași octeți produc un original și trei duplicate marcate.
+
+## AI / OCR
+
+Asistentul este **numai de citire**: uneltele lui nu scriu nimic, cele care par
+acțiuni (`propose_*`) produc butoane pe care apasă un om, iar linkurile vin din
+uneltele executate, nu din textul modelului. Numărul de runde este mărginit,
+apelul are timp maxim, iar uneltele sunt filtrate după permisiunile celui care
+întreabă. Extracția înregistrează provider, model, versiune de prompt și
+încredere, deci o factură clasificată greșit se poate investiga.
+
+## Integrări
+
+**NEVERIFICATE — NECESITĂ CREDENȚIALE EXTERNE**, și nu se pretinde altceva:
+Microsoft Graph (OneDrive + email), e-Factura/SPV, IMAP pe o cutie reală, SMTP,
+citirea documentelor cu model (`vision`/`hybrid`). Ce **s-a** verificat pentru
+fiecare: interfața, dublura, tratarea erorilor, reluarea, izolarea între cabinete
+și — nou în runda asta — comportarea turului când un cabinet cade (P-05).
+
+WhatsApp: doar linkul `wa.me` compus corect din numărul de pe fișă. Trimiterea
+automată nu este implementată, iar `.env.example` o spune.
+
+## Performanță
+
+Panoul are un prag de interogări apărat de test (34), pus acolo ca să prindă un
+`N+1`, nu ca să măsoare. Arhiva lunii se compune pe disc, nu în memorie, cu limite
+de număr și de mărime verificate **înainte** de a citi vreun octet. Coada este
+revendicată cu `FOR UPDATE SKIP LOCKED`, deci mai multe worker-e nu se calcă.
+
+## Deployment
+
+Reparat P-07. `docker compose config` validat cu și fără `.env`. Containerele
+rulează ca utilizator fără drepturi, cu healthcheck și `restart: unless-stopped`.
+Workerul se oprește ordonat la `SIGTERM`: jobul în lucru se termină, apoi procesul
+iese.
+
+## Copii de siguranță
+
+**Procedura din `docs/RUNBOOK.md` a fost executată, nu doar citită:** `pg_dump`
+custom → bază nouă → `pg_restore` → `alembic upgrade head` → `check-storage`.
+Restaurarea a adus toate rândurile și versiunea de schemă corectă.
+
+Și, ce contează mai mult: cu stocarea dintr-un alt moment, `check-storage`
+**numește documentul lipsă și iese cu cod `1`**, exact cum promite runbook-ul.
+Este singurul lucru care spune dacă cele două copii — baza și fișierele — sunt din
+același moment.
+
+---
+
+## Riscuri rămase
+
+1. **Cele șase integrări externe rămân neverificate** până la primele credențiale
+   reale. Este cel mai mare risc rămas, și nu poate fi închis din cod: drumurile
+   prin care ar trebui să intre majoritatea documentelor sunt tocmai cele pe care
+   nu le-am putut proba.
+2. **Contoarele de rată stau în proces.** Cu două procese de API sunt două
+   contoare. Este protecția potrivită pentru instalarea din documentație — un
+   container de API — și trebuie dublată la marginea rețelei acolo unde există un
+   proxy. `app/core/rate_limit.py` o spune, nu pretinde mai mult.
+3. **Retenția nu există.** Marcată acum peste tot, dar un cabinet care are o
+   obligație de ștergere o va face de mână.
+4. **Panoul costă 30 de interogări.** Recuperabil cu o interogare agregată; nu
+   s-a atins aici, ca să nu amestecăm o optimizare cu un audit.
+
+## De făcut după livrare
+
+- Prima cutie IMAP reală și primul SMTP real — ridică două „neverificat".
+- Un exemplu de export Saga de la domnul contabil; fără el nu se scrie exportul.
+- Decizia despre onorarii: rămân registru sau devin facturare cu serie și TVA.
+- Sentry sau un colector OTLP: logurile sunt deja structurate, lipsește doar
+  exportul.
+- Interogarea agregată pentru panou.
+
+---
+
+## Scor
+
+| | Notă | De ce |
+|---|---|---|
+| Securitate | 9/10 | Două găuri reale găsite și închise aici; restul suprafeței rezistă la probe directe. Punctul lipsă: contoarele în proces. |
+| Integritatea datelor | 9/10 | Ziua cabinetului era greșită în unsprezece locuri (P-06). Reparat, cu un singur loc de acum înainte. |
+| Backend | 9/10 | 1.690 de teste, `mypy` strict curat, invariante în bază. |
+| Frontend | 9/10 | Curat pe toate cele patru verificări; fără datorii ascunse. |
+| Documente | 9/10 | Ciclul întreg probat în browser; zip slip închis. |
+| Integrări | 6/10 | Codul, dublurile și tratarea erorilor sunt acolo; șase drumuri rămân neprobate cu credențiale reale. |
+| Testare | 9/10 | Fiecare reparație are un test verificat prin mutație. |
+| Performanță | 8/10 | Fără `N+1`, cu praguri apărate; panoul rămâne mai scump decât ar trebui. |
+| Observabilitate | 7/10 | Loguri structurate cu id de cerere și de job; fără export către un colector. |
+| Deployment | 8/10 | Drumul din documentație chiar funcționează acum (P-07); rămâne de probat pe un server real. |
+| Documentație | 9/10 | Descrie ce există, iar ce nu există este marcat. |
+| **General** | **8,5/10** | |
+
+## Listă de control
+
+- [x] Autentificare · [x] Autorizare · [x] RBAC · [x] Izolare între cabinete
+- [x] IDOR · [x] CSRF · [x] XSS · [x] CORS
+- [x] Încărcare de fișiere · [x] Traversare de cale · [x] Previzualizare · [x] Descărcare
+- [x] Ciclul documentului · [x] Detecția duplicatelor · [~] OCR/AI (local da, model nu)
+- [x] Joburi de fundal · [x] Reluare · [x] Idempotență
+- [x] Migrări · [x] Constrângeri · [x] Tranzacții
+- [x] Căutare · [x] Paginare · [x] Performanță
+- [x] Logging · [x] Health checks · [x] Copii de siguranță · [x] Restaurare
+- [x] Docker · [x] Dependențe · [x] Secrete · [x] CI/CD
+- [x] Frontend · [x] End-to-end · [x] Accesibilitate · [x] Documentație
+- [x] Configurare de producție
+
+---
+
+## Anexa — auditul precedent (3 septembrie 2026, `5920bde`, M10)
+
+Pastrat integral, cu titlurile coborate cu un nivel. Cele treisprezece defecte
+de acolo (`A-01` … `A-13`) sunt toate reparate; ce urmeaza este raportul lor,
+asa cum a fost scris atunci.
+
+### Audit de pregătire pentru producție
+
 **Data:** 3 septembrie 2026 · **Versiune auditată:** `5920bde` (M10), plus
 reparațiile descrise aici · **Metodă:** inspecție, apoi rulare — server real,
 PostgreSQL real, browser real.
 
 ---
 
-## Rezumat
+#### Rezumat
 
 **Verdict: PREGĂTIT, CU REZERVE.**
 
@@ -27,7 +472,7 @@ unde testele nu se uitau: în concurență, în configurarea de build, în ce se
 sau — cea mai instructivă — într-un caz de intrare pe care toată suita îl ocolea
 din întâmplare.
 
-### Cifre
+##### Cifre
 
 | | Înainte | După |
 |---|---|---|
@@ -40,7 +485,7 @@ din întâmplare.
 | Pachet de producție (gzip) | 142 KB | 135 KB |
 | Rute cerute de frontend și inexistente în backend | 2 | 0 |
 
-### Ce s-a verificat rulând, nu citind
+##### Ce s-a verificat rulând, nu citind
 
 Un server pornit pe o bază proprie, cu **două organizații** și **20.000 de
 documente** semănate, interogat direct: autentificare, RBAC pe toate rolurile,
@@ -56,14 +501,14 @@ descărcare, jurnal de audit, deconectare. Acolo a apărut A-11.
 
 ---
 
-## Defecte găsite
+#### Defecte găsite
 
 **MAJOR** = afectează corectitudinea datelor sau fluxul principal ·
 **MINOR** = real, dar limitat.
 
 ---
 
-### A-01 · MAJOR · Preluarea automată nu se întâmpla niciodată pe un server propriu
+##### A-01 · MAJOR · Preluarea automată nu se întâmpla niciodată pe un server propriu
 
 **Unde:** `backend/app/worker.py`
 
@@ -90,7 +535,7 @@ Verificat: scoțând apelul, testul cade.
 
 ---
 
-### A-02 · MAJOR · Detecția duplicatelor pierdea cursa
+##### A-02 · MAJOR · Detecția duplicatelor pierdea cursa
 
 **Unde:** `backend/app/services/document_upload.py`
 
@@ -123,7 +568,7 @@ proprii. Cade de fiecare dată fără încuietoare (verificat de trei ori), trec
 
 ---
 
-### A-03 · MAJOR · Două ecrane livrate cereau rute care nu există
+##### A-03 · MAJOR · Două ecrane livrate cereau rute care nu există
 
 **Unde:** `frontend/src/features/communication/`, `frontend/src/features/clients/`
 
@@ -151,7 +596,7 @@ schimbând o rută într-una inexistentă, testul o prinde.
 
 ---
 
-### A-04 · MAJOR · Un build de producție fără o variabilă livra aplicația falsă
+##### A-04 · MAJOR · Un build de producție fără o variabilă livra aplicația falsă
 
 **Unde:** `frontend/src/api/client.ts`
 
@@ -179,7 +624,7 @@ de producție (−27 KB, −7 KB comprimat) și nu se poate executa fără să f
 
 ---
 
-### A-05 · MAJOR · CI ar fi trecut verde cu suita sărită
+##### A-05 · MAJOR · CI ar fi trecut verde cu suita sărită
 
 **Unde:** `backend/tests/conftest.py`
 
@@ -196,7 +641,7 @@ explicit. Pe laptop, comportamentul rămâne neschimbat.
 
 ---
 
-### A-06 · MAJOR · Trei indexuri de căutare erau moarte
+##### A-06 · MAJOR · Trei indexuri de căutare erau moarte
 
 **Unde:** `backend/app/repositories/document.py`, `client.py`
 
@@ -223,7 +668,7 @@ peste un `OR` care traversează tabela clienților. Pagina propriu-zisă se ia �
 
 ---
 
-### A-07 · MINOR · Modelele și baza de date spuneau lucruri diferite
+##### A-07 · MINOR · Modelele și baza de date spuneau lucruri diferite
 
 **Unde:** `backend/app/models/`
 
@@ -250,7 +695,7 @@ lanțul: model == enum == bază. Verificat: repunând lista veche, testul cade.
 
 ---
 
-### A-08 · MINOR · Niciun antet de securitate pe răspunsurile API
+##### A-08 · MINOR · Niciun antet de securitate pe răspunsurile API
 
 **Unde:** `backend/app/core/middleware.py`
 
@@ -271,7 +716,7 @@ care ecranul de verificare ar fi rămas gol.
 
 ---
 
-### A-09 · MINOR · Un ecran de demonstrație, public, în producție
+##### A-09 · MINOR · Un ecran de demonstrație, public, în producție
 
 **Unde:** `frontend/src/App.tsx`, `src/pages/demo.tsx`
 
@@ -289,7 +734,7 @@ sunt necesare.
 
 ---
 
-### A-10 · MAJOR · Nu exista niciun mod de a adăuga un client în producție
+##### A-10 · MAJOR · Nu exista niciun mod de a adăuga un client în producție
 
 **Unde:** suprafața API și interfața, amândouă
 
@@ -326,7 +771,7 @@ cabinete, și client fără email.
 
 ---
 
-### A-11 · MAJOR · O factură de 1190 de lei era citită ca 119
+##### A-11 · MAJOR · O factură de 1190 de lei era citită ca 119
 
 **Unde:** `backend/app/domain/romanian_documents.py`
 
@@ -368,7 +813,7 @@ cad.
 
 ---
 
-### A-12 · MAJOR · O protecție care exista doar în configurare
+##### A-12 · MAJOR · O protecție care exista doar în configurare
 
 **Unde:** `backend/app/core/config.py`, `.env.example`
 
@@ -418,7 +863,7 @@ are voie să fie refuzată.
 
 ---
 
-### A-13 · MINOR · Pe un telefon, fiecare pagină ieșea din ecran
+##### A-13 · MINOR · Pe un telefon, fiecare pagină ieșea din ecran
 
 **Unde:** `frontend/src/components/layout/app-shell.tsx`
 
@@ -444,7 +889,7 @@ link și câmp are un nume accesibil — acolo nu era nimic de reparat.
 
 ---
 
-## Ce s-a verificat și era în regulă
+#### Ce s-a verificat și era în regulă
 
 Enumerat pentru că absența unei probleme este tot un rezultat.
 
@@ -479,7 +924,7 @@ Enumerat pentru că absența unei probleme este tot un rezultat.
 
 ---
 
-## Ce trebuie făcut înainte de livrare
+#### Ce trebuie făcut înainte de livrare
 
 Niciunul nu este cod.
 
@@ -502,7 +947,7 @@ Niciunul nu este cod.
 
 ---
 
-## Riscuri rămase
+#### Riscuri rămase
 
 | Risc | Severitate | Ce se știe |
 |---|---|---|
@@ -517,7 +962,7 @@ Niciunul nu este cod.
 
 ---
 
-## Ce merită construit după livrare
+#### Ce merită construit după livrare
 
 În ordinea valorii pentru cabinet, nu a dificultății.
 
@@ -545,7 +990,7 @@ Niciunul nu este cod.
 
 ---
 
-## Verificare finală
+#### Verificare finală
 
 ```
 backend  1004 teste · ruff · ruff format · mypy --strict     toate curate
@@ -557,7 +1002,7 @@ bază      contacrm_e2e reconstruită de la zero prin migrări la fiecare rulare
 Suita backend a fost rulată integral de mai multe ori pe parcurs, iar la final
 de trei ori consecutiv, curat.
 
-## Documentația
+#### Documentația
 
 `README.md` și `docs/ARCHITECTURE.md` descriau lucruri care nu mai existau sau nu
 existaseră niciodată: coada pe „Celery + Redis" (aleasă a fi un outbox în Postgres
@@ -576,7 +1021,7 @@ incidente) și acest raport. Starea repository-ului rămâne în `docs/STATUS.md
 
 ---
 
-## Lista de control
+#### Lista de control
 
 Bifat = verificat **rulând**, nu citind. Unde scrie altceva, scrie ce anume.
 

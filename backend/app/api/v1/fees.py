@@ -11,7 +11,7 @@ administratorii — motivul stă în `app/domain/permissions.py`.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 from decimal import Decimal
 from typing import Annotated
 
@@ -21,6 +21,7 @@ from pydantic import Field
 from app.api.deps import DbSession, require_permission
 from app.api.route import CommittingRoute
 from app.api.v1.periods import REFERENCE_MONTH
+from app.core import clock
 from app.domain.permissions import Permission
 from app.models.fee import DEFAULT_CURRENCY, ClientFee
 from app.models.user import User
@@ -231,7 +232,7 @@ def register_csv(
 def generate(session: DbSession, user: FeeManager, payload: GenerateIn) -> FeeMonthOut:
     """Deschide luna: creează rândurile lipsă, fără să le atingă pe cele existente."""
     service = FeeService(session, user.organization_id)
-    created = service.generate(payload.reference_month, today=datetime.now(UTC).date())
+    created = service.generate(payload.reference_month, today=clock.today())
 
     if created:
         AuditService(session).record(
@@ -298,7 +299,7 @@ def mark_paid(session: DbSession, user: FeeManager, payload: PaymentIn) -> FeeRo
     service.mark_paid(
         payload.client_id,
         payload.reference_month,
-        paid_on=payload.paid_on or datetime.now(UTC).date(),
+        paid_on=payload.paid_on or clock.today(),
         user=user,
         note=payload.note,
     )

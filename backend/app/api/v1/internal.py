@@ -26,7 +26,7 @@ fiecare bătaie.
 from __future__ import annotations
 
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Header
@@ -34,6 +34,7 @@ from sqlalchemy import select
 
 from app.api.deps import StorageDep
 from app.api.route import CommittingRoute
+from app.core import clock
 from app.core.config import settings
 from app.core.db import session_scope
 from app.core.errors import AppError, ErrorCode
@@ -164,7 +165,7 @@ def daily_digest(authorization: Annotated[str | None, Header()] = None) -> Diges
         return DigestRunOut(organizations=0, sent=0)
 
     sender = build_email_sender()
-    today = datetime.now(UTC).date()
+    today = clock.today()
     organizations = 0
     sent = 0
 

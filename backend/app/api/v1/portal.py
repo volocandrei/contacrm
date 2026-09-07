@@ -19,8 +19,10 @@ gata.
   unui client șters — toate întorc același 404. Cine încearcă linkuri nu are de ce
   să afle că unul a existat cândva.
 - **Este limitată ca rată.** Restul aplicației cere o sesiune, deci un abuz are
-  un nume; aici nu. Contorul stă pe token și pe adresă, iar limita este generoasă
-  cât să nu deranjeze un client care trimite treizeci de facturi deodată.
+  un nume; aici nu. Contorul stă pe **link**, nu pe adresă: un birou întreg în
+  spatele aceluiași IP nu trebuie să se blocheze reciproc, iar un link abuzat se
+  închide oricum dintr-un buton. Limita este generoasă cât să nu deranjeze un
+  client care trimite treizeci de facturi deodată.
 
 Documentul intră cu clientul **deja atribuit**: apartenența vine din link, nu din
 ghicit. Este a doua sursă, după e-Factura, în care nu există `UNMATCHED`.

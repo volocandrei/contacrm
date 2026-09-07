@@ -24,6 +24,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
+from app.core import clock
 from app.core.config import settings
 from app.core.db import session_scope
 from app.core.migrations import run_migrations
@@ -444,7 +445,7 @@ def _seed_obligation_filings(session: Session, organization: Organization) -> in
     if user is None:
         return 0
 
-    today = datetime.now(UTC).date()
+    today = clock.today()
     cutoff = today - timedelta(days=SEED_FILED_BEFORE_DAYS)
     marked = 0
     for row in service.upcoming(since=today - timedelta(days=SEED_HISTORY_DAYS), until=today):
@@ -502,7 +503,7 @@ def _seed_fees(session: Session, organization: Organization) -> int:
             starts_on=starts_on,
         )
 
-    today = datetime.now(UTC).date()
+    today = clock.today()
     current = format_reference_month(today)
     previous = format_reference_month(today.replace(day=1) - timedelta(days=1))
     created = service.generate(previous, today=today) + service.generate(current, today=today)

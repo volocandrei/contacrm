@@ -15,12 +15,14 @@ gaură exact în locul în care restul aplicației este strictă.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, status
 from pydantic import Field
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.route import CommittingRoute
+from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
+from app.core.rate_limit import FixedWindowLimiter
 from app.domain.permissions import permissions_for
 from app.models.user import User
 from app.schemas.common import ApiModel
@@ -35,6 +37,24 @@ router = APIRouter(route_class=CommittingRoute, prefix="/assistant", tags=["asis
 
 #: Un mesaj de chat, nu un document. Peste atât, nu mai este o întrebare.
 MAX_MESSAGE = 1000
+
+#: Câte întrebări pune un om într-un minut. Douăzeci este peste ce apucă cineva
+#: să scrie și să citească; sub asta ar deranja pe cine caută repede două lucruri
+#: unul după altul.
+#:
+#: **De ce există.** Cu `ASSISTANT_PROVIDER=anthropic`, fiecare întrebare pleacă
+#: la un furnizor care se plătește la apel, iar o întrebare poate costa până la
+#: trei runde de unelte. Restul aplicației nu are nevoie de contor — o sută de
+#: documente încărcate de un contabil sunt exact munca lui — dar aici o filă
+#: lăsată cu un `setInterval` sau un script care greșește bucla cheltuiește bani
+#: reali, tăcut, până la sfârșitul lunii.
+#:
+#: Contorul stă pe utilizator, nu pe adresă: un cabinet întreg în spatele
+#: aceluiași IP nu trebuie să se blocheze reciproc. Ca și la autentificare, stă în
+#: proces — vezi `app/core/rate_limit.py` pentru ce acoperă și ce nu.
+QUESTIONS_PER_MINUTE = 20
+
+_limiter = FixedWindowLimiter(limit=QUESTIONS_PER_MINUTE)
 
 
 class ChatIn(ApiModel):
@@ -91,6 +111,16 @@ def chat(session: DbSession, user: CurrentUser, payload: ChatIn) -> ChatOut:
     Preluarea se **spune**: o degradare tăcută ar face ca o zi cu răspunsuri mai
     scurte să pară un capriciu al aplicației.
     """
+    decision = _limiter.blocked(str(user.id))
+    if not decision.allowed:
+        raise AppError(
+            ErrorCode.RATE_LIMITED,
+            "Prea multe întrebări prea repede. Încearcă din nou într-un minut.",
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(decision.retry_after)},
+        )
+    _limiter.record(str(user.id))
+
     assistant = build_assistant(session)
     context = _context(user)
     engine = assistant.name

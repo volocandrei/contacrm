@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core import clock
 from app.core.errors import ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.domain.enums import ClientStatus, DocumentStatus, PeriodStatus
@@ -163,7 +164,7 @@ class PeriodService:
           Panoul îi răspundea „nimic de făcut" despre o lună întreagă de muncă.
         """
         current = self.latest_active_month(organization_id)
-        month = current or format_reference_month(datetime.now(UTC).date())
+        month = current or format_reference_month(clock.today())
 
         periods = self.list_periods(organization_id, reference_month=month)
         gaps = self.missing_in(organization_id, month, periods)

@@ -40,6 +40,7 @@ from app.core.logging import get_logger
 from app.domain.filenames import sanitize_path_label
 from app.models.document import Document
 from app.services import document_register
+from app.services.document_delivery import safe_filename
 from app.services.document_register import RegisterService
 from app.services.storage import ObjectNotFoundError, StorageProvider
 
@@ -144,12 +145,21 @@ class MonthArchiveService:
                 {"fromMonth": ["Restrânge intervalul."]},
             )
 
+        # `safe_filename`, nu `stored_filename or original_filename`: numele venit
+        # de la cel care a incarcat fisierul nu are voie sa devina o cale.
+        # Un document trimis prin portal cu numele `../../../ceva.pdf` ar fi
+        # ajuns intrare de ZIP cu tot cu `..`, iar la dezarhivare un program care
+        # nu curata caile l-ar fi scris in afara dosarului ales (zip slip).
+        #
+        # Este aceeasi functie cu cea de la descarcare, si asta era gaura: aceeasi
+        # expresie era pazita pe un drum si luata bruta pe celalalt. Ca efect
+        # secundar bun, fisierul din arhiva se numeste acum exact ca cel descarcat
+        # separat — al treilea nume pentru acelasi document nu mai exista.
         taken: set[str] = set()
         entries = [
             ArchiveEntry(
                 path=_unique(
-                    f"{_folder(client_name, document.reference_month)}/"
-                    f"{document.stored_filename or document.original_filename}",
+                    f"{_folder(client_name, document.reference_month)}/{safe_filename(document)}",
                     taken,
                 ),
                 document=document,

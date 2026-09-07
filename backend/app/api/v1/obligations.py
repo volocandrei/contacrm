@@ -12,7 +12,7 @@ același care știe ce s-a depus.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
@@ -21,6 +21,7 @@ from pydantic import Field
 from app.api.deps import DbSession, require_permission
 from app.api.route import CommittingRoute
 from app.api.v1.periods import REFERENCE_MONTH
+from app.core import clock
 from app.core.errors import AppError
 from app.domain.enums import ObligationFrequency
 from app.domain.permissions import Permission
@@ -408,7 +409,7 @@ def upcoming(
     trecând timpul, iar o listă care ar începe de azi l-ar ascunde exact pe cel
     care contează cel mai mult.
     """
-    today = datetime.now(UTC).date()
+    today = clock.today()
     rows = ObligationService(session, user.organization_id).upcoming(
         since=filters.since or today - timedelta(days=OVERDUE_LOOKBACK_DAYS),
         until=filters.until or today + timedelta(days=DEFAULT_HORIZON_DAYS),

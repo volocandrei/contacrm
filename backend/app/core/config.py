@@ -318,7 +318,11 @@ class Settings(BaseSettings):
         return self.smtp_from or self.smtp_user
 
     # ── Retenție (§64) ───────────────────────────────────────────────────────
-    # Nicio ștergere automată nu rulează fără o regulă explicit activată (R8).
+    # NEIMPLEMENTATĂ. Nu există niciun job de retenție: pe `true`, comutatorul nu
+    # șterge nimic. Rămâne aici pentru că ecranul de administrare îl arată, iar un
+    # comutator ascuns ar fi mai rău decât unul marcat — dar eticheta de pe ecran
+    # spune „neimplementat", ca nimeni să nu creadă că documentele vechi dispar
+    # singure când, de fapt, nu dispar (R8).
     retention_enabled: bool = False
 
     @field_validator("assistant_provider")

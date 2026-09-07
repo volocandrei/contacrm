@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import DbSession, require_permission
 from app.api.route import CommittingRoute
 from app.api.v1.periods import AccountingPeriodOut, to_period
+from app.core import clock
 from app.core.config import settings
 from app.domain.enums import ClientStatus, DocumentStatus, PeriodStatus, TaskStatus
 from app.domain.periods import ChecklistEntry, filing_deadline, format_reference_month
@@ -236,7 +237,7 @@ def _fees(session: Session, user: User) -> FeesSnapshotOut | None:
     if Permission.FEES_READ not in permissions_for(user.primary_role):
         return None
 
-    reference_month = format_reference_month(datetime.now(UTC).date())
+    reference_month = format_reference_month(clock.today())
     service = FeeService(session, user.organization_id)
     rows = service.month(reference_month)
     return FeesSnapshotOut(

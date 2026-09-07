@@ -29,6 +29,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.locks import try_lock_organization
 from app.core.logging import get_logger
 from app.domain.enums import DocumentStatus
 from app.domain.permissions import Permission
@@ -191,6 +192,15 @@ class DailyDigestService:
         care refuză o adresă nu este un motiv ca restul cabinetului să nu afle ce
         are de făcut.
         """
+        # Aceeasi grija ca la remindere (§72), din alt motiv. Reminderul lasa o
+        # urma in baza, deci a doua bataie ar putea-o vedea; rezumatul nu lasa
+        # niciuna — este o fotografie a momentului. Aici incuietoarea nu dubleaza
+        # o regula de business, ci **este** singura care exista: doua batai
+        # suprapuse ar trimite de doua ori aceeasi dimineata fiecarui coleg.
+        if not try_lock_organization(self.session, self.organization_id, "daily-digest"):
+            logger.info("digest_already_running", organization_id=str(self.organization_id))
+            return 0
+
         digest = self.build(today)
         if digest.is_empty:
             logger.info("digest_skipped", organization_id=str(self.organization_id))

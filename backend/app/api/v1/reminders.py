@@ -17,13 +17,14 @@ clienți, iar lista poartă adresele lor.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Request
 
 from app.api.deps import DbSession, client_ip, require_permission
 from app.api.route import CommittingRoute
+from app.core import clock
 from app.core.config import settings
 from app.domain.enums import ReminderStatus
 from app.domain.permissions import Permission
@@ -112,7 +113,7 @@ def list_reminders(session: DbSession, user: ReminderSender) -> RemindersOut:
             max_per_month=MAX_PER_MONTH,
         )
 
-    rows = service.rows(reference_month, today=datetime.now(UTC).date())
+    rows = service.rows(reference_month, today=clock.today())
     return RemindersOut(
         reference_month=reference_month,
         deadline=rows[0].deadline if rows else None,
@@ -139,7 +140,7 @@ def send_reminders(request: Request, session: DbSession, user: ReminderSender) -
     """
     report = ReminderService(session, user.organization_id).send(
         build_email_sender(),
-        today=datetime.now(UTC).date(),
+        today=clock.today(),
         actor=user,
         ip=client_ip(request),
     )

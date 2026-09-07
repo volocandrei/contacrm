@@ -148,20 +148,24 @@ def db(db_engine: sa.Engine) -> Iterator[Session]:
 
 
 @pytest.fixture(autouse=True)
-def _fresh_login_limiters() -> Iterator[None]:
-    """Contoarele de autentificare sunt stare globala de proces.
+def _fresh_limiters() -> Iterator[None]:
+    """Contoarele sunt stare globala de proces.
 
     Fara golire, testele care se autentifica de mai multe ori s-ar bloca unele
     pe altele: `TestClient` are o singura adresa, deci toate testele suitei
-    impart aceeasi cheie. Limitarea in sine este verificata explicit, in
-    `test_rate_limit.py` si `test_auth_api.py`.
+    impart aceeasi cheie. Acelasi lucru la asistent, unde cheia este utilizatorul
+    si toate testele folosesc acelasi cont. Limitarea in sine este verificata
+    explicit, in `test_rate_limit.py`, `test_auth_api.py` si
+    `test_assistant_api.py`.
     """
+    from app.api.v1.assistant import _limiter as assistant_limiter
     from app.api.v1.auth import LOGIN_LIMITERS
 
-    for limiter in LOGIN_LIMITERS.values():
+    counters = [*LOGIN_LIMITERS.values(), assistant_limiter]
+    for limiter in counters:
         limiter.reset()
     yield
-    for limiter in LOGIN_LIMITERS.values():
+    for limiter in counters:
         limiter.reset()
 
 
