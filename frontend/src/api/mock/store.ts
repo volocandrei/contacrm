@@ -43,6 +43,7 @@ import type {
   IssuedUploadLink,
   ClientStatus,
   ClientFee,
+  DashboardFees,
   FeeArrear,
   FeeMonth,
   FeeRow,
@@ -2364,6 +2365,7 @@ export function getDashboard(): DashboardData {
     closing: buildClosing(currentPeriods),
     trend: buildTrend(docs),
     byStatus: buildStatusSlices(docs),
+    fees: dashboardFees(),
     // Doar ce s-a întâmplat cu documentele: panoul principal este despre fluxul
     // de documente, nu despre autentificări.
     timeline: state.audit
@@ -4047,6 +4049,29 @@ function buildFeeMonth(referenceMonth: string): FeeMonth {
     totals,
     unpaidClients: rows.filter((row) => row.isGenerated && !row.isPaid).length,
     arrears,
+  };
+}
+
+/**
+ * Ce mai are cabinetul de încasat, pentru panoul principal.
+ *
+ * `null` pentru cine nu are `fees:read`, nu zero: un zero s-ar citi ca „nu are
+ * nimeni de plătit nimic". Cifrele vin din aceeași funcție ca ecranul de
+ * onorarii — două căi de calcul ar fi ajuns la două răspunsuri.
+ */
+export function dashboardFees(): DashboardFees | null {
+  if (!currentUser.permissions.includes("fees:read")) return null;
+  seedFees();
+
+  const referenceMonth = monthOf(MOCK_NOW);
+  const month = buildFeeMonth(referenceMonth);
+  return {
+    referenceMonth,
+    outstanding: month.totals
+      .filter((item) => Number(item.outstanding) !== 0)
+      .map((item) => ({ currency: item.currency, amount: item.outstanding })),
+    unpaidClients: month.unpaidClients,
+    arrears: month.arrears.length,
   };
 }
 

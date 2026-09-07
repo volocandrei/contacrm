@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   TriangleAlert,
   UserX,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { useDashboard, useObligations } from "@/api/hooks";
@@ -26,7 +27,13 @@ import { ErrorState, LoadingState, Panel } from "@/components/page";
 import { ConfidenceBadge, DocumentStatusBadge, PeriodStatusBadge } from "@/components/status-badge";
 import { DOCUMENT_STATUS_LABEL } from "@/lib/labels";
 import { STATUS_ARC, statusDot } from "@/lib/status-colors";
-import { formatDate, formatReferenceMonth, formatTime, isoDaysFromNow } from "@/lib/format";
+import {
+  formatDate,
+  formatMoney,
+  formatReferenceMonth,
+  formatTime,
+  isoDaysFromNow,
+} from "@/lib/format";
 import {
   focusRing,
   iconChip,
@@ -42,6 +49,7 @@ import type {
   AttentionReason,
   DashboardClosing,
   DashboardData,
+  DashboardFees,
   DocumentSource,
 } from "@/types/domain";
 
@@ -104,7 +112,7 @@ export function DashboardPage() {
     <div className="space-y-6">
       <HeroHeader month={month} kpis={kpis} trend={data.trend} closing={data.closing} />
 
-      <TodayPlan kpis={kpis} closing={data.closing} deadlines={deadlines} />
+      <TodayPlan kpis={kpis} closing={data.closing} deadlines={deadlines} fees={data.fees} />
 
       {/* KPI (§20) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -500,6 +508,14 @@ type Todo = {
   label: string;
   /** Ce ai de făcut cu ele — un verb, nu un substantiv. */
   action: string;
+  /**
+   * Un rând mic sub etichetă, când numărul singur nu spune destul.
+   *
+   * Doi clienți neîncasați pot însemna 300 de lei sau 8.000: cifra mare
+   * rămâne numărul de oameni, fiindcă pe ei îi suni, dar suma decide dacă
+   * o faci azi.
+   */
+  note?: string;
   to: string;
   Icon: LucideIcon;
   tone: Tone;
@@ -526,14 +542,33 @@ type Todo = {
 /** Exportat pentru teste: proprietatea care contează este ce se **vede**, iar
  *  distincția dintre „nimic de recuperat" și „totul de configurat" nu se poate
  *  verifica altfel decât randând. */
+/**
+ * Suma de încasat, scrisă pe scurt sub numărul de clienți.
+ *
+ * Fiecare monedă separat: adunarea leilor cu euro ar da un număr care nu
+ * înseamnă nimic, dar pe care cineva l-ar citi ca pe cifra lunii. Restanțele mai
+ * vechi se pomenesc doar dacă există.
+ */
+function feesNote(fees: DashboardFees | null): string | undefined {
+  if (!fees || fees.outstanding.length === 0) return undefined;
+  const sums = fees.outstanding
+    .map((item) => formatMoney(item.amount, item.currency))
+    .join(" + ");
+  if (fees.arrears === 0) return sums;
+  return `${sums} · plus ${fees.arrears} ${fees.arrears === 1 ? "lună" : "luni"} din urmă`;
+}
+
 export function TodayPlan({
   kpis,
   closing,
   deadlines,
+  fees,
 }: {
   kpis: DashboardData["kpis"];
   closing: DashboardClosing | null;
   deadlines: { overdue: number; soon: number };
+  /** `null` pentru cine nu are `fees:read`: banii nu se văd de la orice rol. */
+  fees: DashboardFees | null;
 }) {
   const all: Todo[] = [
     {
@@ -591,6 +626,21 @@ export function TodayPlan({
       to: "/contabilitate/lipsa?request=never",
       Icon: Send,
       tone: "purple",
+    },
+    {
+      // Ultimul din listă, deliberat: banii neîncasați se rezolvă cu un
+      // telefon, nu cu munca zilei — dar dacă lipsesc de pe panou nu se
+      // rezolvă deloc, fiindcă nimeni nu deschide un ecran ca să afle că
+      // n-are nimic de făcut acolo.
+      key: "unpaid",
+      count: fees?.unpaidClients ?? 0,
+      label:
+        fees?.unpaidClients === 1 ? "client nu a plătit" : "clienți nu au plătit",
+      note: feesNote(fees),
+      action: "Vezi onorariile",
+      to: "/crm/onorarii",
+      Icon: Wallet,
+      tone: "amber",
     },
     {
       key: "chase",
@@ -697,6 +747,9 @@ function TodoCard({ todo, index }: { todo: Todo; index: number }) {
           </span>
           <span className="truncate text-sm text-slate-600 dark:text-slate-400">{todo.label}</span>
         </span>
+        {todo.note && (
+          <span className={cn("mt-0.5 block truncate text-xs", mutedText)}>{todo.note}</span>
+        )}
         <span className="mt-0.5 flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400">
           {todo.action}
           <ArrowUpRight

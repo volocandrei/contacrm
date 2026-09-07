@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
@@ -26,8 +27,8 @@ from app.api.route import CommittingRoute
 from app.api.v1.periods import AccountingPeriodOut, to_period
 from app.core.config import settings
 from app.domain.enums import ClientStatus, DocumentStatus, PeriodStatus, TaskStatus
-from app.domain.periods import filing_deadline
-from app.domain.permissions import Permission
+from app.domain.periods import filing_deadline, format_reference_month
+from app.domain.permissions import Permission, permissions_for
 from app.models.audit import AuditLog
 from app.models.client import Client
 from app.models.document import Document, DocumentProcessingJob
@@ -37,6 +38,7 @@ from app.repositories.document import DocumentRepository
 from app.schemas.common import ApiModel
 from app.schemas.document import DocumentListItemOut
 from app.services import processing_queue as queue
+from app.services.fees import FeeService
 from app.services.period_service import PeriodService, PeriodView
 from app.services.upload_links import UploadLinkService
 
@@ -175,6 +177,31 @@ class ClosingOut(ApiModel):
     laggards: list[LaggardOut]
 
 
+class MoneyOut(ApiModel):
+    """O sumă cu moneda ei. Lei plus euro nu este o sumă."""
+
+    currency: str
+    amount: Decimal
+
+
+class FeesSnapshotOut(ApiModel):
+    """Ce mai are cabinetul de încasat, pe scurt.
+
+    Ajunge pe panou **doar la cine are `fees:read`** — implicit, administratorii.
+    Pentru ceilalți câmpul lipsește cu totul din răspuns, nu vine pe zero: un zero
+    s-ar citi ca „nu are nimeni de plătit nimic".
+    """
+
+    reference_month: str
+    #: Câte o linie pe monedă, ca pe ecranul de onorarii.
+    outstanding: list[MoneyOut]
+    #: Câți clienți nu au plătit luna aceasta, peste toate monedele.
+    unpaid_clients: int
+    #: Câte luni mai vechi au rămas neîncasate. Ele nu se mai văd nicăieri
+    #: altundeva: luna trece, ecranul se schimbă, banii rămân neîncasați.
+    arrears: int
+
+
 class DashboardOut(ApiModel):
     #: Luna pe care o descriu cifrele de mai jos, sau `None` când nu există niciun
     #: document. Se trimite pentru că altfel ecranul ar trebui să o ghicească — și
@@ -195,6 +222,33 @@ class DashboardOut(ApiModel):
     trend: list[DayCountOut]
     #: Distribuția pe stări, pentru graficul inelar. Doar stările care există.
     by_status: list[StatusSliceOut]
+    #: Lipsește pentru cine nu are `fees:read`. Vezi `FeesSnapshotOut`.
+    fees: FeesSnapshotOut | None = None
+
+
+def _fees(session: Session, user: User) -> FeesSnapshotOut | None:
+    """Banii lunii calendaristice, dacă utilizatorul are voie să-i vadă.
+
+    Luna este cea de azi, nu `latest_active_month`: onorariul se datorează pentru
+    o lună de calendar, indiferent dacă documentele ei au început să sosească.
+    Ecranul de onorarii se deschide pe aceeași lună, deci cifrele se potrivesc.
+    """
+    if Permission.FEES_READ not in permissions_for(user.primary_role):
+        return None
+
+    reference_month = format_reference_month(datetime.now(UTC).date())
+    service = FeeService(session, user.organization_id)
+    rows = service.month(reference_month)
+    return FeesSnapshotOut(
+        reference_month=reference_month,
+        outstanding=[
+            MoneyOut(currency=item.currency, amount=item.outstanding)
+            for item in service.totals(rows)
+            if item.outstanding
+        ],
+        unpaid_clients=service.unpaid_count(rows),
+        arrears=len(service.arrears(reference_month)),
+    )
 
 
 @router.get("/counts", response_model=SidebarCountsOut)
@@ -231,6 +285,7 @@ def dashboard(session: DbSession, user: DashboardReader) -> DashboardOut:
         timeline=_timeline(session, organization_id),
         closing=_closing(current, periods) if current else None,
         trend=_trend(session, organization_id),
+        fees=_fees(session, user),
         by_status=[
             StatusSliceOut(status=status, count=count)
             for status, count in sorted(by_status.items(), key=lambda pair: -pair[1])

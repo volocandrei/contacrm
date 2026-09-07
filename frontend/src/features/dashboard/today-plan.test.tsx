@@ -18,7 +18,7 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
 
 import { TodayPlan } from "@/features/dashboard/dashboard-page";
-import type { DashboardKpis } from "@/types/domain";
+import type { DashboardFees, DashboardKpis } from "@/types/domain";
 
 afterEach(cleanup);
 
@@ -38,13 +38,14 @@ const EMPTY: DashboardKpis = {
   clientsAwaitingReply: 0,
 };
 
-function show(kpis: Partial<DashboardKpis>) {
+function show(kpis: Partial<DashboardKpis>, fees: DashboardFees | null = null) {
   return render(
     <MemoryRouter>
       <TodayPlan
         kpis={{ ...EMPTY, ...kpis }}
         closing={null}
         deadlines={{ overdue: 0, soon: 0 }}
+        fees={fees}
       />
     </MemoryRouter>,
   );
@@ -86,5 +87,43 @@ describe("un cabinet care lucrează", () => {
 
     expect(screen.getByText(/documente de verificat/)).toBeInTheDocument();
     expect(screen.queryByText(/Nimic de recuperat/)).not.toBeInTheDocument();
+  });
+});
+
+describe("banii de încasat", () => {
+  const FEES: DashboardFees = {
+    referenceMonth: "2026-09",
+    outstanding: [{ currency: "RON", amount: "1200.00" }],
+    unpaidClients: 2,
+    arrears: 0,
+  };
+
+  it("numărul mare este de oameni, suma stă dedesubt", () => {
+    // Doi clienți neîncasați pot însemna 300 de lei sau 8.000: pe oameni îi
+    // suni, dar suma decide dacă o faci azi.
+    show({ clientsTotal: 6, clientsActive: 4 }, FEES);
+
+    expect(screen.getByText(/clienți nu au plătit/)).toBeInTheDocument();
+    expect(screen.getByText(/1\.200,00/)).toBeInTheDocument();
+  });
+
+  it("restanțele din urmă se pomenesc doar dacă există", () => {
+    show({ clientsTotal: 6, clientsActive: 4 }, { ...FEES, arrears: 3 });
+
+    expect(screen.getByText(/plus 3 luni din urmă/)).toBeInTheDocument();
+  });
+
+  it("cine nu are voie să vadă banii nu vede nici cardul", () => {
+    // `null`, nu zero: ecranul nu are de unde ști dacă zero înseamnă „nimeni nu
+    // datorează" sau „nu ai voie să afli".
+    show({ clientsTotal: 6, clientsActive: 4 }, null);
+
+    expect(screen.queryByText(/nu au plătit/)).not.toBeInTheDocument();
+  });
+
+  it("o lună încasată complet nu lasă un card gol pe panou", () => {
+    show({ clientsTotal: 6, clientsActive: 4 }, { ...FEES, unpaidClients: 0, outstanding: [] });
+
+    expect(screen.queryByText(/nu au plătit/)).not.toBeInTheDocument();
   });
 });

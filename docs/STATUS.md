@@ -277,6 +277,31 @@ copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email,
 verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
 confirmat.
 
+### Banii ajung pe panou, dar numai la cine are voie să-i vadă
+
+Ecranul de onorarii răspunde la întrebarea „cine nu mi-a plătit" — dar numai dacă
+îl deschizi. Panoul principal este ecranul pe care îl deschide proprietarul
+cabinetului dimineața, și el nu spunea nimic despre bani. „Cine nu mi-a plătit"
+este exact genul de lucru care se face azi sau se uită.
+
+Rândul stă **ultimul** în „Ce ai de făcut", deliberat: banii neîncasați se rezolvă
+cu un telefon, nu cu munca zilei. Dar dacă lipsesc de pe panou nu se rezolvă
+deloc, fiindcă nimeni nu deschide un ecran ca să afle că n-are nimic de făcut
+acolo.
+
+**Cifra mare este de oameni, suma stă dedesubt.** Doi clienți neîncasați pot
+însemna 300 de lei sau 8.000: pe oameni îi suni, dar suma decide dacă o faci azi.
+Fiecare monedă separat, ca peste tot; restanțele mai vechi se pomenesc doar dacă
+există.
+
+**Pentru cine nu are `fees:read`, câmpul lipsește cu totul din răspuns** — nu vine
+pe zero. Un zero s-ar citi ca „nu are nimeni de plătit nimic", iar ecranul n-ar
+avea de unde ști că de fapt înseamnă „nu ai voie să afli". Ascunderea rândului
+rămâne ergonomie; refuzul îl dă serverul (§32).
+
+O lună încasată complet nu lasă un card gol pe panou: zero de încasat nu este o
+linie cu zero, este nicio linie. Verificat prin mutație, pe testul de componentă.
+
 ### Cât de mult de lucru pentru câți bani (7 septembrie 2026)
 
 Un cabinet știe cine îi plătește prost. Îl știe **din memorie**, o dată pe an, când

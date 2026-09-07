@@ -634,3 +634,47 @@ class TestHowMuchWorkForHowMuchMoney:
 
         assert rows[EARLIER]["documents"] == 1
         assert rows[MONTH]["documents"] == 2
+
+
+class TestTheMoneyOnTheDashboard:
+    """Banii ajung pe panou, dar numai la cine are voie să-i vadă.
+
+    Panoul este ecranul pe care îl deschide proprietarul cabinetului. „Cine nu
+    mi-a plătit" este exact genul de lucru care se face azi sau se uită — dar
+    lista completă rămâne a administratorilor, ca peste tot (§32).
+    """
+
+    def test_an_admin_sees_what_is_left_to_collect(
+        self, as_admin: TestClient, alfa: Client
+    ) -> None:
+        month = datetime.now(UTC).strftime("%Y-%m")
+        set_fee(as_admin, alfa, "500.00")
+        generate(as_admin, month)
+
+        fees = as_admin.get("/api/v1/dashboard").json()["fees"]
+
+        assert fees["referenceMonth"] == month
+        assert fees["unpaidClients"] == 1
+        assert fees["outstanding"] == [{"currency": "RON", "amount": "500.00"}]
+
+    def test_the_block_is_missing_for_everybody_else(
+        self, api: TestClient, db: Session, org: Organization, roles: dict[RoleCode, Role]
+    ) -> None:
+        """Lipsește cu totul, nu vine pe zero: un zero s-ar citi ca „nu are nimeni
+        de plătit nimic"."""
+        user = make_user(db, org, roles, email="contabil@contacrm.test", role=RoleCode.ACCOUNTANT)
+        api.post("/api/v1/auth/login", json={"email": user.email, "password": PASSWORD})
+
+        assert api.get("/api/v1/dashboard").json()["fees"] is None
+
+    def test_a_collected_month_shows_nothing_left(self, as_admin: TestClient, alfa: Client) -> None:
+        """Zero de încasat nu este o linie cu zero, este nicio linie."""
+        month = datetime.now(UTC).strftime("%Y-%m")
+        set_fee(as_admin, alfa, "500.00")
+        generate(as_admin, month)
+        as_admin.post(f"{URL}/payments", json={"clientId": str(alfa.id), "referenceMonth": month})
+
+        fees = as_admin.get("/api/v1/dashboard").json()["fees"]
+
+        assert fees["outstanding"] == []
+        assert fees["unpaidClients"] == 0

@@ -20,16 +20,22 @@ shell-ului și în lista de procese.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.cli import sync_document_types, sync_obligation_types
 from app.domain.document_types import DEFAULT_DOCUMENT_TYPES
+from app.domain.enums import ClientStatus
 from app.domain.obligations import DEFAULT_OBLIGATIONS
+from app.domain.periods import format_reference_month
+from app.models.client import Client
 from app.models.document import DocumentType
 from app.models.obligation import ObligationType
 from app.models.organization import Organization
+from app.services.fees import FeeService
 from tests.conftest import requires_db
 
 pytestmark = requires_db
@@ -157,3 +163,59 @@ class TestWhatANewOfficeGets:
             )
         ).one()
         assert theirs.deadline_day != 10
+
+
+class TestTheMoneyOnDayOne:
+    """Ecranul de onorarii, pe un cabinet care tocmai a instalat aplicația.
+
+    Greșeala pe care o apără este cea făcută o dată la termene: o listă de
+    restanțe inventate pentru toate lunile din urmă, pe o instalare de azi. Acolo
+    au fost 52 de rânduri roșii; aici ar fi fost sume.
+    """
+
+    def test_a_new_office_owes_nothing_to_nobody(self, db: Session, fresh: Organization) -> None:
+        service = FeeService(db, fresh.id)
+
+        assert service.month(format_reference_month(date.today())) == []
+        assert service.arrears(format_reference_month(date.today())) == []
+
+    def test_a_client_added_today_is_not_billed_for_last_year(
+        self, db: Session, fresh: Organization
+    ) -> None:
+        """Clientul apare pe lunile de după ce a intrat în cabinet, nu înainte."""
+        client = Client(
+            organization_id=fresh.id,
+            name="Prima Firmă SRL",
+            tax_id="RO900001",
+            status=ClientStatus.ACTIVE,
+        )
+        db.add(client)
+        db.flush()
+        service = FeeService(db, fresh.id)
+
+        assert service.month("2024-03") == []
+        # Pe luna în curs apare, fără sumă: cine n-are onorariu stabilit trebuie
+        # văzut, nu ascuns.
+        rows = service.month(format_reference_month(date.today()))
+        assert [row.client_name for row in rows] == ["Prima Firmă SRL"]
+        assert rows[0].configured is None
+        assert rows[0].is_generated is False
+
+    def test_generating_a_month_without_fees_creates_nothing(
+        self, db: Session, fresh: Organization
+    ) -> None:
+        """Aplicația nu inventează o sumă pentru un client căruia nu i s-a pus una."""
+        db.add(
+            Client(
+                organization_id=fresh.id,
+                name="Prima Firmă SRL",
+                tax_id="RO900001",
+                status=ClientStatus.ACTIVE,
+            )
+        )
+        db.flush()
+        today = date.today()
+
+        created = FeeService(db, fresh.id).generate(format_reference_month(today), today=today)
+
+        assert created == 0

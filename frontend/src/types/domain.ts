@@ -576,6 +576,28 @@ export type DashboardData = {
   trend: DayCount[];
   /** Distribuția pe stări, pentru graficul inelar. Doar stările care există. */
   byStatus: StatusSlice[];
+  /**
+   * Ce mai are cabinetul de încasat luna aceasta.
+   *
+   * `null` pentru cine nu are `fees:read` — nu zero: un zero s-ar citi ca „nu
+   * are nimeni de plătit nimic".
+   */
+  fees: DashboardFees | null;
+};
+
+/** O sumă cu moneda ei. Lei plus euro nu este o sumă. */
+export type Money = {
+  currency: string;
+  amount: string;
+};
+
+export type DashboardFees = {
+  referenceMonth: string;
+  /** Câte o linie pe monedă. Lipsește cu totul când nu a rămas nimic de încasat. */
+  outstanding: Money[];
+  unpaidClients: number;
+  /** Câte luni mai vechi au rămas neîncasate. */
+  arrears: number;
 };
 
 export type DayCount = {
