@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import (
@@ -33,6 +34,7 @@ from app.core.config import settings
 from app.core.errors import AppError, ErrorCode, ForbiddenError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.domain.document_actions import available_actions, reprocess_check
+from app.domain.efactura_pairing import PairingState
 from app.domain.permissions import Permission, permissions_for
 from app.models.audit import AuditLog
 from app.models.document import VERSION_KINDS, Document, DocumentVersion
@@ -68,6 +70,7 @@ from app.services.document_processing import DocumentProcessingService
 from app.services.document_service import ActorContext, DocumentService, approval_blockers
 from app.services.document_split import DocumentSplitService
 from app.services.document_upload import DocumentUploadService
+from app.services.efactura_pairing import PairingService
 from app.services.files import FileValidationError
 from app.services.processing_queue import enqueue as enqueue_processing
 from app.services.processing_runner import build_extractor, run_processing
@@ -449,6 +452,114 @@ def assign_client(
         user.organization_id, document_id, payload.client_id, _actor(user, request)
     )
     return _detail(session, user, document_id)
+
+
+class PairingCandidateOut(ApiModel):
+    """Un candidat la pereche, cu motivele lui."""
+
+    document_id: uuid.UUID
+    document_number: str | None
+    original_filename: str
+    mime_type: str
+    total: Decimal | None
+    state: PairingState
+    #: De ce. Fără motive, propunerea nu se poate verifica, deci nu se poate accepta.
+    reasons: list[str]
+
+
+class PairingOut(ApiModel):
+    """Perechea documentului: ce este legat acum, și ce ar putea fi legat.
+
+    Stările sunt cele din `app/domain/efactura_pairing.py`. `CONFLICT` este cea
+    care merită cel mai mult atenția: identitate identică, sume diferite —
+    una dintre valori este citită greșit.
+    """
+
+    state: PairingState
+    #: Documentul deja legat, dacă există.
+    paired_with_id: uuid.UUID | None
+    paired_with_filename: str | None
+    pairing_reasons: str | None
+    #: `true` când legătura a făcut-o sistemul pe identitate exactă.
+    paired_automatically: bool | None
+    candidates: list[PairingCandidateOut]
+
+
+class PairIn(ApiModel):
+    document_id: uuid.UUID
+
+
+@router.get("/documents/{document_id}/pairing", response_model=PairingOut)
+def document_pairing(
+    session: DbSession, user: DocumentReader, document_id: uuid.UUID
+) -> PairingOut:
+    """Celălalt exemplar al aceleiași facturi: XML-ul pentru PDF, sau invers.
+
+    Ruta **citește**. Legătura automată se face în procesare, pe identitate
+    exactă; aici se vede ce s-a legat și ce a rămas de hotărât.
+    """
+    service = PairingService(session, user.organization_id)
+    document = service.document(document_id)
+    result = service.evaluate(document)
+
+    other = session.get(Document, document.paired_with_id) if document.paired_with_id else None
+    by_id = {
+        str(candidate.id): candidate
+        for candidate in (
+            session.scalars(
+                select(Document).where(
+                    Document.id.in_([uuid.UUID(item.document_id) for item in result.candidates])
+                )
+            ).all()
+            if result.candidates
+            else []
+        )
+    }
+
+    return PairingOut(
+        state=result.state,
+        paired_with_id=document.paired_with_id,
+        paired_with_filename=other.original_filename if other else None,
+        pairing_reasons=document.pairing_reasons,
+        paired_automatically=document.paired_automatically,
+        candidates=[
+            PairingCandidateOut(
+                document_id=uuid.UUID(item.document_id),
+                document_number=by_id[item.document_id].document_number,
+                original_filename=by_id[item.document_id].original_filename,
+                mime_type=by_id[item.document_id].mime_type,
+                total=by_id[item.document_id].total_amount,
+                state=item.state,
+                reasons=list(item.reasons),
+            )
+            for item in result.candidates
+            if item.document_id in by_id
+        ],
+    )
+
+
+@router.post("/documents/{document_id}/pairing", response_model=PairingOut)
+def pair_document(
+    session: DbSession,
+    user: DocumentWriter,
+    request: Request,
+    document_id: uuid.UUID,
+    payload: PairIn,
+) -> PairingOut:
+    """Leagă documentul de celălalt exemplar, la cererea unui om."""
+    service = PairingService(session, user.organization_id)
+    service.pair(document_id, payload.document_id, actor=user, ip=client_ip(request))
+    return document_pairing(session, user, document_id)
+
+
+@router.delete("/documents/{document_id}/pairing", response_model=PairingOut)
+def unpair_document(
+    session: DbSession, user: DocumentWriter, request: Request, document_id: uuid.UUID
+) -> PairingOut:
+    """Rupe legătura. Reversibil, ca orice hotărâre luată pe o propunere."""
+    service = PairingService(session, user.organization_id)
+    service.unpair(document_id, actor=user, ip=client_ip(request))
+    return document_pairing(session, user, document_id)
 
 
 class SplitSegmentOut(ApiModel):

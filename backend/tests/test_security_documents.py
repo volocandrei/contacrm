@@ -186,6 +186,10 @@ def document_routes(document_id: str) -> list[tuple[str, str, dict[str, object] 
         # ca restul — inclusiv „documentul altui cabinet nu există".
         ("GET", f"/api/v1/documents/{document_id}/split", None),
         ("POST", f"/api/v1/documents/{document_id}/split", {}),
+        # Perechea XML ↔ PDF: citirea candidaților, legarea și ruperea legăturii.
+        ("GET", f"/api/v1/documents/{document_id}/pairing", None),
+        ("POST", f"/api/v1/documents/{document_id}/pairing", {"documentId": str(uuid.uuid4())}),
+        ("DELETE", f"/api/v1/documents/{document_id}/pairing", None),
     ]
 
 

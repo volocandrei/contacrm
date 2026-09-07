@@ -197,6 +197,9 @@ class Document(Base, OrganizationMixin, TimestampMixin, SoftDeleteMixin):
         Index("ix_documents_sha256_hash", "sha256_hash"),
         Index("ix_documents_client_id_reference_month", "client_id", "reference_month"),
         Index("ix_documents_document_date", "document_date"),
+        # Perechea XML ↔ PDF se caută pornind de la un document; fără index ar fi
+        # o trecere prin tot tabelul la fiecare deschidere de factură.
+        Index("ix_documents_paired_with_id", "paired_with_id"),
         Index("ix_documents_received_at", "received_at"),
         Index("ix_documents_supplier_tax_id_document_number", "supplier_tax_id", "document_number"),
         Index("ix_documents_document_type_id", "document_type_id"),
@@ -324,6 +327,23 @@ class Document(Base, OrganizationMixin, TimestampMixin, SoftDeleteMixin):
     page_to: Mapped[int | None] = mapped_column(Integer, default=None)
     #: Când a fost desfăcut teancul. Numai pe teanc, nu pe bucăți.
     split_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    # ── Perechea XML ↔ PDF (§16, §17) ───────────────────────────────────────
+    #
+    # Aceeași factură ajunge de două ori și pe două drumuri: XML-ul din SPV și
+    # PDF-ul de pe email. Sunt **același document**, nu două — dar niciunul nu se
+    # aruncă: XML-ul este originalul fiscal, PDF-ul este ce se poate privi.
+    #
+    # Legătura este reciprocă: amândouă rândurile arată unul spre celălalt.
+    paired_with_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), default=None
+    )
+    #: De ce s-au legat: „același număr, aceeași serie, CUI identic, aceeași sumă".
+    #: Cine se uită peste o lună trebuie să poată verifica, nu doar să creadă.
+    pairing_reasons: Mapped[str | None] = mapped_column(String(512), default=None)
+    #: `True` când legătura a fost făcută de sistem pe identitate exactă, `False`
+    #: când a apăsat un om. Diferența contează la o revizuire.
+    paired_automatically: Mapped[bool | None] = mapped_column(default=None)
 
     document_type: Mapped[DocumentType | None] = relationship(lazy="joined")
     versions: Mapped[list[DocumentVersion]] = relationship(

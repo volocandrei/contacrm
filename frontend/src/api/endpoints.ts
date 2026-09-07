@@ -5,6 +5,7 @@ import type {
   AccountingPeriod,
   ActiveSession,
   BankImportResult,
+  DocumentPairing,
   SplitPlan,
   BankStatement,
   BankTransaction,
@@ -287,6 +288,16 @@ export const contacts = {
 export const documents = {
   list: (params: QueryParams) => api.get<Paginated<DocumentListItem>>("/documents", params),
   get: (id: string) => api.get<DocumentDetail>(`/documents/${id}`),
+
+  /** Celălalt exemplar al aceleiași facturi: XML-ul pentru PDF, sau invers. */
+  pairing: (id: string) => api.get<DocumentPairing>(`/documents/${id}/pairing`),
+
+  /** Leagă documentul de celălalt exemplar, la cererea unui om. */
+  pair: (id: string, otherId: string) =>
+    api.post<DocumentPairing>(`/documents/${id}/pairing`, { documentId: otherId }),
+
+  /** Rupe legătura. Reversibil, ca orice hotărâre luată pe o propunere. */
+  unpair: (id: string) => api.delete<DocumentPairing>(`/documents/${id}/pairing`),
 
   /** Unde s-ar tăia teancul, și de ce. **Nu scrie nimic.** */
   splitPreview: (id: string) => api.get<SplitPlan>(`/documents/${id}/split`),

@@ -53,6 +53,7 @@ from app.services.document_archive import DocumentArchiveService
 from app.services.document_fields import SPEC_BY_NAME, DocumentFieldWriter, FieldUpdate
 from app.services.document_validation import DocumentValidationService, ValidationLevel
 from app.services.duplicates import DuplicateDetectionService, DuplicateResult
+from app.services.efactura_pairing import PairingService
 from app.services.extraction.base import (
     DocumentExtractionProvider,
     ExtractedLine,
@@ -197,6 +198,18 @@ class DocumentProcessingService:
         # serie, număr — există doar după extracție. Duplicatul pe conținut a fost
         # deja căutat la încărcare, unde nu era nevoie să se citească nimic.
         twin = self.duplicates.find_semantic_duplicate(organization_id, document)
+
+        # Perechea XML ↔ PDF, tot acum și din același motiv: cheia ei este
+        # identitatea facturii, care există abia după extracție. Se leagă numai
+        # când nu rămâne nimic de hotărât — restul ajunge pe ecran ca propunere.
+        #
+        # Nu ridică niciodată: o pereche negăsită este cazul obișnuit, nu un eșec
+        # al procesării, iar o excepție de aici ar marca documentul ca eșuat.
+        try:
+            PairingService(self.session, organization_id).pair_automatically(document)
+        except Exception:  # pragma: no cover — apărare în adâncime
+            logger.exception("pairing_failed", document_id=str(document.id))
+
         return self._decide(document, job, result, twin=twin)
 
     # ── Pași ────────────────────────────────────────────────────────────────

@@ -424,6 +424,42 @@ export type SplitPlan = {
   segments: SplitSegment[];
 };
 
+/**
+ * Ce s-a găsit pentru perechea XML ↔ PDF a unei facturi (§16, §17).
+ *
+ * `CONFLICT` este starea care merită cea mai multă atenție: identitate identică,
+ * sume diferite — una dintre valori este citită greșit, iar o potrivire „reușită"
+ * ar fi ascuns exact asta.
+ */
+export type PairingState =
+  | "MATCHED"
+  | "PROBABLE"
+  | "MULTIPLE_CANDIDATES"
+  | "CONFLICT"
+  | "MISSING";
+
+/** Un candidat la pereche, cu motivele lui. */
+export type PairingCandidate = {
+  documentId: string;
+  documentNumber: string | null;
+  originalFilename: string;
+  mimeType: string;
+  total: string | null;
+  state: PairingState;
+  reasons: string[];
+};
+
+/** Perechea documentului: ce este legat acum, și ce ar putea fi legat. */
+export type DocumentPairing = {
+  state: PairingState;
+  pairedWithId: string | null;
+  pairedWithFilename: string | null;
+  pairingReasons: string | null;
+  /** `true` când legătura a făcut-o sistemul pe identitate exactă. */
+  pairedAutomatically: boolean | null;
+  candidates: PairingCandidate[];
+};
+
 export type CurrentUser = {
   id: string;
   fullName: string;

@@ -285,6 +285,21 @@ const routes: Route[] = [
     handler: ({ query }) => store.nextReviewDocument(query.after),
   },
   {
+    method: "GET",
+    pattern: "/documents/:id/pairing",
+    handler: ({ params }) => store.documentPairing(params.id!),
+  },
+  {
+    method: "POST",
+    pattern: "/documents/:id/pairing",
+    handler: ({ params, body }) => store.pairDocument(params.id!, str(body, "documentId")),
+  },
+  {
+    method: "DELETE",
+    pattern: "/documents/:id/pairing",
+    handler: ({ params }) => store.unpairDocument(params.id!),
+  },
+  {
     // Inaintea lui `/documents/:id`, ca "split" sa nu fie citit ca id.
     method: "GET",
     pattern: "/documents/:id/split",

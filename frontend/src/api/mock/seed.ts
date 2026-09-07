@@ -250,6 +250,16 @@ export type StoredDocument = Omit<
   "availableActions" | "approvalBlockers" | "reprocessBlockedReason"
 > & {
   storagePath: string | null;
+  /**
+   * Perechea XML ↔ PDF, ca stare de backend (§16).
+   *
+   * Nu face parte din `DocumentDetail`: pe API perechea are ruta ei,
+   * `/documents/{id}/pairing`, fiindcă răspunsul ei conține și candidații — iar
+   * ei se calculează, nu se stochează.
+   */
+  pairedWithId: string | null;
+  pairingReasons: string | null;
+  pairedAutomatically: boolean | null;
 };
 
 /* ─── Documente ────────────────────────────────────────────────────────────── */
@@ -528,6 +538,9 @@ function buildDocument(
     splitFromId: null,
     pageFrom: null,
     pageTo: null,
+    pairedWithId: null,
+    pairingReasons: null,
+    pairedAutomatically: null,
     // Liniile există doar pentru facturile electronice: acolo fiecare valoare
     // stă într-un element cu nume. Din PDF nu se citesc, și nu se ghicesc.
     lines: source === "EFACTURA" ? invoiceLines(`doc-${documentCounter}`) : [],

@@ -47,6 +47,7 @@ import { formatDateTime, formatFileSize } from "@/lib/format";
 import { buttonPrimary, focusRing, iconChip, mutedText, pillClass, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { InvoiceLines } from "@/features/documents/invoice-lines";
+import { PairingPanel } from "@/features/documents/pairing-panel";
 import { SplitPanel } from "@/features/documents/split-panel";
 import type {
   DocumentAction,
@@ -374,6 +375,8 @@ function ReviewScreen({
           </ul>
         </div>
       )}
+
+      <PairingPanel document={document} />
 
       <SplitPanel document={document} />
 

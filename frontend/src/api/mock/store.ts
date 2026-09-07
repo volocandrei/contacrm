@@ -31,6 +31,9 @@ import { ROLE_CODE } from "@/types/domain";
 import type {
   AccountingPeriod,
   ActiveSession,
+  DocumentPairing,
+  PairingCandidate,
+  PairingState,
   SplitPlan,
   AnafMandate,
   AnafStatus,
@@ -960,6 +963,9 @@ export function uploadDocument(input: UploadInput): StoredDocument {
     splitFromId: null,
     pageFrom: null,
     pageTo: null,
+    pairedWithId: null,
+    pairingReasons: null,
+    pairedAutomatically: null,
     // Un document proaspăt urcat nu are linii: ele apar abia dacă providerul
     // citește o factură electronică.
     lines: [],
@@ -1090,6 +1096,131 @@ export function listDocuments(filters: DocumentFilters): Paginated<DocumentListI
  */
 function looksLikeAStack(doc: StoredDocument): boolean {
   return /scan|teanc|multi/i.test(doc.originalFilename) && doc.mimeType === "application/pdf";
+}
+
+/**
+ * Perechea XML ↔ PDF, în backendul simulat (§14, §16, §17).
+ *
+ * **Ce reproduce.** Forma răspunsului și regulile pe care le vede omul: se
+ * propune doar între exemplare de feluri diferite, cu motive scrise; conflictul
+ * de sume nu se leagă; legătura este reciprocă și se poate rupe.
+ *
+ * **Ce nu reproduce.** Ponderile și pragurile. Regulile adevărate stau în
+ * `backend/app/domain/efactura_pairing.py`; aici se compară numărul, seria și
+ * suma, atât.
+ */
+function isElectronic(doc: StoredDocument): boolean {
+  return doc.mimeType.includes("xml") || doc.source === "EFACTURA";
+}
+
+function pairingCandidates(doc: StoredDocument): StoredDocument[] {
+  if (!doc.documentNumber) return [];
+  return state.documents.filter(
+    (other) =>
+      other.id !== doc.id &&
+      other.documentNumber === doc.documentNumber &&
+      isElectronic(other) !== isElectronic(doc) &&
+      !other.pairedWithId,
+  );
+}
+
+export function documentPairing(id: string): DocumentPairing {
+  const doc = getDocument(id);
+  const paired = doc.pairedWithId ? state.documents.find((d) => d.id === doc.pairedWithId) : null;
+
+  const candidates: PairingCandidate[] = pairingCandidates(doc).map((other) => {
+    const reasons = ["același număr de factură"];
+    const mySeries = doc.fields.series.value;
+    const otherSeries = other.fields.series.value;
+    if (mySeries && otherSeries === mySeries) reasons.push("aceeași serie");
+
+    const mine = doc.totalAmount;
+    const theirs = other.totalAmount;
+    const bothTotals = mine !== null && theirs !== null;
+    const differs = bothTotals && Number(mine) !== Number(theirs);
+    if (differs) {
+      reasons.push(`sume diferite: ${mine} față de ${theirs}`);
+    } else if (bothTotals) {
+      reasons.push("aceeași sumă");
+    }
+
+    return {
+      documentId: other.id,
+      documentNumber: other.documentNumber,
+      originalFilename: other.originalFilename,
+      mimeType: other.mimeType,
+      total: other.totalAmount,
+      state: differs ? "CONFLICT" : bothTotals ? "MATCHED" : "PROBABLE",
+      reasons,
+    };
+  });
+
+  const conflict = candidates.some((item) => item.state === "CONFLICT");
+  const certain = candidates.filter((item) => item.state === "MATCHED");
+
+  const resolved: PairingState = doc.pairedWithId
+    ? "MATCHED"
+    : conflict
+      ? "CONFLICT"
+      : certain.length === 1
+        ? "MATCHED"
+        : candidates.length > 1
+          ? "MULTIPLE_CANDIDATES"
+          : candidates.length === 1
+            ? "PROBABLE"
+            : "MISSING";
+
+  return {
+    state: resolved,
+    pairedWithId: doc.pairedWithId ?? null,
+    pairedWithFilename: paired?.originalFilename ?? null,
+    pairingReasons: doc.pairingReasons ?? null,
+    pairedAutomatically: doc.pairedAutomatically ?? null,
+    candidates,
+  };
+}
+
+export function pairDocument(id: string, otherId: string): DocumentPairing {
+  requirePermission("documents:write");
+  const doc = getDocument(id);
+  const other = getDocument(otherId);
+
+  if (isElectronic(doc) === isElectronic(other)) {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      "Se leagă doar exemplare de feluri diferite: XML-ul cu PDF-ul.",
+      422,
+      { documentId: ["Amândouă sunt de același fel — este un duplicat, nu o pereche."] },
+    );
+  }
+
+  const reasons = "același număr de factură, legat manual";
+  for (const [left, right] of [
+    [doc, other],
+    [other, doc],
+  ] as const) {
+    left.pairedWithId = right.id;
+    left.pairingReasons = reasons;
+    left.pairedAutomatically = false;
+  }
+  recordAudit("DOCUMENT_PAIRED", "Document", doc.id, reasons);
+  return documentPairing(id);
+}
+
+export function unpairDocument(id: string): DocumentPairing {
+  requirePermission("documents:write");
+  const doc = getDocument(id);
+  const other = doc.pairedWithId
+    ? state.documents.find((d) => d.id === doc.pairedWithId)
+    : undefined;
+  for (const side of [doc, other]) {
+    if (!side) continue;
+    side.pairedWithId = null;
+    side.pairingReasons = null;
+    side.pairedAutomatically = null;
+  }
+  recordAudit("DOCUMENT_UNPAIRED", "Document", doc.id, "Legătură ruptă");
+  return documentPairing(id);
 }
 
 export function splitPreview(id: string): SplitPlan {

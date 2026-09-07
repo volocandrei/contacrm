@@ -1184,3 +1184,35 @@ export function useSplitDocument() {
     },
   });
 }
+
+// ── Perechea XML ↔ PDF (§16, §17) ────────────────────────────────────────────
+
+/** Celălalt exemplar al aceleiași facturi, dacă există. */
+export function useDocumentPairing(documentId: string) {
+  return useQuery({
+    queryKey: ["documents", documentId, "pairing"],
+    queryFn: () => documents.pairing(documentId),
+  });
+}
+
+function usePairingMutation<TArgs>(fn: (args: TArgs) => Promise<unknown>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      // Legătura se scrie pe **amândouă** documentele, deci se invalidează tot ce
+      // ține de documente: fișa celuilalt exemplar arată acum altceva.
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
+}
+
+export function usePairDocument() {
+  return usePairingMutation(({ documentId, otherId }: { documentId: string; otherId: string }) =>
+    documents.pair(documentId, otherId),
+  );
+}
+
+export function useUnpairDocument() {
+  return usePairingMutation((documentId: string) => documents.unpair(documentId));
+}
