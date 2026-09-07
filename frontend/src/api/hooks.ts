@@ -62,6 +62,7 @@ export const queryKeys = {
   clientObligations: (id: string) => ["obligations", "clients", id] as const,
   fees: (referenceMonth: string) => ["fees", referenceMonth] as const,
   clientFee: (id: string) => ["fees", "clients", id] as const,
+  clientFeeHistory: (id: string) => ["fees", "clients", id, "history"] as const,
   missingDocuments: (referenceMonth: string) => ["periods", "missing", referenceMonth] as const,
   tasks: (params: QueryParams) => ["tasks", params] as const,
   reportSummary: (params: QueryParams) => ["reports", "summary", params] as const,
@@ -554,10 +555,23 @@ export function useFees(referenceMonth: string) {
   });
 }
 
-export function useClientFee(clientId: string) {
+/**
+ * `enabled` nu este o optimizare: pornită oricum, interogarea ar produce un
+ * 403 la fiecare deschidere de fișă pentru cine nu are `fees:read`.
+ */
+export function useClientFee(clientId: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.clientFee(clientId),
     queryFn: () => fees.forClient(clientId),
+    enabled,
+  });
+}
+
+export function useClientFeeHistory(clientId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.clientFeeHistory(clientId),
+    queryFn: () => fees.history(clientId),
+    enabled,
   });
 }
 

@@ -472,6 +472,11 @@ const routes: Route[] = [
         referenceMonth: query.referenceMonth ?? "",
       }),
   },
+  {
+    method: "GET",
+    pattern: "/fees/clients/:id/history",
+    handler: ({ params }) => store.getClientFeeHistory(params.id!),
+  },
   { method: "GET", pattern: "/fees/clients/:id", handler: ({ params }) => store.getClientFee(params.id!) },
   {
     method: "PUT",

@@ -44,6 +44,11 @@ from app.models.client import Client
 from app.models.fee import DEFAULT_CURRENCY, ClientFee, FeeEntry
 from app.models.user import User
 
+#: Cât istoric arată fișa unui client. Un an acoperă întrebarea care se pune
+#: efectiv la telefon — „eu am plătit în martie" — fără să transforme panoul din
+#: fișă într-un al doilea ecran de onorarii.
+HISTORY_MONTHS = 12
+
 
 def _month_start(reference_month: str) -> date:
     year, month = split_reference_month(reference_month)
@@ -56,6 +61,9 @@ class FeeRow:
 
     client_id: uuid.UUID
     client_name: str
+    #: Luna pe care o descrie rândul, `YYYY-MM`. Pe ecranul lunii este aceeași
+    #: peste tot; în istoricul unui client, ea este chiar coloana care contează.
+    period: str
     #: Onorariul în vigoare. `None` înseamnă „nu i s-a stabilit unul".
     configured: Decimal | None
     #: Suma lunii, înghețată la generare. `None` = luna nu este generată.
@@ -204,6 +212,7 @@ class FeeService:
                 FeeRow(
                     client_id=client.id,
                     client_name=client.name,
+                    period=reference_month,
                     configured=fee.amount if fee else None,
                     amount=entry.amount if entry else None,
                     currency=self._currency(entry, fee),
@@ -331,6 +340,42 @@ class FeeService:
         entry.paid_by = None
         self.session.flush()
         return entry
+
+    def history(self, client_id: uuid.UUID, *, limit: int = HISTORY_MONTHS) -> list[FeeRow]:
+        """Ce s-a facturat unui client, luna cu luna, cea mai recentă întâi.
+
+        Răspunde la întrebarea pe care o pune clientul la telefon — „eu am plătit
+        în martie" — fără ca omul din cabinet să pagineze ecranul de onorarii lună
+        cu lună până dă de ea.
+        """
+        client = self._client(client_id)
+        names_source = list(
+            self.session.scalars(
+                select(FeeEntry)
+                .where(
+                    FeeEntry.organization_id == self.organization_id,
+                    FeeEntry.client_id == client_id,
+                )
+                .order_by(FeeEntry.period.desc())
+                .limit(limit)
+            )
+        )
+        names = self._payer_names(names_source)
+        fee = self.for_client(client_id)
+        return [
+            FeeRow(
+                client_id=client_id,
+                client_name=client.name,
+                configured=fee.amount if fee else None,
+                amount=entry.amount,
+                currency=entry.currency,
+                paid_on=entry.paid_on,
+                paid_by_name=names.get(entry.paid_by) if entry.paid_by else None,
+                note=entry.note,
+                period=entry.period,
+            )
+            for entry in names_source
+        ]
 
     def arrears(self, before: str, *, limit: int = 200) -> list[Arrear]:
         """Lunile neîncasate mai vechi decât cea de pe ecran.

@@ -945,6 +945,8 @@ export interface ClientTimelineEvent {
 export interface FeeRow {
   clientId: string;
   clientName: string;
+  /** Luna pe care o descrie rândul. În istoricul unui client, coloana care contează. */
+  period: string;
   configured: string | null;
   /** `null` = luna nu este generată pentru acest client. */
   amount: string | null;

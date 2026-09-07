@@ -22,6 +22,7 @@ import {
   useClientContacts,
   useClientExpectations,
   useClientFee,
+  useClientFeeHistory,
   useClientObligations,
   useClientTimeline,
   useClientNotes,
@@ -65,7 +66,7 @@ import {
   type Tone,
 } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import type { ClientTimelineEventKind, ObligationFrequency } from "@/types/domain";
+import type { ClientTimelineEventKind, FeeRow, ObligationFrequency } from "@/types/domain";
 
 /** Cât poate avea o notă. Oglindește `MAX_NOTE_LENGTH` din backend. */
 const MAX_NOTE_LENGTH = 4000;
@@ -1251,15 +1252,18 @@ function ObligationsPanel({ clientId }: { clientId: string }) {
 function FeePanel({ clientId }: { clientId: string }) {
   const can = usePermissionCheck();
   const editable = can("fees:manage");
-  const { data, isLoading } = useClientFee(clientId);
+  // Cine nu are voie să vadă banii nu vede panoul **și nu cere nimic**: o
+  // interogare pornită oricum ar produce un 403 la fiecare deschidere de fișă.
+  // Ascunderea rămâne ergonomie; refuzul îl dă serverul (§32).
+  const allowed = can("fees:read");
+  const { data, isLoading } = useClientFee(clientId, allowed);
+  const history = useClientFeeHistory(clientId, allowed);
   const save = useSetClientFee();
 
   const [draft, setDraft] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
-  // Cine nu are voie să vadă banii nu vede nici panoul. Ascunderea este
-  // ergonomie; refuzul îl dă serverul (§32).
-  if (!can("fees:read")) return null;
+  if (!allowed) return null;
   if (isLoading) return <LoadingState />;
 
   const current = draft ?? data?.amount ?? "";
@@ -1338,6 +1342,48 @@ function FeePanel({ clientId }: { clientId: string }) {
           </button>
         )}
       </div>
+
+      <FeeHistory rows={history.data ?? []} />
     </Panel>
+  );
+}
+
+/**
+ * Ce s-a facturat clientului, luna cu luna.
+ *
+ * Există pentru întrebarea care se pune efectiv la telefon — „eu am plătit în
+ * martie" — și la care, altfel, se răspunde paginând ecranul de onorarii lună cu
+ * lună până se dă de ea.
+ */
+function FeeHistory({ rows }: { rows: FeeRow[] }) {
+  if (rows.length === 0) return null;
+
+  return (
+    <div className={cn("mt-4 border-t pt-3", divider)}>
+      <p className={cn("mb-2 text-xs font-medium tracking-wide uppercase", mutedText)}>
+        Ultimele luni facturate
+      </p>
+      <ul className="space-y-1 text-sm">
+        {rows.map((row) => (
+          <li key={row.period} className="flex items-center justify-between gap-3">
+            <span className="text-slate-700 dark:text-slate-300">
+              {formatReferenceMonth(row.period)}
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="tabular-nums text-slate-900 dark:text-slate-100">
+                {formatMoney(row.amount ?? "0", row.currency)}
+              </span>
+              {row.isPaid && row.paidOn !== null ? (
+                <span className={cn("text-xs", mutedText)}>încasat {formatDate(row.paidOn)}</span>
+              ) : (
+                <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                  neîncasat
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

@@ -346,6 +346,18 @@ mai târziu că l-a dat din greșeală.
 
 Auditul înregistrează **cine a făcut ce, nu cât** (§33): „12 rânduri", nu sumele.
 
+**Golul găsit imediat după, întrebând cine deschide ecranul și de ce.** Întrebarea
+care se pune efectiv nu este „cine n-a plătit luna asta", ci cea de la telefon:
+*„eu am plătit în martie".* La ea se răspundea paginând ecranul de onorarii lună cu
+lună până se dădea de martie. Fișa clientului arată acum ultimele douăsprezece luni
+facturate, cu suma fiecăreia și data încasării — locul unde se vede cel mai clar că
+registrul nu-și rescrie trecutul: două luni consecutive pot avea sume diferite,
+fiindcă între ele s-a renegociat.
+
+Interogările pornesc doar dacă rolul le poate cere. Fără `enabled`, fiecare
+deschidere de fișă a unui contabil ar fi produs două 403-uri — aceeași lecție ca la
+paleta de comenzi.
+
 ### Fiecare rută, întrebată fără sesiune
 
 Existau sweep-uri de autentificare per modul — documente, integrări, perioade — și
@@ -1422,8 +1434,8 @@ sincronizarea.
 
 ### Golul concret
 
-**Niciunul la nivel de rută.** Frontend-ul cheamă **71 de rute** (65 numărate din
-`src/api/endpoints.ts` pe 6 septembrie 2026, plus cele șase ale onorariilor, fără
+**Niciunul la nivel de rută.** Frontend-ul cheamă **72 de rute** (65 numărate din
+`src/api/endpoints.ts` pe 6 septembrie 2026, plus cele șapte ale onorariilor, fără
 descărcările de fișiere, care merg pe alt drum), iar backendul real le
 implementează pe toate.
 

@@ -72,6 +72,18 @@ test("o încasare marcată rămâne marcată după reîncărcare", async ({ page
   await expect(buttonIn(page, before)).toBeVisible();
 });
 
+test("fișa clientului arată onorariul și ultimele luni facturate", async ({ page }) => {
+  // Întrebarea de la telefon — „eu am plătit în martie" — se pune pe fișa
+  // clientului, nu pe ecranul lunii.
+  await loginAs(page, ACCOUNTS.admin);
+  await page.goto("/crm/clienti");
+  await page.getByRole("link", { name: SEED_CLIENT.name }).first().click();
+  await page.getByRole("tab", { name: "Contabilitate" }).click();
+
+  await expect(page.getByRole("heading", { name: "Onorariu lunar" })).toBeVisible();
+  await expect(page.getByText("Ultimele luni facturate")).toBeVisible();
+});
+
 test("un contabil nu ajunge la onorarii", async ({ page }) => {
   await loginAs(page, ACCOUNTS.accountant);
 

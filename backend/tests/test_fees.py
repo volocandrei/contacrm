@@ -422,3 +422,58 @@ class TestWhoMaySee:
     def test_an_unknown_client_is_not_found(self, as_admin: TestClient) -> None:
         response = as_admin.get(f"{URL}/clients/{uuid.uuid4()}")
         assert response.status_code == 404
+
+
+class TestTheClientHistory:
+    """Întrebarea de la telefon: „eu am plătit în martie"."""
+
+    def test_it_lists_the_months_newest_first(self, as_admin: TestClient, alfa: Client) -> None:
+        set_fee(as_admin, alfa, "500.00")
+        generate(as_admin, "2026-06")
+        generate(as_admin, EARLIER)
+        generate(as_admin, MONTH)
+
+        rows = as_admin.get(f"{URL}/clients/{alfa.id}/history").json()
+
+        assert [row["period"] for row in rows] == [MONTH, EARLIER, "2026-06"]
+
+    def test_it_says_which_months_were_paid(self, as_admin: TestClient, alfa: Client) -> None:
+        set_fee(as_admin, alfa, "500.00")
+        generate(as_admin, EARLIER)
+        generate(as_admin, MONTH)
+        as_admin.post(
+            f"{URL}/payments",
+            json={"clientId": str(alfa.id), "referenceMonth": EARLIER, "paidOn": "2026-07-20"},
+        )
+
+        rows = {
+            row["period"]: row for row in as_admin.get(f"{URL}/clients/{alfa.id}/history").json()
+        }
+
+        assert rows[EARLIER]["paidOn"] == "2026-07-20"
+        assert rows[EARLIER]["paidByName"] == "Ioana Marinescu"
+        assert rows[MONTH]["isPaid"] is False
+
+    def test_it_keeps_the_amount_of_each_month(self, as_admin: TestClient, alfa: Client) -> None:
+        """Istoricul este locul unde se vede că registrul nu-și rescrie trecutul."""
+        set_fee(as_admin, alfa, "500.00")
+        generate(as_admin, EARLIER)
+        set_fee(as_admin, alfa, "800.00")
+        generate(as_admin, MONTH)
+
+        rows = {
+            row["period"]: row for row in as_admin.get(f"{URL}/clients/{alfa.id}/history").json()
+        }
+
+        assert rows[EARLIER]["amount"] == "500.00"
+        assert rows[MONTH]["amount"] == "800.00"
+
+    def test_a_client_from_another_organization_is_not_found(
+        self, as_admin: TestClient, db: Session
+    ) -> None:
+        stranger_org = Organization(name="Alt Cabinet SRL")
+        db.add(stranger_org)
+        db.flush()
+        stranger = make_client(db, stranger_org, "Străin SRL")
+
+        assert as_admin.get(f"{URL}/clients/{stranger.id}/history").status_code == 404

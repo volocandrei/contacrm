@@ -37,6 +37,7 @@ FeeManager = Annotated[User, require_permission(Permission.FEES_MANAGE)]
 class FeeRowOut(ApiModel):
     client_id: uuid.UUID
     client_name: str
+    period: str
     configured: Decimal | None
     amount: Decimal | None
     currency: str
@@ -120,6 +121,7 @@ def _row_out(row: FeeRow) -> FeeRowOut:
     return FeeRowOut(
         client_id=row.client_id,
         client_name=row.client_name,
+        period=row.period,
         configured=row.configured,
         amount=row.amount,
         currency=row.currency,
@@ -213,6 +215,17 @@ def client_fee(session: DbSession, user: FeeReader, client_id: uuid.UUID) -> Cli
     return _client_fee_out(
         client_id, FeeService(session, user.organization_id).for_client(client_id)
     )
+
+
+@router.get("/clients/{client_id}/history", response_model=list[FeeRowOut])
+def client_history(session: DbSession, user: FeeReader, client_id: uuid.UUID) -> list[FeeRowOut]:
+    """Ce s-a facturat clientului, luna cu luna, cea mai recentă întâi.
+
+    Există pentru întrebarea care se pune efectiv la telefon — „eu am plătit în
+    martie" — și la care, altfel, se răspunde paginând ecranul de onorarii lună cu
+    lună până se dă de ea.
+    """
+    return [_row_out(row) for row in FeeService(session, user.organization_id).history(client_id)]
 
 
 @router.put("/clients/{client_id}", response_model=ClientFeeOut)

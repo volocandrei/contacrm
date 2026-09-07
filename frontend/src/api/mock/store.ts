@@ -3980,6 +3980,7 @@ function buildFeeMonth(referenceMonth: string): FeeMonth {
       clientName: client.name,
       configured: fee?.amount ?? null,
       amount: entry?.amount ?? null,
+      period: referenceMonth,
       currency: entry?.currency ?? fee?.currency ?? "RON",
       paidOn: entry?.paidOn ?? null,
       paidByName: entry?.paidByName ?? null,
@@ -4052,6 +4053,37 @@ export function generateFees(referenceMonth: string): FeeMonth {
   }
   generateFeeEntries(referenceMonth);
   return buildFeeMonth(referenceMonth);
+}
+
+/**
+ * Ce s-a facturat clientului, luna cu luna, cea mai recentă întâi.
+ *
+ * Există pentru întrebarea care se pune la telefon — „eu am plătit în martie".
+ */
+export function getClientFeeHistory(clientId: string): FeeRow[] {
+  requirePermission("fees:read");
+  seedFees();
+  const client = state.clients.find((row) => row.id === clientId);
+  if (!client) throw notFound("Client", clientId);
+  const fee = clientFees.get(clientId);
+
+  return [...feeEntries.values()]
+    .filter((entry) => entry.clientId === clientId)
+    .sort((a, b) => b.period.localeCompare(a.period))
+    .slice(0, 12)
+    .map((entry) => ({
+      clientId,
+      clientName: client.name,
+      period: entry.period,
+      configured: fee?.amount ?? null,
+      amount: entry.amount,
+      currency: entry.currency,
+      paidOn: entry.paidOn,
+      paidByName: entry.paidByName,
+      note: entry.note,
+      isGenerated: true,
+      isPaid: Boolean(entry.paidOn),
+    }));
 }
 
 export function getClientFee(clientId: string): ClientFee {

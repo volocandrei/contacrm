@@ -341,6 +341,8 @@ export const fees = {
   month: (referenceMonth: string) => api.get<FeeMonth>("/fees", { referenceMonth }),
   generate: (referenceMonth: string) => api.post<FeeMonth>("/fees/generate", { referenceMonth }),
   forClient: (clientId: string) => api.get<ClientFee>(`/fees/clients/${clientId}`),
+  /** Ce s-a facturat clientului, luna cu luna — răspunsul la „eu am plătit în martie". */
+  history: (clientId: string) => api.get<FeeRow[]>(`/fees/clients/${clientId}/history`),
   setForClient: (
     clientId: string,
     input: {

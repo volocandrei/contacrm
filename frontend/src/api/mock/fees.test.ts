@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   generateFees,
   getClientFee,
+  getClientFeeHistory,
   getFeeMonth,
   listClients,
   markFeePaid,
@@ -37,7 +38,15 @@ const MONTH = "2026-08";
  * Fiecare test primește alta, fiindcă starea magazinului este comună întregului
  * fișier.
  */
-const FRESH_MONTHS = ["2026-06", "2026-05", "2026-04", "2026-02", "2026-01"];
+const FRESH_MONTHS = [
+  "2026-06",
+  "2026-05",
+  "2026-04",
+  "2026-02",
+  "2026-01",
+  "2025-11",
+  "2025-10",
+];
 let freshIndex = 0;
 
 function freshMonth(): string {
@@ -227,5 +236,37 @@ describe("cine are voie", () => {
     mockLogin("contabil@contacrm.test");
 
     expect(() => getFeeMonth(MONTH)).toThrow(/permisiune/i);
+  });
+});
+
+describe("istoricul unui client", () => {
+  it("listează lunile facturate, cea mai recentă întâi", () => {
+    const clientId = someClient();
+
+    const rows = getClientFeeHistory(clientId);
+
+    expect(rows.length).toBeGreaterThan(1);
+    const periods = rows.map((row) => row.period);
+    expect([...periods].sort().reverse()).toEqual(periods);
+  });
+
+  it("păstrează suma fiecărei luni, nu pe cea în vigoare", () => {
+    const month = freshMonth();
+    const clientId = someClient(5);
+    setClientFee(clientId, { amount: "500", startsOn: "2020-01-01" });
+    generateFees(month);
+    setClientFee(clientId, { amount: "900" });
+
+    const row = getClientFeeHistory(clientId).find((entry) => entry.period === month);
+
+    expect(row?.amount).toBe("500.00");
+    expect(row?.configured).toBe("900.00");
+  });
+
+  it("un contabil nu are acces", () => {
+    const clientId = someClient();
+    mockLogin("contabil@contacrm.test");
+
+    expect(() => getClientFeeHistory(clientId)).toThrow(/permisiune/i);
   });
 });

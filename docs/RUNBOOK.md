@@ -195,6 +195,10 @@ Ce trebuie știut, ca ecranul să nu surprindă:
   banii rămân neîncasați.
 - **Sumele în altă monedă se totalizează separat.** Lei plus euro nu este o sumă.
 
+Când clientul sună și spune „eu am plătit în martie", răspunsul stă pe fișa lui:
+`Clienți → [client] → Contabilitate → Onorariu lunar`, sub „Ultimele luni
+facturate" — douăsprezece luni, cu suma fiecăreia și data încasării.
+
 ### Un client nu apare niciodată în „Documente lipsă"
 
 Cel mai probabil nu i s-a spus **ce** se așteaptă de la el. Checklistul lunii,
