@@ -267,6 +267,12 @@ function BarList({
  * **Raportul** are numerele de pe ecran, agregate. Se pune într-un raport intern
  * sau se trimite cuiva; nu conține niciun document.
  *
+ * **Registrul declarațiilor** are un rând pe depunere: ce s-a depus, pentru
+ * cine, pentru ce perioadă și de către cine. Este singurul loc din care se pot
+ * vedea declarațiile fără termen de calendar — situațiile financiare interimare
+ * nu apar niciodată pe ecranul de termene, fiindcă nu se nasc dintr-un calendar
+ * (vezi `docs/DECLARATIONS.md`).
+ *
  * **Arhiva** are documentele însele, aranjate pe client și lună, cu registrul la
  * rădăcină. Se cere când teancul întreg trebuie să plece undeva — un client care
  * pleacă, o predare de an, o cerere de la un control. Stă ultima fiindcă este
@@ -289,6 +295,13 @@ function ExportActions({ filters }: { filters: Record<string, string> }) {
         fallbackName="raport-documente.csv"
         label="Descarcă raportul"
         title="Numerele de pe ecran, agregate."
+      />
+      <ExportButton
+        filters={filters}
+        path="/reports/filings.csv"
+        fallbackName="registru-declaratii.csv"
+        label="Descarcă declarațiile"
+        title="Un rând pe depunere: ce s-a depus, pentru cine, pentru ce perioadă și de către cine."
       />
       <ExportButton
         filters={filters}

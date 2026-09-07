@@ -196,6 +196,11 @@ def document_routes(document_id: str) -> list[tuple[str, str, dict[str, object] 
 COLLECTION_ROUTES = [
     ("GET", "/api/v1/documents"),
     ("GET", "/api/v1/documents/next-review"),
+    # Starea cozii de procesare. Nu atinge un document anume, dar numără
+    # documentele cabinetului, deci granița ei este a organizației: fără sesiune
+    # nu are ce răspunde, iar cifrele altui cabinet nu se văd de aici. Izolarea
+    # propriu-zisă se verifică în `test_processing_health.py`.
+    ("GET", "/api/v1/documents/processing/health"),
     ("GET", "/api/v1/document-types"),
     ("GET", "/api/v1/dashboard"),
     ("GET", "/api/v1/dashboard/counts"),

@@ -35,7 +35,15 @@ export const PERIOD_STATUS = [
 ] as const;
 export type PeriodStatus = (typeof PERIOD_STATUS)[number];
 
-export const OBLIGATION_FREQUENCY = ["MONTHLY", "QUARTERLY", "ANNUAL"] as const;
+export const OBLIGATION_FREQUENCY = [
+  "MONTHLY",
+  "QUARTERLY",
+  "ANNUAL",
+  // Fără calendar: obligația apare când se întâmplă ceva, nu la o dată.
+  // Situațiile financiare interimare se întocmesc când asociații hotărăsc
+  // repartizarea de dividende — poate de trei ori într-un an, poate niciodată.
+  "ON_DEMAND",
+] as const;
 export type ObligationFrequency = (typeof OBLIGATION_FREQUENCY)[number];
 
 export const TIMELINE_EVENT_KIND = [
@@ -57,6 +65,20 @@ export const DOCUMENT_SOURCE = [
   "PORTAL",
 ] as const;
 export type DocumentSource = (typeof DOCUMENT_SOURCE)[number];
+
+/**
+ * Drumurile pe care un om are dreptul să le declare la o încărcare manuală.
+ *
+ * Celelalte proveniențe sunt constatări ale sistemului: „a venit pe email"
+ * înseamnă că am citit-o dintr-o cutie poștală, „din SPV" că am descărcat-o de
+ * la ANAF. Declarate dintr-un formular, ar înceta să fie constatări și ar deveni
+ * păreri — iar la un control diferența este tot ce contează.
+ *
+ * Oglindește `MANUAL_SOURCES` din `app/api/v1/documents.py`.
+ */
+export const MANUAL_DOCUMENT_SOURCE = ["UPLOAD", "WHATSAPP"] as const;
+
+export type ManualDocumentSource = (typeof MANUAL_DOCUMENT_SOURCE)[number];
 
 /** Motivul structurat al unui eșec de procesare — se afișează, nu se aruncă (§53). */
 export const DOCUMENT_ERROR_CODE = [
@@ -1334,6 +1356,51 @@ export interface ObligationFiling {
   filedAt: string;
   filedByName: string | null;
   note: string | null;
+}
+
+/**
+ * O depunere înregistrată, așa cum se citește pe fișa clientului.
+ *
+ * Poartă codul și eticheta, spre deosebire de `ObligationFiling`: acolo ecranul
+ * de termene reîncarcă lista, care le are din calcul. Pentru o obligație fără
+ * calendar nu există nicio listă calculată în care rândul să apară — vezi
+ * `ObligationFrequency` — deci fără asta ar fi înregistrată și invizibilă.
+ */
+export interface RecordedFiling {
+  obligationTypeId: string;
+  code: string;
+  label: string;
+  frequency: ObligationFrequency;
+  period: string;
+  filedAt: string;
+  note: string | null;
+}
+
+/** O cerere de procesare care a eșuat, așa cum se citește pe ecran. */
+export interface FailedJob {
+  documentId: string;
+  originalFilename: string;
+  clientName: string | null;
+  errorCode: string | null;
+  errorDetail: string | null;
+  attempt: number;
+  finishedAt: string | null;
+}
+
+/**
+ * Starea cozii de procesare.
+ *
+ * `waitingSeconds` este singura cifră care răspunde la „merge sau nu": o coadă
+ * de treizeci de cereri într-o dimineață aglomerată este normală, o singură
+ * cerere care așteaptă de patruzeci de minute nu are nicio explicație bună.
+ */
+export interface QueueHealth {
+  queued: number;
+  running: number;
+  stuck: number;
+  failedRecently: number;
+  waitingSeconds: number | null;
+  recentFailures: FailedJob[];
 }
 
 /** Ce întoarce trimiterea unei solicitări: ce s-a întâmplat, nimic altceva. */

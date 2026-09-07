@@ -1,7 +1,11 @@
 # STATUS — ContaCRM
 
-Starea proiectului la **04.09.2026**. Documentul acesta răspunde la trei întrebări:
-cum pornești pe o mașină nouă, ce este construit și ce urmează.
+Starea proiectului la **08.09.2026**. Documentul acesta răspunde la trei
+întrebări: cum pornești pe o mașină nouă, ce este construit și ce urmează.
+
+Pentru verdictul de pregătire pentru producție și ce rămâne neverificat, vezi
+[FINAL_PRODUCTION_BUILD.md](FINAL_PRODUCTION_BUILD.md) și
+[PRODUCTION_LAUNCH_CHECKLIST.md](PRODUCTION_LAUNCH_CHECKLIST.md).
 
 Pentru arhitectură, schema de bază de date și registrul de riscuri, vezi
 [ARCHITECTURE.md](ARCHITECTURE.md). Pentru deciziile de fond, [adr/](adr/).
@@ -1849,7 +1853,7 @@ ci portat.**
 | **M9** | **Preluare automată din OneDrive/SharePoint, un dosar per client** | ✅ |
 | **M10** | **Preluare automată din email; expeditorul identifică clientul** | ✅ |
 | **M11** | **e-Factura: preluarea din SPV-ul ANAF, cu toate trei fișierele** | ✅ (descărcarea; trimiterea rămâne în Faza 2) |
-| Faza 2 | WhatsApp, trimiterea e-Facturii către ANAF, ~~OCR real pentru scanuri~~ (M16, cere cheie), ~~export ZIP~~ (arhiva lunii), remindere automate (cere o decizie a cabinetului, nu cod) | |
+| Faza 2 | WhatsApp **automat** (cere un cont WhatsApp Business și un număr aprobat de Meta — importul manual, cu proveniența scrisă, există), trimiterea e-Facturii către ANAF, ~~OCR real pentru scanuri~~ (M16, cere cheie), ~~export ZIP~~ (arhiva lunii), remindere automate (cere o decizie a cabinetului, nu cod) | |
 | Faza 3 | Integrare software contabil (registrul există; formatul Saga cere un exemplu), rapoarte avansate, ~~detecție anomalii~~ (duplicatul semantic) | |
 
 **MVP = M1–M8.**

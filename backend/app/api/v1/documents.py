@@ -9,9 +9,9 @@ Nimic din răspunsuri nu conține `storage_key` sau vreo cale de filesystem (§7
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 
 from fastapi import (
     APIRouter,
@@ -35,6 +35,7 @@ from app.core.errors import AppError, ErrorCode, ForbiddenError, NotFoundError, 
 from app.core.logging import get_logger
 from app.domain.document_actions import available_actions, reprocess_check
 from app.domain.efactura_pairing import PairingState
+from app.domain.enums import DocumentSource
 from app.domain.permissions import Permission, permissions_for
 from app.models.audit import AuditLog
 from app.models.document import VERSION_KINDS, Document, DocumentVersion
@@ -72,6 +73,7 @@ from app.services.document_split import DocumentSplitService
 from app.services.document_upload import DocumentUploadService
 from app.services.efactura_pairing import PairingService
 from app.services.files import FileValidationError
+from app.services.processing_health import ProcessingHealthService
 from app.services.processing_queue import enqueue as enqueue_processing
 from app.services.processing_runner import build_extractor, run_processing
 from app.services.storage import ObjectNotFoundError
@@ -344,6 +346,89 @@ def get_document(
 # ── Upload ───────────────────────────────────────────────────────────────────
 
 
+class FailedJobOut(ApiModel):
+    document_id: uuid.UUID
+    original_filename: str
+    client_name: str | None
+    error_code: str | None
+    error_detail: str | None
+    attempt: int
+    finished_at: datetime | None
+
+
+class QueueHealthOut(ApiModel):
+    """Starea cozii, în cifrele care spun ceva.
+
+    `waiting_seconds` este singura care răspunde la „merge sau nu": o coadă de
+    treizeci de cereri într-o dimineață aglomerată este normală, o singură cerere
+    care așteaptă de patruzeci de minute nu are nicio explicație bună.
+    """
+
+    queued: int
+    running: int
+    stuck: int
+    failed_recently: int
+    waiting_seconds: int | None
+    recent_failures: list[FailedJobOut]
+
+
+@router.get("/documents/processing/health", response_model=QueueHealthOut)
+def processing_health(session: DbSession, user: DocumentReader) -> QueueHealthOut:
+    """Ce se întâmplă cu coada de procesare a cabinetului acestuia.
+
+    Ecranul care lipsea: până acum, un worker mort nu se vedea nicăieri.
+    Documentele stăteau în `RECEIVED`, fără nicio eroare de arătat — fiindcă nu
+    era niciuna — iar coada creștea nevăzută. Motivele fiecărei cifre stau în
+    `services/processing_health.py`.
+    """
+    health = ProcessingHealthService(session, user.organization_id).health(stale_after=STALE_AFTER)
+    return QueueHealthOut(
+        queued=health.queued,
+        running=health.running,
+        stuck=health.stuck,
+        failed_recently=health.failed_recently,
+        waiting_seconds=health.waiting_seconds,
+        recent_failures=[
+            FailedJobOut(
+                document_id=row.document_id,
+                original_filename=row.original_filename,
+                client_name=row.client_name,
+                error_code=row.error_code,
+                error_detail=row.error_detail,
+                attempt=row.attempt,
+                finished_at=row.finished_at,
+            )
+            for row in health.recent_failures
+        ],
+    )
+
+
+#: Drumurile pe care un om are dreptul să le declare la o încărcare manuală.
+#:
+#: **De ce nu toate.** Celelalte surse sunt afirmații pe care le face sistemul:
+#: „a venit pe email" înseamnă că am citit-o dintr-o cutie poștală, „din SPV"
+#: înseamnă că am descărcat-o de la ANAF. Dacă un om ar putea scrie oricare
+#: dintre ele într-un formular, proveniența înregistrată ar înceta să fie o
+#: constatare și ar deveni o părere — iar la un control diferența este tot ce
+#: contează (§25).
+#:
+#: Rămân două, amândouă adevărate despre ce s-a întâmplat: cineva a încărcat un
+#: fișier (`UPLOAD`), eventual după ce l-a primit pe WhatsApp (`WHATSAPP`).
+MANUAL_SOURCES: Final = frozenset({DocumentSource.UPLOAD, DocumentSource.WHATSAPP})
+
+
+def _manual_source(source: DocumentSource | None) -> DocumentSource:
+    """Ce se scrie ca proveniență, sau un refuz explicit."""
+    if source is None:
+        return DocumentSource.UPLOAD
+    if source not in MANUAL_SOURCES:
+        raise ValidationError(
+            "Proveniența aceasta o stabilește sistemul, nu se poate declara la încărcare.",
+            details={"source": ["Se poate declara doar încărcare directă sau WhatsApp."]},
+        )
+    return source
+
+
 @router.post(
     "/documents/upload",
     response_model=DocumentDetailOut,
@@ -360,11 +445,17 @@ def upload_document(
     # direcții, iar un singur câmp de formular scris altfel ar fi exact genul de
     # excepție pe care nimeni nu o ține minte.
     client_id: Annotated[uuid.UUID | None, Form(alias="clientId")] = None,
+    source: Annotated[DocumentSource | None, Form()] = None,
 ) -> DocumentDetailOut:
     """Primește un fișier și creează documentul.
 
     Tipul se determină din conținut, nu din `content_type` trimis de client (§50).
     Procesarea nu se face aici: workerul o preia la M5.5 (§38).
+
+    `source` spune **pe ce drum a ajuns documentul la cabinet**, nu cine l-a
+    încărcat. Un contabil care primește pozele bonurilor pe WhatsApp le descarcă
+    și le încarcă aici; drumul rămâne WhatsApp, iar cronologia clientului o spune
+    așa. Vezi `MANUAL_SOURCES` pentru de ce nu se poate declara orice.
     """
     service = DocumentUploadService(session, storage)
     try:
@@ -374,6 +465,7 @@ def upload_document(
             original_filename=file.filename or "document",
             uploaded_by=user,
             client_id=client_id,
+            source=_manual_source(source),
         )
     except FileValidationError as exc:
         # Codul structurat ajunge la utilizator ca eroare de validare, nu ca 500.

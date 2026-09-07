@@ -201,7 +201,15 @@ class TestTheStartingCatalogue:
 
     @pytest.mark.parametrize("seed", DEFAULT_OBLIGATIONS, ids=lambda s: s.code)
     def test_every_entry_produces_a_real_date(self, seed: ObligationSeed) -> None:
-        """O zi inexistentă ar arunca `ValueError` la prima deschidere a ecranului."""
+        """O zi inexistentă ar arunca `ValueError` la prima deschidere a ecranului.
+
+        Obligațiile **fără calendar** nu intră aici: ele nu au termen de calculat,
+        iar `deadline_for` refuză explicit. Ce trebuie verificat pentru ele este
+        altceva — că nu produc nicio perioadă — și se verifică mai jos.
+        """
+        if seed.frequency is ObligationFrequency.ON_DEMAND:
+            pytest.skip("obligație fără calendar — vezi testul următor")
+
         deadline = deadline_for(
             seed.frequency,
             "2027-01",
@@ -210,3 +218,25 @@ class TestTheStartingCatalogue:
         )
 
         assert deadline > date(2027, 1, 1)
+
+    def test_an_on_demand_obligation_never_produces_a_period(self) -> None:
+        """Situațiile interimare nu se nasc din calendar, ci dintr-o hotărâre.
+
+        Trecute drept „anuale", ar fi apărut ca restanțe la fiecare sfârșit de an
+        la toți clienții care nu au distribuit dividende — iar o listă de restanțe
+        false se închide o dată și nu se mai deschide.
+        """
+        found = due_between(
+            ObligationFrequency.ON_DEMAND,
+            months_after=0,
+            deadline_day=0,
+            since=date(2026, 1, 1),
+            until=date(2027, 12, 31),
+        )
+
+        assert found == []
+
+    def test_asking_for_a_deadline_without_a_calendar_says_why(self) -> None:
+        """Un `ValueError` din `date(an, luna, 0)` nu ar fi spus nimănui nimic."""
+        with pytest.raises(ValueError, match="fără calendar"):
+            deadline_for(ObligationFrequency.ON_DEMAND, "2027-01", months_after=0, deadline_day=0)

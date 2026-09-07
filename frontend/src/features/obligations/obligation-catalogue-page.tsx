@@ -29,6 +29,8 @@ const FREQUENCY_LABEL: Record<ObligationFrequency, string> = {
   MONTHLY: "lunar",
   QUARTERLY: "trimestrial",
   ANNUAL: "anual",
+  // Nu „niciodată": obligația există, dar o pornește o hotărâre, nu calendarul.
+  ON_DEMAND: "la nevoie",
 };
 
 export function ObligationCataloguePage() {

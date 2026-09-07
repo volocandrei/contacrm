@@ -23,6 +23,7 @@ import {
   useClientExpectations,
   useClientFee,
   useClientFeeHistory,
+  useClientFilings,
   useClientObligations,
   useClientTimeline,
   useClientNotes,
@@ -36,6 +37,7 @@ import {
   useRevokeUploadLink,
   useObligationTypes,
   useSaveExpectations,
+  useMarkFiled,
   useSetClientFee,
   useSetClientObligations,
   useTemplateFromClient,
@@ -366,6 +368,7 @@ function AccountingTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <ExpectationsPanel clientId={clientId} />
       <ObligationsPanel clientId={clientId} />
+      <OnDemandFilingsPanel clientId={clientId} />
       <FeePanel clientId={clientId} />
       {periods?.map((period) => (
         <Panel
@@ -1135,7 +1138,153 @@ const FREQUENCY_LABEL: Record<ObligationFrequency, string> = {
   MONTHLY: "lunar",
   QUARTERLY: "trimestrial",
   ANNUAL: "anual",
+  ON_DEMAND: "la nevoie",
 };
+
+/**
+ * Obligațiile care nu se nasc din calendar, și evidența lor.
+ *
+ * **De ce are ecran propriu.** Restul declarațiilor se marchează în „Termene",
+ * pe rândul pe care calendarul l-a produs. Situațiile financiare interimare nu
+ * produc niciun rând: se întocmesc când asociații hotărăsc să repartizeze
+ * dividende, pe o perioadă aleasă de ei. Fără panoul acesta, ele ar fi fost
+ * bifabile doar prin API — adică deloc.
+ *
+ * **De ce se cere perioada.** Este singura informație pe care aplicația nu o
+ * poate deduce. O lună implicită „cea curentă" ar fi părut o comoditate, dar
+ * perioada situațiilor interimare este chiar decizia contabilă — iar o valoare
+ * presetată se confirmă apăsând, nu citind.
+ */
+function OnDemandFilingsPanel({ clientId }: { clientId: string }) {
+  const { data: assigned } = useClientObligations(clientId);
+  const { data: recorded, isLoading } = useClientFilings(clientId);
+  const mark = useMarkFiled();
+  const can = usePermissionCheck();
+
+  const [obligationTypeId, setObligationTypeId] = useState("");
+  const [period, setPeriod] = useState("");
+  const [note, setNote] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const onDemand = (assigned ?? []).filter((type) => type.frequency === "ON_DEMAND");
+  // Panoul nu are ce spune unui client care nu are nicio astfel de obligație:
+  // ar fi un formular gol care sugerează că lipsește ceva.
+  if (onDemand.length === 0) return null;
+
+  const codes = new Set(onDemand.map((type) => type.code));
+  const rows = (recorded ?? []).filter((row) => codes.has(row.code));
+  const editable = can("periods:manage");
+
+  function submit() {
+    setProblem(null);
+    if (obligationTypeId === "" || period === "") {
+      setProblem("Alege declarația și perioada pentru care s-a întocmit.");
+      return;
+    }
+    mark.mutate(
+      { clientId, obligationTypeId, period, note: note.trim() === "" ? undefined : note.trim() },
+      {
+        onSuccess: () => {
+          setPeriod("");
+          setNote("");
+        },
+        onError: (caught) => setProblem(describeError(caught)),
+      },
+    );
+  }
+
+  return (
+    <Panel title="Situații întocmite la nevoie">
+      <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+        Declarațiile de aici nu au termen de calendar și nu apar în „Termene": se
+        întocmesc când se hotărăște, pe perioada aleasă atunci. Aplicația nu le
+        cere — le ține minte.
+      </p>
+
+      {problem && (
+        <p
+          role="alert"
+          className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300"
+        >
+          {problem}
+        </p>
+      )}
+
+      {isLoading ? (
+        <LoadingState />
+      ) : rows.length === 0 ? (
+        <p className={cn("mb-3 text-sm", mutedText)}>Nu s-a înregistrat nimic până acum.</p>
+      ) : (
+        <ul className="mb-4 space-y-2">
+          {rows.map((row) => (
+            <li
+              key={`${row.obligationTypeId}|${row.period}`}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-800"
+            >
+              <span className="font-medium text-slate-800 dark:text-slate-200">{row.label}</span>
+              <span className={cn("ml-1 text-xs", mutedText)}>
+                · perioada {formatReferenceMonth(row.period)} · înregistrat{" "}
+                {formatDate(row.filedAt)}
+              </span>
+              {row.note !== null && row.note !== "" && (
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{row.note}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {editable && (
+        <div className="flex flex-col gap-2 border-t border-slate-200 pt-3 sm:flex-row sm:items-end dark:border-slate-800">
+          <label className="flex-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+            Declarația
+            <select
+              value={obligationTypeId}
+              onChange={(event) => setObligationTypeId(event.target.value)}
+              className={cn(inputField, "mt-1")}
+            >
+              <option value="">Alege…</option>
+              {onDemand.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+            Perioada
+            <input
+              type="month"
+              value={period}
+              onChange={(event) => setPeriod(event.target.value)}
+              className={cn(inputField, "mt-1")}
+            />
+          </label>
+          <label className="flex-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+            Notă
+            <input
+              type="text"
+              value={note}
+              maxLength={255}
+              placeholder="de ce s-au întocmit"
+              onChange={(event) => setNote(event.target.value)}
+              className={cn(inputField, "mt-1")}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={mark.isPending}
+            className={cn(buttonPrimary, "h-9 shrink-0")}
+          >
+            {mark.isPending && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            Înregistrează
+          </button>
+        </div>
+      )}
+    </Panel>
+  );
+}
 
 function ObligationsPanel({ clientId }: { clientId: string }) {
   const { data: assigned, isLoading } = useClientObligations(clientId);
@@ -1209,7 +1358,12 @@ function ObligationsPanel({ clientId }: { clientId: string }) {
             >
               {type.label}
               <span className={cn("ml-1 text-xs", mutedText)}>
-                · {FREQUENCY_LABEL[type.frequency]}, ziua {type.deadlineDay}
+                {/* Ziua se arată doar acolo unde înseamnă ceva. O obligație fără
+                    calendar are în baza de date o zi fiindcă acolo o zi trebuie
+                    să fie o zi (1..31) — scrisă pe ecran, ar fi un termen pe
+                    care nimeni nu l-a stabilit. */}
+                · {FREQUENCY_LABEL[type.frequency]}
+                {type.frequency === "ON_DEMAND" ? "" : `, ziua ${type.deadlineDay}`}
               </span>
             </label>
           </li>

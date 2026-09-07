@@ -268,6 +268,11 @@ const routes: Route[] = [
   {
     // Ruta stă înaintea lui `/documents/:id`: altfel „upload" ar fi citit ca
     // identificator de document.
+    method: "GET",
+    pattern: "/documents/processing/health",
+    handler: () => store.processingHealth(),
+  },
+  {
     method: "POST",
     pattern: "/documents/upload",
     handler: ({ body }) =>
@@ -276,6 +281,8 @@ const routes: Route[] = [
           filename: str(body, "filename"),
           size: Number(body.size ?? 0),
           mimeType: typeof body.mimeType === "string" ? body.mimeType : "",
+          clientId: typeof body.clientId === "string" ? body.clientId : null,
+          source: typeof body.source === "string" ? body.source : undefined,
         }),
       ),
   },
@@ -510,6 +517,11 @@ const routes: Route[] = [
     handler: ({ params }) => store.listClientObligations(params.id!),
   },
   {
+    method: "GET",
+    pattern: "/obligations/clients/:id/filings",
+    handler: ({ params }) => store.listClientFilings(params.id!),
+  },
+  {
     method: "PUT",
     pattern: "/obligations/clients/:id",
     handler: ({ params, body }) =>
@@ -531,6 +543,7 @@ const routes: Route[] = [
         clientId: String(body?.clientId ?? ""),
         obligationTypeId: String(body?.obligationTypeId ?? ""),
         period: String(body?.period ?? ""),
+        note: body?.note === undefined || body?.note === null ? null : String(body.note),
       }),
   },
   {

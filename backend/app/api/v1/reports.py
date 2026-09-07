@@ -25,9 +25,10 @@ from app.core.errors import ValidationError
 from app.domain.permissions import Permission
 from app.models.user import User
 from app.schemas.common import ApiModel
-from app.services import document_register, month_archive, report_export
+from app.services import document_register, filing_register, month_archive, report_export
 from app.services.document_delivery import SECURITY_HEADERS
 from app.services.document_register import RegisterService
+from app.services.filing_register import FilingRegisterService
 from app.services.month_archive import MonthArchiveService
 from app.services.report_service import Bucket, ReportService, ReportSummary
 
@@ -189,6 +190,42 @@ def register_csv(
         headers={
             "Content-Disposition": f'attachment; filename="{name}"',
             # Sumele clienților nu au ce căuta în cache-ul unui proxy.
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/filings.csv")
+def filings_csv(
+    session: DbSession,
+    user: ReportReader,
+    filters: Annotated[ReportFilters, Query()],
+) -> Response:
+    """Registrul declarațiilor depuse: un rând pe depunere.
+
+    Nu este `summary.csv` cu alte coloane. Acela numără documente; acesta
+    listează ce s-a depus, pentru cine și de către cine — inclusiv declarațiile
+    fără calendar, care nu apar niciodată pe ecranul de termene fiindcă nu
+    produc rânduri calculate (`docs/DECLARATIONS.md`).
+
+    Intervalul se aplică **perioadei declarate**, nu zilei marcării. Motivul, în
+    `services/filing_register.py`.
+    """
+    _assert_interval(filters)
+
+    rows = FilingRegisterService(session, user.organization_id).rows(
+        from_month=filters.from_month,
+        to_month=filters.to_month,
+        client_id=filters.client_id,
+    )
+    name = filing_register.filename(filters.from_month, filters.to_month)
+    return Response(
+        content=filing_register.to_csv(rows),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            # Ce a depus un cabinet pentru clienții lui nu are ce căuta în
+            # cache-ul unui proxy.
             "Cache-Control": "no-store",
         },
     )

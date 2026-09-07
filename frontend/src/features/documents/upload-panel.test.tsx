@@ -124,7 +124,54 @@ describe("când serverul refuză", () => {
 describe("clientul", () => {
   it("implicit se identifică automat — nu îl alegem noi în locul sistemului", () => {
     renderPanel();
-    expect(screen.getByRole("combobox")).toHaveValue("");
+    // Numit pe etichetă, nu "singurul combobox": panoul are de acum două
+    // liste, iar asta este cea despre client.
+    expect(screen.getByLabelText(/Client/)).toHaveValue("");
     expect(screen.getByRole("option", { name: /identifică automat/i })).toBeInTheDocument();
+  });
+});
+
+/**
+ * Cum a ajuns teancul la cabinet (§6).
+ *
+ * Contabilul primește pozele bonurilor pe WhatsApp, le descarcă de pe telefon și
+ * le urcă aici. Fără câmpul acesta, toate intrau în evidență drept „încărcat
+ * manual" — adevărat despre ultimul pas, tăcut despre primul, iar la întrebarea
+ * „dar eu v-am trimis pozele" cronologia clientului nu avea ce răspunde.
+ */
+describe("proveniența declarată", () => {
+  it("implicit este încărcarea directă", () => {
+    renderPanel();
+
+    const field = screen.getByLabelText(/Cum a ajuns la noi/) as HTMLSelectElement;
+
+    expect(field.value).toBe("UPLOAD");
+  });
+
+  it("oferă doar ce poate afirma un om", () => {
+    renderPanel();
+
+    const options = Array.from(
+      (screen.getByLabelText(/Cum a ajuns la noi/) as HTMLSelectElement).options,
+    ).map((option) => option.value);
+
+    // Email, OneDrive și SPV sunt constatări ale sistemului. Puse aici, ar fi
+    // devenit păreri scrise de cine urcă fișierul.
+    expect(options).toEqual(["UPLOAD", "WHATSAPP"]);
+  });
+
+  it("ce s-a ales ajunge pe document, nu doar pe ecran", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.selectOptions(screen.getByLabelText(/Cum a ajuns la noi/), "WHATSAPP");
+    await user.upload(fileInput(), pdf("bon.pdf"));
+
+    await waitFor(() => {
+      const mine = store
+        .listDocuments({ pageSize: 50 })
+        .items.find((row) => row.originalFilename === "bon.pdf");
+      expect(mine?.source).toBe("WHATSAPP");
+    });
   });
 });

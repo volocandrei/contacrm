@@ -32,6 +32,7 @@ import { useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { CircleAlert, CircleCheck, Loader2, Upload } from "lucide-react";
 import { useClients, useUploadDocument } from "@/api/hooks";
+import type { ManualDocumentSource } from "@/types/domain";
 import { ApiError } from "@/api/types";
 import { Panel } from "@/components/page";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,9 @@ export function UploadPanel() {
   const [rows, setRows] = useState<Row[]>([]);
   const [dragging, setDragging] = useState(false);
   const [clientId, setClientId] = useState("");
+  // Pe ce drum a ajuns teancul la cabinet. Implicit: încărcare directă, adică
+  // exact ce se întâmplă când cineva trage fișiere aici.
+  const [source, setSource] = useState<ManualDocumentSource>("UPLOAD");
   const upload = useUploadDocument();
 
   const { data: clientsPage } = useClients({ pageSize: 200, status: "ACTIVE" });
@@ -87,6 +91,7 @@ export function UploadPanel() {
         const document = await upload.mutateAsync({
           file,
           clientId: clientId || undefined,
+          source,
         });
         settle(key, { state: "done", documentId: document.id });
       } catch (error) {
@@ -146,6 +151,23 @@ export function UploadPanel() {
                 {client.name}
               </option>
             ))}
+          </select>
+        </label>
+
+        <label className="text-sm sm:w-44">
+          <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+            Cum a ajuns la noi
+          </span>
+          <select
+            value={source}
+            onChange={(event) => setSource(event.target.value as ManualDocumentSource)}
+            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+          >
+            {/* Doar cele două pe care un om le poate afirma cinstit. Restul —
+                email, OneDrive, SPV — sunt constatări ale sistemului: declarate
+                dintr-un formular, ar înceta să fie constatări. */}
+            <option value="UPLOAD">Încărcat direct</option>
+            <option value="WHATSAPP">Primit pe WhatsApp</option>
           </select>
         </label>
       </div>

@@ -15,6 +15,7 @@
  */
 import type {
   ClientStatus,
+  DocumentErrorCode,
   DocumentStatus,
   Permission,
   PeriodStatus,
@@ -107,4 +108,20 @@ export const PERMISSION_AREA_LABEL: Record<string, string> = {
   communication: "Comunicare",
   admin: "Administrare",
   audit: "Audit",
+};
+
+/** Codurile de eroare, în română. Codul se persistă; textul se traduce (§53). */
+export const DOCUMENT_ERROR_LABEL: Record<DocumentErrorCode, string> = {
+  INVALID_FILE: "Fișierul nu a putut fi citit.",
+  UNSUPPORTED_FORMAT: "Formatul nu este acceptat.",
+  FILE_TOO_LARGE: "Fișierul depășește dimensiunea maximă.",
+  OCR_FAILED: "Recunoașterea textului a eșuat.",
+  EXTRACTION_FAILED: "Extragerea datelor a eșuat.",
+  CLASSIFICATION_FAILED: "Tipul documentului nu a putut fi stabilit.",
+  VALIDATION_FAILED: "Datele extrase nu au trecut validarea.",
+  DUPLICATE_DETECTED: "Documentul există deja în sistem.",
+  CLIENT_NOT_FOUND: "Clientul nu a putut fi identificat.",
+  STORAGE_FAILED: "Fișierul nu a putut fi salvat.",
+  ARCHIVE_FAILED: "Arhivarea a eșuat.",
+  INTERNAL_ERROR: "Eroare internă la procesare.",
 };

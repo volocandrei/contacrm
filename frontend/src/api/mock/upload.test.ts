@@ -132,3 +132,45 @@ describe("procesarea simulată", () => {
     expect(after.validationIssues.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * Pe ce drum a ajuns documentul la cabinet (§6, §25).
+ *
+ * Regula adevărată stă pe server (`_manual_source`) și are testele ei. Aici se
+ * apără aceeași linie în backendul simulat: două proveniențe se pot declara,
+ * restul sunt constatări ale sistemului și se refuză **explicit**. Ignorate în
+ * tăcere, ar lăsa pe cineva să creadă că a marcat un document ca venit din SPV,
+ * iar evidența ar spune altceva decât ecranul.
+ */
+describe("proveniența declarată", () => {
+  it("fără nimic declarat, rămâne încărcare directă", () => {
+    expect(uploadDocument({ ...PDF }).source).toBe("UPLOAD");
+  });
+
+  it("WhatsApp se poate declara", () => {
+    expect(uploadDocument({ ...PDF, source: "WHATSAPP" }).source).toBe("WHATSAPP");
+  });
+
+  it.each(["EMAIL", "EFACTURA", "ONEDRIVE", "API"])(
+    "%s o stabilește sistemul, nu se poate declara",
+    (claimed) => {
+      expect(() => uploadDocument({ ...PDF, source: claimed })).toThrow(ApiError);
+    },
+  );
+
+  it("un cuvânt care nu este o proveniență se refuză", () => {
+    expect(() => uploadDocument({ ...PDF, source: "PORUMBEL" })).toThrow(ApiError);
+  });
+
+  it("nimic nu se scrie când proveniența e refuzată", () => {
+    const before = listDocuments({ pageSize: 200 }).total;
+
+    try {
+      uploadDocument({ ...PDF, source: "EFACTURA" });
+    } catch {
+      // Refuzul este subiectul testului de mai sus.
+    }
+
+    expect(listDocuments({ pageSize: 200 }).total).toBe(before);
+  });
+});

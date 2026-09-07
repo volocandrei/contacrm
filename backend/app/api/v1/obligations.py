@@ -103,6 +103,23 @@ class FilingOut(ApiModel):
     note: str | None
 
 
+class RecordedFilingOut(ApiModel):
+    """O depunere înregistrată, așa cum se citește pe fișa clientului.
+
+    Poartă codul și eticheta, spre deosebire de `FilingOut`: acolo interfața
+    reîncarcă lista de termene, care le are din calcul. Aici nu există nicio
+    listă calculată în care rândul să apară — vezi `filings_for_client`.
+    """
+
+    obligation_type_id: uuid.UUID
+    code: str
+    label: str
+    frequency: ObligationFrequency
+    period: str
+    filed_at: datetime
+    note: str | None
+
+
 class FilingIn(ApiModel):
     client_id: uuid.UUID
     obligation_type_id: uuid.UUID
@@ -221,6 +238,27 @@ def client_obligations(
     return [
         _type_out(row)
         for row in ObligationService(session, user.organization_id).for_client(client_id)
+    ]
+
+
+@router.get("/clients/{client_id}/filings", response_model=list[RecordedFilingOut])
+def client_filings(
+    session: DbSession, user: ObligationReader, client_id: uuid.UUID
+) -> list[RecordedFilingOut]:
+    """Ce s-a înregistrat pentru clientul acesta, cea mai recentă perioadă întâi."""
+    return [
+        RecordedFilingOut(
+            obligation_type_id=obligation_type.id,
+            code=obligation_type.code,
+            label=obligation_type.label,
+            frequency=obligation_type.frequency,
+            period=filing.period,
+            filed_at=filing.filed_at,
+            note=filing.note,
+        )
+        for filing, obligation_type in ObligationService(
+            session, user.organization_id
+        ).filings_for_client(client_id)
     ]
 
 

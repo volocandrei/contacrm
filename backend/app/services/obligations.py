@@ -251,6 +251,32 @@ class ObligationService:
         self.session.flush()
         return filing
 
+    def filings_for_client(
+        self, client_id: uuid.UUID
+    ) -> list[tuple[ObligationFiling, ObligationType]]:
+        """Ce s-a înregistrat pentru clientul acesta, cea mai recentă întâi.
+
+        **De ce există ruta.** Depunerile obișnuite se văd pe ecranul de termene,
+        fiindcă acolo există un rând calculat pe care să se așeze bifa. O
+        obligație fără calendar nu produce niciun rând — vezi
+        `ObligationFrequency.ON_DEMAND`. Fără lista asta, cineva ar înregistra
+        situațiile financiare interimare și ele ar dispărea din interfață în
+        aceeași clipă: scrise în evidență, invizibile pe ecran. Un lucru
+        înregistrat pe care nimeni nu-l mai poate vedea se înregistrează a doua
+        oară.
+        """
+        self._client(client_id)
+        rows = self.session.execute(
+            select(ObligationFiling, ObligationType)
+            .join(ObligationType, ObligationType.id == ObligationFiling.obligation_type_id)
+            .where(
+                ObligationFiling.organization_id == self.organization_id,
+                ObligationFiling.client_id == client_id,
+            )
+            .order_by(ObligationFiling.period.desc(), ObligationFiling.filed_at.desc())
+        ).all()
+        return [(filing, obligation_type) for filing, obligation_type in rows]
+
     def unmark(self, *, client_id: uuid.UUID, obligation_type_id: uuid.UUID, period: str) -> None:
         """Șterge marcajul. Cineva a apăsat pe rândul greșit."""
         filing = self._filing(client_id, obligation_type_id, period)

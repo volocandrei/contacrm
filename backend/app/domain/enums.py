@@ -125,6 +125,14 @@ class ObligationFrequency(StrEnum):
     MONTHLY = "MONTHLY"
     QUARTERLY = "QUARTERLY"
     ANNUAL = "ANNUAL"
+    #: Fără calendar: obligația apare **când se întâmplă ceva**, nu la o dată.
+    #:
+    #: Situațiile financiare interimare se întocmesc când asociații hotărăsc să
+    #: repartizeze dividende — poate de trei ori într-un an, poate niciodată.
+    #: Trecute drept „anuale", ar fi apărut pe panou ca restanțe la fiecare
+    #: sfârșit de an la toți clienții care nu au distribuit nimic, iar o listă de
+    #: restanțe false se închide o dată și nu se mai deschide.
+    ON_DEMAND = "ON_DEMAND"
 
 
 class TimelineEventKind(StrEnum):

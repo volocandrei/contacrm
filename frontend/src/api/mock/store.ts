@@ -26,8 +26,8 @@ import {
   periodProgress,
 } from "@/api/mock/seed";
 import { buildArchivePath, buildDocumentFilename, type FilenameInput } from "@/lib/filename";
-import { DOCUMENT_STATUS_LABEL, ROLE_LABEL } from "@/lib/labels";
-import { ROLE_CODE } from "@/types/domain";
+import { DOCUMENT_ERROR_LABEL, DOCUMENT_STATUS_LABEL, ROLE_LABEL } from "@/lib/labels";
+import { MANUAL_DOCUMENT_SOURCE, ROLE_CODE } from "@/types/domain";
 import type {
   AccountingPeriod,
   ActiveSession,
@@ -85,11 +85,14 @@ import type {
   Intake,
   IssuedUploadLink,
   MailBrowseItem,
+  DocumentSource,
   MailFolder,
+  QueueHealth,
   ObligationFiling,
   ObligationFrequency,
   ObligationType,
   Permission,
+  RecordedFiling,
   ReminderRow,
   Reminders,
   ReminderSendReport,
@@ -866,6 +869,13 @@ export type UploadInput = {
   mimeType: string;
   /** Clientul, când cel care urcă îl știe deja — sau când bucata îl moștenește. */
   clientId?: string | null;
+  /**
+   * Pe ce drum a ajuns la cabinet, când cel care urcă o știe.
+   *
+   * Nu orice: celelalte proveniențe sunt constatări ale sistemului. Vezi
+   * `MANUAL_DOCUMENT_SOURCE` și `MANUAL_SOURCES` din backend.
+   */
+  source?: string;
 };
 
 /**
@@ -919,6 +929,72 @@ function settleProcessing() {
       detail: "Extracție finalizată (confidence 82%)",
     });
   }
+}
+
+/**
+ * Ce proveniență se poate declara la o încărcare, și ce nu.
+ *
+ * Aceeași regulă ca pe server (`_manual_source`): refuz explicit, nu ignorare
+ * tăcută. Ignorat, câmpul ar lăsa pe cineva să creadă că a marcat documentul ca
+ * venit din SPV, iar evidența ar spune altceva decât ecranul.
+ */
+function manualSource(declared: string | undefined): DocumentSource {
+  if (declared === undefined) return "UPLOAD";
+  if (!(MANUAL_DOCUMENT_SOURCE as readonly string[]).includes(declared)) {
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      "Proveniența aceasta o stabilește sistemul, nu se poate declara la încărcare.",
+      422,
+      { source: ["Se poate declara doar încărcare directă sau WhatsApp."] },
+    );
+  }
+  return declared as DocumentSource;
+}
+
+
+/**
+ * Starea cozii, pe backendul simulat.
+ *
+ * **Cu o diferență scrisă pe față:** aici nu există un tabel de cereri. Serverul
+ * adevărat numără joburi — rânduri cu `PENDING`, `RUNNING`, `FAILED` — iar de
+ * acolo știe și de când așteaptă cea mai veche și ce s-a blocat. Backendul
+ * simulat are doar stările documentelor, deci cifrele se deduc din ele: primite
+ * = în așteptare, în procesare = în lucru, eroare = eșecuri.
+ *
+ * `stuck` rămâne 0 și nu este o minciună convenabilă: fără un moment de pornire
+ * pe fiecare cerere, nu se poate ști dacă una s-a blocat. Demonstrația arată
+ * forma ecranului, nu simulează un worker mort.
+ */
+export function processingHealth(): QueueHealth {
+  requirePermission("documents:read");
+
+  const queued = state.documents.filter((doc) => doc.status === "RECEIVED");
+  const running = state.documents.filter((doc) => doc.status === "PROCESSING");
+  const failed = state.documents.filter((doc) => doc.status === "ERROR");
+
+  // De când așteaptă cea mai veche, nu cea mai nouă: măsurată de la ultima
+  // sosire, cifra ar fi rămas mereu mică, iar o coadă blocată de o oră ar fi
+  // arătat sănătoasă atâta timp cât mai intra ceva în ea.
+  const oldest = queued
+    .map((doc) => Date.parse(doc.receivedAt))
+    .reduce<number | null>((best, at) => (best === null || at < best ? at : best), null);
+
+  return {
+    queued: queued.length,
+    running: running.length,
+    stuck: 0,
+    failedRecently: failed.length,
+    waitingSeconds: oldest === null ? null : Math.floor((Date.now() - oldest) / 1000),
+    recentFailures: failed.slice(0, 20).map((doc) => ({
+      documentId: doc.id,
+      originalFilename: doc.originalFilename,
+      clientName: doc.clientName,
+      errorCode: doc.errorCode,
+      errorDetail: doc.errorCode === null ? null : DOCUMENT_ERROR_LABEL[doc.errorCode],
+      attempt: 1,
+      finishedAt: doc.receivedAt,
+    })),
+  };
 }
 
 export function uploadDocument(input: UploadInput): StoredDocument {
@@ -978,7 +1054,7 @@ export function uploadDocument(input: UploadInput): StoredDocument {
       : null,
     documentTypeCode: null,
     documentTypeLabel: null,
-    source: "UPLOAD",
+    source: manualSource(input.source),
     receivedAt: at,
     documentDate: null,
     referenceMonth: null,
@@ -4651,6 +4727,8 @@ const OBLIGATION_CLOSING_MONTHS: Record<ObligationFrequency, number[]> = {
   MONTHLY: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
   QUARTERLY: [3, 6, 9, 12],
   ANNUAL: [12],
+  // Nicio lună: obligația nu se naște din calendar, ci dintr-o hotărâre.
+  ON_DEMAND: [],
 };
 
 const obligationTypes: ObligationType[] = [
@@ -4660,6 +4738,15 @@ const obligationTypes: ObligationType[] = [
   { id: "obl-d112", code: "D112", label: "D112 — salarii și contribuții", frequency: "MONTHLY", monthsAfter: 1, deadlineDay: 25, isActive: true },
   { id: "obl-d100", code: "D100", label: "D100 — obligații de plată", frequency: "QUARTERLY", monthsAfter: 1, deadlineDay: 25, isActive: true },
   { id: "obl-bilant", code: "BILANT", label: "Situații financiare anuale", frequency: "ANNUAL", monthsAfter: 5, deadlineDay: 30, isActive: true },
+  { id: "obl-d390", code: "D390", label: "D390 — declarație recapitulativă", frequency: "MONTHLY", monthsAfter: 1, deadlineDay: 25, isActive: true },
+  { id: "obl-saft", code: "SAFT", label: "D406 — SAF-T", frequency: "MONTHLY", monthsAfter: 1, deadlineDay: 30, isActive: true },
+  { id: "obl-d301", code: "D301", label: "D301 — decont special de TVA", frequency: "MONTHLY", monthsAfter: 1, deadlineDay: 25, isActive: true },
+  { id: "obl-d101", code: "D101", label: "D101 — impozit pe profit", frequency: "ANNUAL", monthsAfter: 3, deadlineDay: 25, isActive: true },
+  { id: "obl-d205", code: "D205", label: "D205 — informativă privind impozitul reținut", frequency: "ANNUAL", monthsAfter: 2, deadlineDay: 28, isActive: true },
+  // Fără calendar. Cele două cifre nu se citesc niciodată pentru ea — există
+  // fiindcă tipul cere numere, exact ca în baza de date, unde o zi trebuie să
+  // fie o zi (1..31). Nu înseamnă „termen pe 1".
+  { id: "obl-interim", code: "SITFIN_INTERIM", label: "Situații financiare interimare (dividende)", frequency: "ON_DEMAND", monthsAfter: 0, deadlineDay: 1, isActive: true },
 ];
 
 /**
@@ -4695,7 +4782,11 @@ function seedClientObligations() {
   const configuredOn = addDays(new Date(MOCK_NOW), -MOCK_HISTORY_DAYS);
   const sorted = [...state.clients].sort((a, b) => a.name.localeCompare(b.name, "ro"));
   sorted.forEach((client, index) => {
-    const codes = index % 3 ? ["D300", "D394", "D112"] : ["D300_TRIM", "D100"];
+    // Unul din trei clienți are și situațiile interimare configurate. Nu
+    // produc niciun termen — nu se nasc din calendar — dar fără ele panoul de
+    // pe fișa clientului nu s-ar vedea niciodată în demonstrație, iar o funcție
+    // pe care nimeni nu o găsește este o funcție care nu există.
+    const codes = index % 3 ? ["D300", "D394", "D112"] : ["D300_TRIM", "D100", "SITFIN_INTERIM"];
     for (const code of codes) {
       const type = obligationTypes.find((entry) => entry.code === code);
       if (type) {
@@ -4900,6 +4991,7 @@ export function markObligationFiled(input: {
   clientId: string;
   obligationTypeId: string;
   period: string;
+  note?: string | null;
 }): ObligationFiling {
   requirePermission("periods:manage");
   if (!state.clients.some((client) => client.id === input.clientId)) {
@@ -4915,10 +5007,45 @@ export function markObligationFiled(input: {
   const filing = existing ?? {
     filedAt: MOCK_NOW,
     filedByName: currentUser.fullName,
-    note: null,
+    note: input.note ?? null,
   };
   filings.set(key, filing);
-  return { ...input, ...filing };
+  return {
+    clientId: input.clientId,
+    obligationTypeId: input.obligationTypeId,
+    period: input.period,
+    ...filing,
+  };
+}
+
+/**
+ * Ce s-a înregistrat pentru un client, cea mai recentă perioadă întâi.
+ *
+ * Depunerile obișnuite se văd pe ecranul de termene, unde există un rând
+ * calculat pe care se așază bifa. O obligație fără calendar nu produce niciun
+ * rând, deci fără lista asta ar fi înregistrată și invizibilă în aceeași clipă.
+ */
+export function listClientFilings(clientId: string): RecordedFiling[] {
+  requirePermission("clients:read");
+  if (!state.clients.some((client) => client.id === clientId)) throw notFound("Client", clientId);
+
+  const rows: RecordedFiling[] = [];
+  for (const [key, filing] of filings) {
+    const [owner, obligationTypeId, period] = key.split("|");
+    if (owner !== clientId) continue;
+    const type = obligationTypes.find((entry) => entry.id === obligationTypeId);
+    if (type === undefined) continue;
+    rows.push({
+      obligationTypeId,
+      code: type.code,
+      label: type.label,
+      frequency: type.frequency,
+      period,
+      filedAt: filing.filedAt,
+      note: filing.note,
+    });
+  }
+  return rows.sort((left, right) => right.period.localeCompare(left.period));
 }
 
 export function markObligationsFiled(

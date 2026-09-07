@@ -16,6 +16,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  listClientFilings,
   listClientObligations,
   listClients,
   listObligationTypes,
@@ -351,5 +352,99 @@ describe("marcarea unui teanc", () => {
 
     expect(result.marked).toBe(1);
     expect(result.failed).toHaveLength(1);
+  });
+});
+
+/**
+ * Obligațiile fără calendar, pe backendul simulat (§3, §4).
+ *
+ * Regulile adevărate stau pe server și au testele lor
+ * (`backend/tests/test_interim_statements.py`). Aici se apără **ce vede omul**:
+ * ele nu apar niciodată pe ecranul de termene, dar ce s-a înregistrat se poate
+ * citi pe fișa clientului. Fără a doua jumătate, prima ar fi doar dispariție.
+ */
+describe("situațiile întocmite la nevoie", () => {
+  /** Codul din catalogul inițial; vezi `DEFAULT_OBLIGATIONS`. */
+  const INTERIM = "SITFIN_INTERIM";
+
+  /**
+   * Un client anume, nu „primul".
+   *
+   * Magazinul simulat nu se golește între teste: ce înregistrează unul rămâne
+   * înregistrat pentru următorul. Testele de mai jos numără depuneri, deci
+   * fiecare are nevoie de clientul lui — altfel primul care adaugă o perioadă
+   * strică numărătoarea celui de după el, iar eșecul arată ca un defect de
+   * sortare.
+   */
+  function nthClient(index: number): string {
+    return listClients({ pageSize: 10 }).items[index]!.id;
+  }
+
+  function interimType(): { id: string; code: string } {
+    const type = listObligationTypes().find((entry) => entry.code === INTERIM);
+    if (type === undefined) throw new Error("catalogul simulat nu are " + INTERIM);
+    return type;
+  }
+
+  it("catalogul o are, fără calendar", () => {
+    expect(interimType()).toBeDefined();
+    expect(listObligationTypes().find((entry) => entry.code === INTERIM)?.frequency).toBe(
+      "ON_DEMAND",
+    );
+  });
+
+  it("nu produce niciun termen, oricât s-ar întinde fereastra", () => {
+    const clientId = nthClient(1);
+    setClientObligations(clientId, [interimType().id]);
+
+    const mine = listObligations({ clientId }).map((row) => row.code);
+
+    expect(mine).not.toContain(INTERIM);
+  });
+
+  it("ce s-a înregistrat se vede pe fișa clientului, cu perioada aleasă", () => {
+    const clientId = nthClient(2);
+    setClientObligations(clientId, [interimType().id]);
+    markObligationFiled({
+      clientId,
+      obligationTypeId: interimType().id,
+      period: "2026-06",
+      note: "Repartizare dividende interimare",
+    });
+
+    const rows = listClientFilings(clientId).filter((row) => row.code === INTERIM);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.period).toBe("2026-06");
+    expect(rows[0]?.note).toBe("Repartizare dividende interimare");
+  });
+
+  it("se pot înregistra mai multe perioade în același an, cea nouă prima", () => {
+    const clientId = nthClient(3);
+    setClientObligations(clientId, [interimType().id]);
+    for (const period of ["2026-03", "2026-09"]) {
+      markObligationFiled({ clientId, obligationTypeId: interimType().id, period });
+    }
+
+    const periods = listClientFilings(clientId)
+      .filter((row) => row.code === INTERIM)
+      .map((row) => row.period);
+
+    expect(periods).toEqual(["2026-09", "2026-03"]);
+  });
+
+  it("fișa unui client nu arată depunerile altuia", () => {
+    const mineId = nthClient(4);
+    const neighbourId = nthClient(5);
+    setClientObligations(neighbourId, [interimType().id]);
+    markObligationFiled({
+      clientId: neighbourId,
+      obligationTypeId: interimType().id,
+      period: "2026-09",
+    });
+
+    const mine = listClientFilings(mineId).filter((row) => row.code === INTERIM);
+
+    expect(mine).toEqual([]);
   });
 });

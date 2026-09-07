@@ -333,12 +333,16 @@ async function httpUpload<T>(path: string, file: File, fields: Record<string, st
  * browser primește doar ce declară fișierul: nume, dimensiune, tip. Este exact
  * limita simulării, și e scrisă acolo unde se vede (`mock/store.ts`).
  */
-async function mockUpload<T>(path: string, file: File): Promise<T> {
+async function mockUpload<T>(path: string, file: File, fields: Record<string, string>): Promise<T> {
   if (MOCK_LATENCY_MS > 0) {
     await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
   }
   const mockRequest = await loadMock();
+  // Câmpurile formularului trec mai departe, ca pe serverul real: fără ele,
+  // backendul simulat nu ar vedea nici clientul ales, nici proveniența — iar
+  // demonstrația ar arăta altceva decât face aplicația.
   return mockRequest("POST", path, {}, {
+    ...fields,
     filename: file.name,
     size: file.size,
     mimeType: file.type,
@@ -386,7 +390,7 @@ export function uploadFile<T>(
   file: File,
   fields: Record<string, string> = {},
 ): Promise<T> {
-  return MODE === "mock" ? mockUpload<T>(path, file) : httpUpload<T>(path, file, fields);
+  return MODE === "mock" ? mockUpload<T>(path, file, fields) : httpUpload<T>(path, file, fields);
 }
 
 export const api = {

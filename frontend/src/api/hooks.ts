@@ -41,6 +41,7 @@ import type {
   ObligationType,
   RoleCode,
   TaskStatus,
+  ManualDocumentSource,
 } from "@/types/domain";
 
 export const queryKeys = {
@@ -58,6 +59,7 @@ export const queryKeys = {
   intakes: (params: QueryParams) => ["intakes", params] as const,
   clientPeriods: (id: string) => ["clients", id, "periods"] as const,
   documents: (params: QueryParams) => ["documents", params] as const,
+  processingHealth: ["documents", "processing-health"] as const,
   document: (id: string) => ["documents", id] as const,
   documentTypes: ["document-types"] as const,
   nextReview: (after?: string) => ["documents", "next-review", after ?? null] as const,
@@ -66,6 +68,7 @@ export const queryKeys = {
   obligations: (params: QueryParams) => ["obligations", params] as const,
   obligationTypes: ["obligations", "types"] as const,
   clientObligations: (id: string) => ["obligations", "clients", id] as const,
+  clientFilings: (id: string) => ["obligations", "clients", id, "filings"] as const,
   fees: (referenceMonth: string) => ["fees", referenceMonth] as const,
   clientFee: (id: string) => ["fees", "clients", id] as const,
   clientFeeHistory: (id: string) => ["fees", "clients", id, "history"] as const,
@@ -498,6 +501,21 @@ export function useObligations(params: QueryParams = {}) {
 
 export function useObligationTypes() {
   return useQuery({ queryKey: queryKeys.obligationTypes, queryFn: () => obligations.types() });
+}
+
+/**
+ * Ce s-a înregistrat deja pentru un client.
+ *
+ * Cheia stă sub familia „obligations", ca toate celelalte: orice marcare
+ * invalidează familia întreagă, deci lista de aici se reîncarcă singură după ce
+ * cineva înregistrează o depunere. O cheie în afara familiei ar fi arătat mai
+ * departe lista de dinainte.
+ */
+export function useClientFilings(clientId: string) {
+  return useQuery({
+    queryKey: queryKeys.clientFilings(clientId),
+    queryFn: () => obligations.filingsForClient(clientId),
+  });
 }
 
 export function useClientObligations(clientId: string) {
@@ -949,9 +967,37 @@ function useDocumentMutation<TArgs>(
  * singur lista de rezultate: un lot în care al treilea fișier eșuează nu are voie
  * să ascundă că primele două au reușit.
  */
+/**
+ * Starea cozii de procesare, reîmprospătată singură.
+ *
+ * **De ce se reinterogează.** Ecranul acesta răspunde la „merge sau nu merge",
+ * iar răspunsul se schimbă fără ca cineva să apese ceva: workerul golește coada
+ * sau moare. Un panou care ar arăta cifra de la deschiderea paginii ar spune
+ * „opt în așteptare" o oră după ce coada s-a golit — exact felul de informație
+ * veche care se citește ca informație.
+ *
+ * Un minut, nu cinci secunde: o coadă nu se privește ca un cronometru, iar o
+ * cerere pe secundă de la fiecare filă deschisă ar fi ea însăși o sarcină.
+ */
+export function useProcessingHealth() {
+  return useQuery({
+    queryKey: queryKeys.processingHealth,
+    queryFn: () => documents.processingHealth(),
+    refetchInterval: 60_000,
+  });
+}
+
 export function useUploadDocument() {
-  return useDocumentMutation(({ file, clientId }: { file: File; clientId?: string }) =>
-    documents.upload(file, clientId),
+  return useDocumentMutation(
+    ({
+      file,
+      clientId,
+      source,
+    }: {
+      file: File;
+      clientId?: string;
+      source?: ManualDocumentSource;
+    }) => documents.upload(file, clientId, source),
   );
 }
 

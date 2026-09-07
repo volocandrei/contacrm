@@ -82,16 +82,20 @@ def test_error_code_vocabulary_matches_frontend(domain_source: str) -> None:
 
 
 def test_every_error_code_has_a_romanian_label() -> None:
-    """Un cod fără etichetă ar apărea pe ecran ca `EXTRACTION_FAILED`."""
-    review_page = (FRONTEND / "features" / "documents" / "review-page.tsx").read_text(
-        encoding="utf-8"
-    )
+    """Un cod fără etichetă ar apărea pe ecran ca `EXTRACTION_FAILED`.
+
+    Harta stătea în `review-page.tsx`, lângă singurul ecran care o folosea. De
+    când și panoul cozii de procesare scrie motivul unui eșec, a trecut în
+    `lib/labels.ts` — o a doua copie s-ar fi despărțit de prima la prima
+    reformulare, iar cele două ecrane ar fi spus altceva despre aceeași eroare.
+    """
+    labels = (FRONTEND / "lib" / "labels.ts").read_text(encoding="utf-8")
     block = re.search(
-        r"const ERROR_LABEL: Record<DocumentErrorCode, string> = \{(.*?)\n\};",
-        review_page,
+        r"export const DOCUMENT_ERROR_LABEL: Record<DocumentErrorCode, string> = \{(.*?)\n\};",
+        labels,
         re.DOTALL,
     )
-    assert block is not None, "ERROR_LABEL nu a fost găsit în review-page.tsx"
+    assert block is not None, "DOCUMENT_ERROR_LABEL nu a fost găsit în lib/labels.ts"
 
     labelled = set(re.findall(r"(\w+):", block.group(1)))
     assert labelled == {code.value for code in DocumentErrorCode}

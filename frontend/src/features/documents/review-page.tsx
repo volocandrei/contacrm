@@ -45,6 +45,7 @@ import { useDownloadDocument } from "@/features/documents/use-download";
 import { describeError } from "@/lib/errors";
 import { formatDateTime, formatFileSize } from "@/lib/format";
 import { buttonPrimary, focusRing, iconChip, mutedText, pillClass, type Tone } from "@/lib/ui";
+import { DOCUMENT_ERROR_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { InvoiceLines } from "@/features/documents/invoice-lines";
 import { PairingPanel } from "@/features/documents/pairing-panel";
@@ -52,7 +53,6 @@ import { SplitPanel } from "@/features/documents/split-panel";
 import type {
   DocumentAction,
   DocumentDetail,
-  DocumentErrorCode,
   DocumentFieldName,
   ExtractedField,
 } from "@/types/domain";
@@ -76,21 +76,6 @@ const FIELD_ORDER: Array<{ name: DocumentFieldName; label: string; type?: string
   { name: "referenceMonth", label: "Perioadă de referință", type: "month" },
 ];
 
-/** Codurile de eroare, în română. Codul se persistă; textul se traduce (§53). */
-const ERROR_LABEL: Record<DocumentErrorCode, string> = {
-  INVALID_FILE: "Fișierul nu a putut fi citit.",
-  UNSUPPORTED_FORMAT: "Formatul nu este acceptat.",
-  FILE_TOO_LARGE: "Fișierul depășește dimensiunea maximă.",
-  OCR_FAILED: "Recunoașterea textului a eșuat.",
-  EXTRACTION_FAILED: "Extragerea datelor a eșuat.",
-  CLASSIFICATION_FAILED: "Tipul documentului nu a putut fi stabilit.",
-  VALIDATION_FAILED: "Datele extrase nu au trecut validarea.",
-  DUPLICATE_DETECTED: "Documentul există deja în sistem.",
-  CLIENT_NOT_FOUND: "Clientul nu a putut fi identificat.",
-  STORAGE_FAILED: "Fișierul nu a putut fi salvat.",
-  ARCHIVE_FAILED: "Arhivarea a eșuat.",
-  INTERNAL_ERROR: "Eroare internă la procesare.",
-};
 
 type Draft = Partial<Record<DocumentFieldName, string>>;
 
@@ -351,7 +336,7 @@ function ReviewScreen({
             Procesarea a eșuat
           </p>
           <p className="mt-1 ml-6 text-red-800 dark:text-red-300">
-            {document.errorCode ? ERROR_LABEL[document.errorCode] : "Motiv necunoscut."}{" "}
+            {document.errorCode ? DOCUMENT_ERROR_LABEL[document.errorCode] : "Motiv necunoscut."}{" "}
             {document.processingAttempts > 0 && (
               <span className="text-red-700 dark:text-red-400">
                 ({document.processingAttempts}{" "}

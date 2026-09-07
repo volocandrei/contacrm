@@ -20,9 +20,26 @@ Toate ajung în același loc și trec prin aceiași pași. Nu există un drum �
 scurt" pentru vreuna: un document sosit prin email se procesează exact ca unul
 urcat de mână, altfel cele două s-ar comporta diferit la a treia lună.
 
-**Un fișier descărcat de pe WhatsApp** se încarcă manual, din *Inbox*, alegând
-clientul din selector. WhatsApp nu are astăzi o preluare automată, iar
-`.env.example` o spune pe față.
+### Documentele primite pe WhatsApp
+
+WhatsApp nu are astăzi o preluare automată — ar cere un cont WhatsApp Business și
+un număr aprobat de Meta, adică o înregistrare de firmă, nu o setare. Ce se poate
+face este drumul pe care oricum îl parcurge cabinetul: contabilul descarcă de pe
+telefon pozele primite, le încarcă din *Inbox*, alege clientul și pune
+**„Primit pe WhatsApp"** la „Cum a ajuns la noi".
+
+Câmpul acela nu este cosmetic. Fără el, documentele intrau în evidență drept
+„încărcat manual" — adevărat despre ultimul pas, tăcut despre primul. Cronologia
+clientului spunea „a încărcat cineva un fișier" exact acolo unde răspunsul la
+„dar eu v-am trimis pozele" trebuia să fie „le-am primit pe WhatsApp pe 3
+septembrie".
+
+**Se pot declara doar două proveniențe: încărcare directă și WhatsApp.** Restul —
+email, OneDrive, SPV — sunt *constatări ale sistemului*: „a venit pe email"
+înseamnă că am citit-o dintr-o cutie poștală. Declarate dintr-un formular, ar
+înceta să fie constatări și ar deveni păreri, iar la un control diferența este
+tot ce contează. Serverul le refuză explicit, cu 422, nu le ignoră în tăcere
+(`MANUAL_SOURCES` în `app/api/v1/documents.py`).
 
 ---
 
@@ -109,7 +126,38 @@ intrare de ZIP.
 
 ---
 
-## 6. Duplicatele
+## 6. Când procesarea nu merge
+
+Ecranul *Documente → În procesare* poartă sus starea cozii. Există pentru o
+întrebare care până acum nu avea unde să primească răspuns: **„de ce nu s-a
+procesat documentul urcat acum douăzeci de minute?"** Documentul stătea în
+„Primit", ecranul nu arăta nicio eroare — fiindcă nu era niciuna — iar singurul
+semn că workerul murise era o coadă care creștea și pe care nu o vedea nimeni.
+Se descoperea a doua zi, la o sută de documente neprocesate.
+
+**Cifra care contează nu este câte cereri sunt în coadă, ci de când așteaptă cea
+mai veche.** Treizeci de cereri într-o dimineață aglomerată sunt normale și se
+golesc singure. Una singură care așteaptă de patruzeci de minute nu are nicio
+explicație bună: ori workerul nu rulează, ori s-a blocat.
+
+| Cifra | Ce înseamnă | Ce se face |
+|---|---|---|
+| în așteptare | cereri scrise, nepornite | dacă cea mai veche trece de un sfert de oră, procesarea nu rulează |
+| în lucru | cereri pornite | nimic, se termină singure |
+| blocate | pornite de mai mult decât `PROCESSING_STALE_AFTER_MINUTES` | `uv run python -m app.cli recover-processing` le readuce în coadă |
+| eșecuri recente | cereri eșuate în ultimele două zile | fiecare are motivul scris; se reprocesează de pe documentul ei |
+
+Panoul **nu repornește nimic**. Recuperarea are comanda ei, iar reprocesarea unui
+document se cere de pe documentul acela, unde se vede exact ce se reprocesează.
+Un buton care ar relua totul este exact felul de acțiune pe care cineva o apasă
+de două ori.
+
+Când starea nu se poate citi, panoul o **spune**. Ascuns la eroare, ar fi arătat
+identic cu o coadă sănătoasă — adică opusul rostului lui.
+
+---
+
+## 7. Duplicatele
 
 Se detectează pe conținut (SHA-256) și, separat, pe identitatea documentului
 (furnizor + număr + dată). Detecția este serializată cu o încuietoare pe conținut:

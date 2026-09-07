@@ -34,6 +34,9 @@ _CLOSING_MONTHS: dict[ObligationFrequency, frozenset[int]] = {
     ObligationFrequency.MONTHLY: frozenset(range(1, 13)),
     ObligationFrequency.QUARTERLY: frozenset({3, 6, 9, 12}),
     ObligationFrequency.ANNUAL: frozenset({12}),
+    # Nicio lună: obligația nu se naște din calendar, ci dintr-o hotărâre. Cine o
+    # întocmește alege perioada, iar aplicația nu o cere de la sine.
+    ObligationFrequency.ON_DEMAND: frozenset(),
 }
 
 
@@ -63,6 +66,31 @@ DEFAULT_OBLIGATIONS: tuple[ObligationSeed, ...] = (
     ObligationSeed("D100", "D100 — obligații de plată", ObligationFrequency.QUARTERLY, 1, 25),
     ObligationSeed("SAFT", "D406 — SAF-T", ObligationFrequency.MONTHLY, 1, 30),
     ObligationSeed("BILANT", "Situații financiare anuale", ObligationFrequency.ANNUAL, 5, 30),
+    # Decontul special: îl depune cine **nu** este înregistrat normal în scopuri
+    # de TVA, dar a făcut achiziții intracomunitare sau servicii cu taxare
+    # inversă. Nu este o variantă a lui D300 — este pentru altcineva.
+    ObligationSeed("D301", "D301 — decont special de TVA", ObligationFrequency.MONTHLY, 1, 25),
+    # Impozitul pe profit anual, pentru firmele care nu sunt pe impozit pe venit.
+    ObligationSeed("D101", "D101 — impozit pe profit", ObligationFrequency.ANNUAL, 3, 25),
+    # Informativa despre impozitul reținut la sursă: dividende, drepturi de autor.
+    ObligationSeed(
+        "D205", "D205 — informativă privind impozitul reținut", ObligationFrequency.ANNUAL, 2, 28
+    ),
+    # Situațiile financiare interimare. **Nu au termen de calendar**: se
+    # întocmesc când asociații hotărăsc repartizarea de dividende în cursul
+    # anului. Vezi `ObligationFrequency.ON_DEMAND` pentru de ce contează.
+    ObligationSeed(
+        code="SITFIN_INTERIM",
+        label="Situații financiare interimare (dividende)",
+        frequency=ObligationFrequency.ON_DEMAND,
+        # **Cele două cifre de mai jos nu se citesc niciodată** pentru o obligație
+        # fără calendar: `deadline_for` refuză să calculeze un termen, iar
+        # `due_between` nu produce nicio perioadă. Sunt aici doar fiindcă baza
+        # cere ca o zi să fie o zi (`deadline_day BETWEEN 1 AND 31`), și nu
+        # înseamnă „termen pe 1".
+        months_after=0,
+        deadline_day=1,
+    ),
 )
 
 
@@ -93,7 +121,17 @@ def deadline_for(
     months_after: int,
     deadline_day: int,
 ) -> date:
-    """Termenul perioadei care se încheie în luna `period` (`YYYY-MM`)."""
+    """Termenul perioadei care se încheie în luna `period` (`YYYY-MM`).
+
+    Nu se cheamă pentru obligațiile fără calendar: acolo nu există un termen de
+    calculat. Refuzul este explicit, cu mesaj, în loc de un `ValueError` venit din
+    `date(an, luna, 0)` — care ar fi apărut la prima deschidere a unui ecran și nu
+    ar fi spus nimănui de ce.
+    """
+    if frequency is ObligationFrequency.ON_DEMAND:
+        raise ValueError(
+            "Obligațiile fără calendar nu au termen calculat: perioada o alege cine le întocmește."
+        )
     year, month = int(period[:4]), int(period[5:7])
     shifted_year, shifted_month = _shift(year, month, months_after)
     return _day_in(shifted_year, shifted_month, deadline_day)

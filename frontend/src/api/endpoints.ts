@@ -51,8 +51,11 @@ import type {
   IssuedUploadLink,
   MailBrowseItem,
   MailFolder,
+  ManualDocumentSource,
   ObligationFiling,
+  QueueHealth,
   ObligationType,
+  RecordedFiling,
   Reminders,
   ReminderSendReport,
   ReportSummary,
@@ -299,17 +302,32 @@ export const documents = {
   /** Rupe legătura. Reversibil, ca orice hotărâre luată pe o propunere. */
   unpair: (id: string) => api.delete<DocumentPairing>(`/documents/${id}/pairing`),
 
+  /** Starea cozii de procesare: ce așteaptă, ce s-a blocat, ce a eșuat. */
+  processingHealth: () => api.get<QueueHealth>("/documents/processing/health"),
+
   /** Unde s-ar tăia teancul, și de ce. **Nu scrie nimic.** */
   splitPreview: (id: string) => api.get<SplitPlan>(`/documents/${id}/split`),
 
   /** Desface teancul. Originalul rămâne, marcat „desfăcut". */
   split: (id: string) => api.post<DocumentListItem[]>(`/documents/${id}/split`),
-  upload: (file: File, clientId?: string) =>
-    api.upload<DocumentDetail>(
+  /**
+   * Urcă un fișier, spunând opțional **pe ce drum a ajuns** la cabinet.
+   *
+   * `source` nu este cine l-a încărcat, ci cum a ajuns: contabilul care descarcă
+   * de pe telefon pozele primite pe WhatsApp le urcă de aici, iar cronologia
+   * clientului spune „pe WhatsApp", nu „a încărcat cineva un fișier".
+   */
+  upload: (file: File, clientId?: string, source?: ManualDocumentSource) => {
+    const fields: Record<string, string> = {};
+    if (clientId) fields.clientId = clientId;
+    // Lipsa câmpului înseamnă „încărcare directă", ca înainte.
+    if (source && source !== "UPLOAD") fields.source = source;
+    return api.upload<DocumentDetail>(
       "/documents/upload",
       file,
-      clientId ? { clientId } : undefined,
-    ),
+      Object.keys(fields).length > 0 ? fields : undefined,
+    );
+  },
   nextReview: (after?: string) =>
     api.get<DocumentDetail | null>("/documents/next-review", after ? { after } : undefined),
   updateFields: (id: string, updates: Array<{ field: DocumentFieldName; value: string | null }>) =>
@@ -418,8 +436,15 @@ export const obligations = {
     api.get<ObligationType[]>(`/obligations/clients/${clientId}`),
   setForClient: (clientId: string, obligationTypeIds: string[]) =>
     api.put<ObligationType[]>(`/obligations/clients/${clientId}`, { obligationTypeIds }),
-  markFiled: (input: { clientId: string; obligationTypeId: string; period: string }) =>
-    api.post<ObligationFiling>("/obligations/filings", { ...input }),
+  /** Ce s-a înregistrat pentru un client, cea mai recentă perioadă întâi. */
+  filingsForClient: (clientId: string) =>
+    api.get<RecordedFiling[]>(`/obligations/clients/${clientId}/filings`),
+  markFiled: (input: {
+    clientId: string;
+    obligationTypeId: string;
+    period: string;
+    note?: string;
+  }) => api.post<ObligationFiling>("/obligations/filings", { ...input }),
   /**
    * Un teanc de depuneri deodată.
    *

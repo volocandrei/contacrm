@@ -26,6 +26,7 @@ import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/compo
 import { ConfidenceBadge, DocumentStatusBadge } from "@/components/status-badge";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { useHasPermission } from "@/features/auth/use-auth";
+import { QueueHealthPanel } from "@/features/documents/queue-health-panel";
 import { UploadPanel } from "@/features/documents/upload-panel";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { buttonPrimary, focusRing, iconChip, pillClass, scrollX, type Tone } from "@/lib/ui";
@@ -201,6 +202,11 @@ export function DocumentsPage({
       {/* Drumul manual: restul sosesc singure, din email, OneDrive, e-Factura sau
           de la client. Stă pe inbox, pentru că acolo ajunge oricum după încărcare. */}
       {preset === "inbox" && canWrite && <UploadPanel />}
+
+      {/* Starea cozii, pe ecranul „În procesare”: acolo se uită cineva care
+          întreabă de ce nu s-a procesat ce a urcat. Pe inbox ar fi fost o
+          îngrijorare oferită nimănui. */}
+      {preset === "processing" && <QueueHealthPanel />}
 
       {/* Filtre (§25) */}
       <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-7">
