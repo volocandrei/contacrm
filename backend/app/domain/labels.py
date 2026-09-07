@@ -29,6 +29,9 @@ DOCUMENT_STATUS_LABEL: dict[DocumentStatus, str] = {
     # Nu „Neatribuit": ecranul spune de ce, nu doar că. Documentul a sosit
     # întreg; ce lipsește este legătura cu un client.
     DocumentStatus.UNMATCHED: "Client neidentificat",
+    # Nu „Împărțit": cuvântul spune ce s-a întâmplat cu fișierul, iar contabilul
+    # caută pe ecran teancul din care au ieșit facturile lui.
+    DocumentStatus.SPLIT: "Desfăcut în documente",
 }
 
 

@@ -31,6 +31,7 @@ import { ROLE_CODE } from "@/types/domain";
 import type {
   AccountingPeriod,
   ActiveSession,
+  SplitPlan,
   AnafMandate,
   AnafStatus,
   AnafSyncResult,
@@ -237,6 +238,9 @@ const ALLOWED_TRANSITIONS: Record<DocumentStatus, DocumentStatus[]> = {
   REJECTED: ["REVIEW_REQUIRED", "PROCESSING"],
   DUPLICATE: ["REVIEW_REQUIRED", "PROCESSING"],
   ERROR: ["PROCESSING", "REJECTED"],
+  // Teancul desfăcut nu avansează singur, dar poate fi redeschis de un om care
+  // hotărăște că tăietura a fost greșită — ca la arhivare.
+  SPLIT: ["REVIEW_REQUIRED"],
 };
 
 function reachable(from: DocumentStatus, to: DocumentStatus): boolean {
@@ -853,7 +857,13 @@ const processingDeadlines = new Map<string, number>();
 
 let uploadCounter = 0;
 
-export type UploadInput = { filename: string; size: number; mimeType: string };
+export type UploadInput = {
+  filename: string;
+  size: number;
+  mimeType: string;
+  /** Clientul, când cel care urcă îl știe deja — sau când bucata îl moștenește. */
+  clientId?: string | null;
+};
 
 /**
  * Promovează documentele urcate cărora le-a trecut „procesarea".
@@ -946,13 +956,20 @@ export function uploadDocument(input: UploadInput): StoredDocument {
 
   const document: StoredDocument = {
     id,
+    // Se completează la desfacere, pentru bucăți; altfel rămân goale.
+    splitFromId: null,
+    pageFrom: null,
+    pageTo: null,
     // Un document proaspăt urcat nu are linii: ele apar abia dacă providerul
     // citește o factură electronică.
     lines: [],
     originalFilename: input.filename,
     storedFilename: null,
-    clientId: null,
-    clientName: null,
+    // Bucata unui teanc mosteneste clientul teancului; restul incep gol.
+    clientId: input.clientId ?? null,
+    clientName: input.clientId
+      ? (state.clients.find((c) => c.id === input.clientId)?.name ?? null)
+      : null,
     documentTypeCode: null,
     documentTypeLabel: null,
     source: "UPLOAD",
@@ -1056,6 +1073,84 @@ export function listDocuments(filters: DocumentFilters): Paginated<DocumentListI
   });
 
   return paginate(sorted.map(toListItem), filters.page, filters.pageSize);
+}
+
+/**
+ * Teancul scanat, în backendul simulat (§8, §14).
+ *
+ * **Ce reproduce.** Forma răspunsului și regulile pe care le vede omul: se
+ * propune o tăietură doar când numele fișierului spune că este un teanc, fiecare
+ * bucată vine cu motivul ei, originalul rămâne marcat „desfăcut", iar fiecare
+ * bucată arată înapoi spre el.
+ *
+ * **Ce nu reproduce.** Citirea PDF-ului. Detectarea adevărată citește textul
+ * fiecărei pagini (`backend/app/domain/pdf_split.py`); aici nu există pagini, deci
+ * teancul se recunoaște după nume. Un al doilea detector scris în TypeScript s-ar
+ * fi despărțit de primul la prima corectură.
+ */
+function looksLikeAStack(doc: StoredDocument): boolean {
+  return /scan|teanc|multi/i.test(doc.originalFilename) && doc.mimeType === "application/pdf";
+}
+
+export function splitPreview(id: string): SplitPlan {
+  const doc = getDocument(id);
+  if (!looksLikeAStack(doc) || doc.status === "SPLIT") {
+    return { pageCount: 1, readable: true, splittable: false, segments: [] };
+  }
+  return {
+    pageCount: 3,
+    readable: true,
+    splittable: true,
+    segments: [
+      {
+        pageFrom: 1,
+        pageTo: 1,
+        documentType: "factură",
+        documentNumber: "7001",
+        reasons: [],
+      },
+      {
+        pageFrom: 2,
+        pageTo: 2,
+        documentType: "factură",
+        documentNumber: "7002",
+        reasons: ["alt număr de document (7002)", "antet nou sus pe pagină (factură)"],
+      },
+      {
+        pageFrom: 3,
+        pageTo: 3,
+        documentType: "chitanță",
+        documentNumber: "55",
+        reasons: ["alt număr de document (55)", "antet nou sus pe pagină (chitanță)"],
+      },
+    ],
+  };
+}
+
+export function splitDocument(id: string): DocumentListItem[] {
+  const doc = getDocument(id);
+  const plan = splitPreview(id);
+  if (!plan.splittable) {
+    throw new ApiError("VALIDATION_ERROR", "Nu am găsit mai multe documente în fișier.", 422);
+  }
+
+  const created = plan.segments.map((segment, index) => {
+    const piece = uploadDocument({
+      filename: `${doc.originalFilename.replace(/\.pdf$/i, "")} (${index + 1}) p${segment.pageFrom}.pdf`,
+      size: Math.max(1, Math.round(doc.fileSize / plan.segments.length)),
+      mimeType: "application/pdf",
+      clientId: doc.clientId,
+    });
+    piece.splitFromId = doc.id;
+    piece.pageFrom = segment.pageFrom;
+    piece.pageTo = segment.pageTo;
+    return piece;
+  });
+
+  doc.status = "SPLIT";
+  doc.reviewRequired = false;
+  recordAudit("DOCUMENT_SPLIT", "Document", doc.id, `${created.length} documente`);
+  return created.map(toListItem);
 }
 
 export function getDocument(id: string): StoredDocument {

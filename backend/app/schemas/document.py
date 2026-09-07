@@ -191,6 +191,11 @@ class DocumentDetailOut(DocumentListItemOut):
     #: Liniile facturii, în ordinea din document. Goală pentru documentele care
     #: nu sunt facturi electronice: din PDF liniile nu se citesc, și nu se ghicesc.
     lines: list[DocumentLineOut]
+    #: Din ce teanc a ieșit documentul, și ce pagini acoperă (§8, §26).
+    #: `null` pentru documentele care nu vin dintr-o desfacere — adică aproape toate.
+    split_from_id: uuid.UUID | None
+    page_from: int | None
+    page_to: int | None
 
 
 # ── Filtre și sortare ────────────────────────────────────────────────────────

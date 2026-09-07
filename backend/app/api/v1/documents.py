@@ -66,6 +66,7 @@ from app.services.document_delivery import (
 from app.services.document_fields import FieldUpdate, read_fields
 from app.services.document_processing import DocumentProcessingService
 from app.services.document_service import ActorContext, DocumentService, approval_blockers
+from app.services.document_split import DocumentSplitService
 from app.services.document_upload import DocumentUploadService
 from app.services.files import FileValidationError
 from app.services.processing_queue import enqueue as enqueue_processing
@@ -252,6 +253,9 @@ def _to_detail(session: DbSession, user: User, row: DocumentRow) -> DocumentDeta
             )
             for line in document.lines
         ],
+        split_from_id=document.split_from_id,
+        page_from=document.page_from,
+        page_to=document.page_to,
     )
 
 
@@ -445,6 +449,88 @@ def assign_client(
         user.organization_id, document_id, payload.client_id, _actor(user, request)
     )
     return _detail(session, user, document_id)
+
+
+class SplitSegmentOut(ApiModel):
+    """Un document găsit în teanc, cu motivul tăieturii."""
+
+    page_from: int
+    page_to: int
+    document_type: str | None
+    document_number: str | None
+    #: De ce s-a tăiat aici. Gol pentru primul segment: el nu este o tăietură.
+    reasons: list[str]
+
+
+class SplitPlanOut(ApiModel):
+    """Ce s-ar întâmpla dacă cineva ar apăsa „Desfă". Nu s-a scris nimic."""
+
+    page_count: int
+    #: `false` când PDF-ul nu are strat de text — o poză, un scan brut. Atunci un
+    #: singur segment nu înseamnă „un document", înseamnă „nu am ce citi".
+    readable: bool
+    splittable: bool
+    segments: list[SplitSegmentOut]
+
+
+@router.get("/documents/{document_id}/split", response_model=SplitPlanOut)
+def split_preview(
+    session: DbSession, user: DocumentReader, storage: StorageDep, document_id: uuid.UUID
+) -> SplitPlanOut:
+    """Unde s-ar tăia teancul, și de ce. **Nu scrie nimic.**
+
+    Un teanc tăiat greșit produce jumătăți care arată ca documente adevărate și
+    intră în decont. De aceea tăietura se vede întâi.
+    """
+    document = _fetch(session, user, document_id).document
+    plan = DocumentSplitService(session, storage).plan(document)
+    return SplitPlanOut(
+        page_count=plan.page_count,
+        readable=plan.readable,
+        splittable=plan.splittable,
+        segments=[
+            SplitSegmentOut(
+                page_from=segment.page_from,
+                page_to=segment.page_to,
+                document_type=segment.document_type,
+                document_number=segment.document_number,
+                reasons=list(segment.reasons),
+            )
+            for segment in plan.segments
+        ],
+    )
+
+
+@router.post(
+    "/documents/{document_id}/split",
+    response_model=list[DocumentListItemOut],
+    status_code=status.HTTP_201_CREATED,
+)
+def split_document(
+    session: DbSession,
+    user: DocumentWriter,
+    storage: StorageDep,
+    request: Request,
+    document_id: uuid.UUID,
+) -> list[DocumentListItemOut]:
+    """Desface teancul în documentele lui. Originalul rămâne, marcat „desfăcut".
+
+    Fiecare bucată intră ca document nou, cu clientul moștenit și cu proveniența
+    scrisă: din ce teanc, de la ce pagină până la ce pagină.
+    """
+    document = _fetch(session, user, document_id).document
+    created = DocumentSplitService(session, storage).split(
+        document, actor=user, ip=client_ip(request)
+    )
+    for child in created:
+        enqueue_processing(session, child)
+    # Fiecare bucată se citește singură: tipul, numărul și sumele ei nu se pot
+    # moșteni de la teanc, unde erau ale primei facturi.
+    rows = DocumentRepository(session)
+    return [
+        to_list_item(rows.get(user.organization_id, child.id))  # type: ignore[arg-type]
+        for child in created
+    ]
 
 
 @router.post("/documents/{document_id}/approve", response_model=DocumentDetailOut)

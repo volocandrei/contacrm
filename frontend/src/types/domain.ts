@@ -15,6 +15,9 @@ export const DOCUMENT_STATUS = [
   "DUPLICATE",
   "REJECTED",
   "UNMATCHED",
+  // Teancul din care au ieșit alte documente. Nu se mai verifică și nu se mai
+  // arhivează — dar nu se șterge: rămâne proba din care au ieșit celelalte.
+  "SPLIT",
 ] as const;
 export type DocumentStatus = (typeof DOCUMENT_STATUS)[number];
 
@@ -391,6 +394,34 @@ export type BankImportResult = {
     description: string | null;
     note: string | null;
   }[];
+};
+
+/**
+ * Un document găsit într-un teanc scanat, cu motivul tăieturii (§8).
+ *
+ * `reasons` este gol pentru primul segment: el nu este o tăietură, este
+ * începutul fișierului.
+ */
+export type SplitSegment = {
+  pageFrom: number;
+  pageTo: number;
+  documentType: string | null;
+  documentNumber: string | null;
+  reasons: string[];
+};
+
+/**
+ * Unde s-ar tăia teancul. Nimic nu s-a scris încă.
+ *
+ * `readable: false` înseamnă că PDF-ul nu are strat de text — o poză, un scan
+ * brut. Atunci un singur segment nu înseamnă „un document", înseamnă „nu am ce
+ * citi", iar ecranul trebuie să spună a doua variantă.
+ */
+export type SplitPlan = {
+  pageCount: number;
+  readable: boolean;
+  splittable: boolean;
+  segments: SplitSegment[];
 };
 
 export type CurrentUser = {
@@ -793,6 +824,16 @@ export type DocumentDetail = DocumentListItem & {
    * nu se citesc, și nu se ghicesc: o linie inventată intră direct în decont.
    */
   lines: DocumentLine[];
+  /**
+   * Din ce teanc a ieșit documentul, și ce pagini acoperă (§8, §26).
+   *
+   * `null` pentru documentele care nu vin dintr-o desfacere — adică aproape
+   * toate. Peste un an, „de unde a apărut factura asta" trebuie să aibă un
+   * răspuns, nu o presupunere.
+   */
+  splitFromId: string | null;
+  pageFrom: number | null;
+  pageTo: number | null;
 };
 
 /**

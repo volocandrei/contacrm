@@ -5,6 +5,7 @@ import type {
   AccountingPeriod,
   ActiveSession,
   BankImportResult,
+  SplitPlan,
   BankStatement,
   BankTransaction,
   MatchSuggestion,
@@ -286,6 +287,12 @@ export const contacts = {
 export const documents = {
   list: (params: QueryParams) => api.get<Paginated<DocumentListItem>>("/documents", params),
   get: (id: string) => api.get<DocumentDetail>(`/documents/${id}`),
+
+  /** Unde s-ar tăia teancul, și de ce. **Nu scrie nimic.** */
+  splitPreview: (id: string) => api.get<SplitPlan>(`/documents/${id}/split`),
+
+  /** Desface teancul. Originalul rămâne, marcat „desfăcut". */
+  split: (id: string) => api.post<DocumentListItem[]>(`/documents/${id}/split`),
   upload: (file: File, clientId?: string) =>
     api.upload<DocumentDetail>(
       "/documents/upload",

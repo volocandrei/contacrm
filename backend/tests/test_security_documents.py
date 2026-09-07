@@ -181,6 +181,11 @@ def document_routes(document_id: str) -> list[tuple[str, str, dict[str, object] 
         # granița pe care o verificăm aici este a **documentului**, iar ea
         # trebuie să se închidă înainte ca fișierul să conteze.
         ("GET", f"/api/v1/documents/{document_id}/files/{UNKNOWN_FILE_ID}", None),
+        # Desfacerea unui teanc: citirea planului și tăierea propriu-zisă.
+        # Amândouă ating documentul din cale, deci trec prin aceleași verificări
+        # ca restul — inclusiv „documentul altui cabinet nu există".
+        ("GET", f"/api/v1/documents/{document_id}/split", None),
+        ("POST", f"/api/v1/documents/{document_id}/split", {}),
     ]
 
 

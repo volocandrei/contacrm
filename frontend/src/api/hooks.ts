@@ -1152,3 +1152,35 @@ export function useImportStatement() {
     },
   });
 }
+
+// ── Desfacerea unui teanc (§8) ───────────────────────────────────────────────
+
+/**
+ * Unde s-ar tăia teancul.
+ *
+ * `enabled` doar pentru PDF-uri: pentru un XML sau o poză nu are ce cere, iar o
+ * interogare care întoarce mereu „nu se poate" pe fiecare deschidere de document
+ * este o interogare degeaba.
+ */
+export function useSplitPreview(documentId: string, isPdf: boolean) {
+  return useQuery({
+    queryKey: ["documents", documentId, "split"],
+    queryFn: () => documents.splitPreview(documentId),
+    enabled: isPdf,
+  });
+}
+
+/** Desface teancul. La succes, tot ce ține de documente se reîmprospătează. */
+export function useSplitDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) => documents.split(documentId),
+    onSuccess: () => {
+      // Teancul își schimbă starea, apar documente noi, se schimbă contoarele
+      // din bara laterală și coada de verificare.
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+      void queryClient.invalidateQueries({ queryKey: ["sidebar"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}

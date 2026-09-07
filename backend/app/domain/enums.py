@@ -47,6 +47,10 @@ class DocumentStatus(StrEnum):
     DUPLICATE = "DUPLICATE"
     REJECTED = "REJECTED"
     UNMATCHED = "UNMATCHED"
+    #: Teancul din care au ieșit alte documente. Nu se mai verifică și nu se mai
+    #: arhivează — dar **nu se șterge**: rămâne proba din care au ieșit celelalte,
+    #: iar fiecare bucată arată înapoi spre el.
+    SPLIT = "SPLIT"
 
 
 class DocumentSource(StrEnum):

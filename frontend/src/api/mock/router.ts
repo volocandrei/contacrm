@@ -284,6 +284,17 @@ const routes: Route[] = [
     pattern: "/documents/next-review",
     handler: ({ query }) => store.nextReviewDocument(query.after),
   },
+  {
+    // Inaintea lui `/documents/:id`, ca "split" sa nu fie citit ca id.
+    method: "GET",
+    pattern: "/documents/:id/split",
+    handler: ({ params }) => store.splitPreview(params.id!),
+  },
+  {
+    method: "POST",
+    pattern: "/documents/:id/split",
+    handler: ({ params }) => store.splitDocument(params.id!),
+  },
   { method: "GET", pattern: "/documents/:id", handler: ({ params }) => store.toDetail(store.getDocument(params.id!)) },
   {
     method: "PATCH",

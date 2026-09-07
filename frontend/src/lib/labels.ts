@@ -31,6 +31,9 @@ export const DOCUMENT_STATUS_LABEL: Record<DocumentStatus, string> = {
   DUPLICATE: "Duplicat",
   REJECTED: "Respins",
   UNMATCHED: "Client neidentificat",
+  // Nu „Împărțit": cuvântul spune ce s-a întâmplat cu fișierul, iar contabilul
+  // caută pe ecran teancul din care au ieșit facturile lui.
+  SPLIT: "Desfăcut în documente",
 };
 
 export const PERIOD_STATUS_LABEL: Record<PeriodStatus, string> = {

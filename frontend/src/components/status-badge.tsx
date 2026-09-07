@@ -34,6 +34,9 @@ const DOCUMENT_STATUS_TONE: Record<DocumentStatus, Tone> = {
   DUPLICATE: "warning",
   REJECTED: "danger",
   UNMATCHED: "danger",
+  // Neutru, nu verde: nu este o reușită, este o etapă. Verdele l-ar fi pus lângă
+  // „Aprobat" într-o listă în care ochiul caută ce mai are de făcut.
+  SPLIT: "muted",
 };
 
 const PERIOD_STATUS_TONE: Record<PeriodStatus, Tone> = {

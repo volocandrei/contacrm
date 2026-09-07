@@ -524,6 +524,10 @@ function buildDocument(
   return {
     id: `doc-${documentCounter}`,
     files: [],
+    // Documentele semănate nu vin dintr-un teanc desfăcut.
+    splitFromId: null,
+    pageFrom: null,
+    pageTo: null,
     // Liniile există doar pentru facturile electronice: acolo fiecare valoare
     // stă într-un element cu nume. Din PDF nu se citesc, și nu se ghicesc.
     lines: source === "EFACTURA" ? invoiceLines(`doc-${documentCounter}`) : [],

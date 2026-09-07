@@ -47,6 +47,7 @@ import { formatDateTime, formatFileSize } from "@/lib/format";
 import { buttonPrimary, focusRing, iconChip, mutedText, pillClass, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { InvoiceLines } from "@/features/documents/invoice-lines";
+import { SplitPanel } from "@/features/documents/split-panel";
 import type {
   DocumentAction,
   DocumentDetail,
@@ -373,6 +374,8 @@ function ReviewScreen({
           </ul>
         </div>
       )}
+
+      <SplitPanel document={document} />
 
       {document.files.length > 0 && <FilesBlock document={document} />}
 

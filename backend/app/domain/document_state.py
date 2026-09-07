@@ -41,6 +41,13 @@ _ALLOWED: Mapping[DocumentStatus, frozenset[DocumentStatus]] = MappingProxyType(
         S.DUPLICATE: frozenset({S.REVIEW_REQUIRED, S.PROCESSING}),
         # Eroare de procesare: se reîncearcă.
         S.ERROR: frozenset({S.PROCESSING, S.REJECTED}),
+        # Teancul desfăcut. Nu avansează de la sine — ce era de făcut cu el s-a
+        # făcut, iar bucățile lui își urmează fiecare drumul — dar poate fi
+        # redeschis de un om care hotărăște că tăietura a fost greșită. Ca la
+        # arhivare: „terminal" înseamnă „nu merge singur mai departe", nu
+        # „închis pe veci". O stare fără nicio ieșire ar bloca documentul
+        # definitiv, iar asta este exact ce apără `test_every_status_has_an_entry`.
+        S.SPLIT: frozenset({S.REVIEW_REQUIRED}),
     }
 )
 
@@ -55,7 +62,7 @@ _REQUIRES_EXPLICIT_REPROCESS: frozenset[tuple[DocumentStatus, DocumentStatus]] =
 )
 
 # Stări din care documentul nu mai avansează de la sine.
-TERMINAL_STATUSES: frozenset[DocumentStatus] = frozenset({S.ARCHIVED, S.REJECTED})
+TERMINAL_STATUSES: frozenset[DocumentStatus] = frozenset({S.ARCHIVED, S.REJECTED, S.SPLIT})
 
 # Stări în care un document este vizibil ca „de lucru" pentru operator.
 OPEN_STATUSES: frozenset[DocumentStatus] = frozenset(

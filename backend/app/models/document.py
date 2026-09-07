@@ -312,6 +312,19 @@ class Document(Base, OrganizationMixin, TimestampMixin, SoftDeleteMixin):
     rejected_reason: Mapped[str | None] = mapped_column(String(512), default=None)
     archived_at: Mapped[datetime | None] = mapped_column(default=None)
 
+    # ── Proveniența dintr-un teanc desfăcut (§8, §26) ───────────────────────
+    #
+    # Peste un an, întrebarea „de unde a apărut factura asta" trebuie să aibă un
+    # răspuns, nu o presupunere. Pe teanc: `split_at`. Pe fiecare bucată:
+    # din ce teanc și de la ce pagină până la ce pagină.
+    split_from_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), default=None
+    )
+    page_from: Mapped[int | None] = mapped_column(Integer, default=None)
+    page_to: Mapped[int | None] = mapped_column(Integer, default=None)
+    #: Când a fost desfăcut teancul. Numai pe teanc, nu pe bucăți.
+    split_at: Mapped[datetime | None] = mapped_column(default=None)
+
     document_type: Mapped[DocumentType | None] = relationship(lazy="joined")
     versions: Mapped[list[DocumentVersion]] = relationship(
         back_populates="document",

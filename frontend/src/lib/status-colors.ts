@@ -18,6 +18,8 @@ export const STATUS_ARC: Record<DocumentStatus, string> = {
   DUPLICATE: "stroke-slate-400",
   ERROR: "stroke-red-500",
   REJECTED: "stroke-red-400",
+  // Gri deschis: teancul desfăcut nu mai este muncă, dar nici o reușită contabilă.
+  SPLIT: "stroke-slate-300",
 };
 
 /** Aceeași culoare, ca fundal — pentru bulinele din legendă. */
