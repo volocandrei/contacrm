@@ -22,6 +22,7 @@ import { useFilterParams } from "@/hooks/use-filter-params";
 import { avatarTone, initials } from "@/lib/avatar";
 import { iconChip, mutedText, pillClass } from "@/lib/ui";
 import { cn } from "@/lib/utils";
+import { whatsappHref } from "@/lib/whatsapp";
 import type { ContactListItem } from "@/types/domain";
 
 const PAGE_SIZE = 30;
@@ -130,17 +131,31 @@ function ContactRow({ contact }: { contact: ContactListItem }) {
             {contact.phone}
           </Action>
         )}
-        {contact.whatsappNumber && (
-          <Action
-            href={`https://wa.me/${contact.whatsappNumber.replace(/\D/g, "")}`}
-            Icon={MessageCircle}
-            label="Deschide WhatsApp"
-          >
-            WhatsApp
-          </Action>
-        )}
+        {/* Numărul se normalizează, nu se curăță de tot ce nu e cifră:
+            `0722 123 456` curățat așa dădea `wa.me/0722123456`, adică un
+            număr fără prefix de țară, pe care WhatsApp îl refuză. Butonul părea
+            că funcționează. */}
+        <WhatsAppAction number={contact.whatsappNumber} />
       </div>
     </li>
+  );
+}
+
+/**
+ * Butonul de WhatsApp, sau nimic.
+ *
+ * Dispare când numărul nu se poate transforma într-o formă pe care WhatsApp o
+ * acceptă — un interior de firmă, o notiță. Un link care se deschide într-o
+ * eroare este mai rău decât un buton absent: omul apasă o dată și pe urmă nu mai
+ * are încredere în niciunul.
+ */
+function WhatsAppAction({ number }: { number: string | null }) {
+  const href = whatsappHref(number);
+  if (!href) return null;
+  return (
+    <Action href={href} Icon={MessageCircle} label="Deschide WhatsApp">
+      WhatsApp
+    </Action>
   );
 }
 

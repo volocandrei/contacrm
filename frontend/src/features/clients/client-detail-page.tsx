@@ -43,6 +43,7 @@ import {
 } from "@/api/hooks";
 import { ApiError } from "@/api/types";
 import { ErrorState, LoadingState, Panel } from "@/components/page";
+import { WhatsAppLink } from "@/components/whatsapp-link";
 import { usePermissionCheck } from "@/features/auth/use-auth";
 import { ClientForm, ContactForm } from "@/features/clients/client-form";
 import {
@@ -220,7 +221,9 @@ function GeneralTab({ clientId }: { clientId: string }) {
             <Row label="Rol" value={primary.role} />
             <Row label="Email" value={primary.email ?? "—"} />
             <Row label="Telefon" value={primary.phone ?? "—"} />
-            <Row label="WhatsApp" value={primary.whatsappNumber ?? "—"} />
+            {/* Numărul devine link: un contact pe care trebuie să-l copiezi cu
+                ochiul în telefon nu este o fișă de client, este o listă. */}
+            <Row label="WhatsApp" value={<WhatsAppLink number={primary.whatsappNumber} />} />
           </dl>
         ) : (
           <p className="text-sm text-slate-500 dark:text-slate-400">Niciun contact principal definit.</p>
@@ -329,7 +332,7 @@ function ContactsTab({ clientId }: { clientId: string }) {
                 <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{contact.email ?? "—"}</td>
                 <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{contact.phone ?? "—"}</td>
                 <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                  {contact.whatsappNumber ?? "—"}
+                  <WhatsAppLink number={contact.whatsappNumber} />
                 </td>
                 <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                   {contact.isActive ? "Activ" : "Inactiv"}
@@ -905,7 +908,7 @@ function TemplateShortcuts({ clientId, configured }: { clientId: string; configu
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3">
       <dt className="shrink-0 text-slate-500 dark:text-slate-400">{label}</dt>
