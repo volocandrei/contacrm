@@ -291,6 +291,108 @@ export type ActiveSession = {
   current: boolean;
 };
 
+/**
+ * Unde a ajuns o tranzacție bancară în reconciliere (§12).
+ *
+ * Sunt cinci, nu două, fiindcă „potrivit / nepotrivit" ar ascunde exact ce caută
+ * contabilul: ce a propus sistemul și el n-a confirmat, și ce a decis cineva că
+ * nu are nicio factură în spate. Un comision bancar nu este „nepotrivit", este
+ * **lămurit** — iar dacă cele două arată la fel, lista nu se mai golește.
+ */
+export type BankTransactionStatus =
+  | "UNMATCHED"
+  | "SUGGESTED"
+  | "MATCHED"
+  | "IGNORED"
+  | "NEEDS_REVIEW";
+
+export type BankDirection = "DEBIT" | "CREDIT";
+
+/** Un extras importat: contul, perioada, și cât mai are de lucru pe el. */
+export type BankStatement = {
+  id: string;
+  clientId: string | null;
+  clientName: string | null;
+  bankName: string | null;
+  iban: string | null;
+  statementNumber: string | null;
+  currency: string | null;
+  periodStart: string;
+  periodEnd: string;
+  openingBalance: string | null;
+  closingBalance: string | null;
+  transactionCount: number;
+  /** Câte rânduri mai așteaptă un om. Singurul număr după care se alege extrasul. */
+  openCount: number;
+};
+
+/** O legătură confirmată: pe ce document, cât, și de ce s-a propus. */
+export type TransactionMatch = {
+  documentId: string;
+  documentNumber: string | null;
+  amount: string;
+  confidence: number | null;
+  reasons: string | null;
+};
+
+/** Un rând din extras. Suma are semn: negativă la plăți, pozitivă la încasări. */
+export type BankTransaction = {
+  id: string;
+  statementId: string;
+  clientId: string | null;
+  position: number;
+  bookingDate: string;
+  valueDate: string | null;
+  description: string | null;
+  amount: string;
+  currency: string | null;
+  direction: BankDirection;
+  counterpartyName: string | null;
+  counterpartyIban: string | null;
+  reference: string | null;
+  status: BankTransactionStatus;
+  note: string | null;
+  allocated: string;
+  unallocated: string;
+  matches: TransactionMatch[];
+};
+
+/**
+ * O propunere de potrivire. **Nu** o legătură: se scrie doar dacă apasă cineva.
+ *
+ * `reasons` nu este decor. Fără ele, contabilul fie verifică tot de la zero — și
+ * atunci automatizarea n-a economisit nimic — fie acceptă fără să verifice.
+ */
+export type MatchSuggestion = {
+  documentId: string;
+  documentNumber: string | null;
+  documentDate: string | null;
+  partnerName: string | null;
+  total: string | null;
+  /** Cât s-ar aloca la apăsare: minimul dintre restul plății și restul facturii. */
+  amount: string;
+  score: number;
+  reasons: string[];
+};
+
+/** Ce s-ar întâmpla (previzualizare) sau ce s-a întâmplat (import). */
+export type BankImportResult = {
+  applied: boolean;
+  statementId: string | null;
+  created: number;
+  skipped: number;
+  failed: number;
+  /** Diferența dintre soldul declarat și cel care iese din tranzacții. Zero e bine. */
+  balanceGap: string | null;
+  rows: {
+    line: number;
+    outcome: ImportOutcome;
+    amount: string | null;
+    description: string | null;
+    note: string | null;
+  }[];
+};
+
 export type CurrentUser = {
   id: string;
   fullName: string;

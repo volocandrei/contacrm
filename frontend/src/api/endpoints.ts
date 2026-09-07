@@ -4,6 +4,10 @@ import type { Paginated, QueryParams } from "@/api/types";
 import type {
   AccountingPeriod,
   ActiveSession,
+  BankImportResult,
+  BankStatement,
+  BankTransaction,
+  MatchSuggestion,
   AnafMandate,
   AnafStatus,
   AnafSyncResult,
@@ -101,6 +105,44 @@ export const auth = {
 
   /** Închide toate celelalte ferestre; a mea rămâne. */
   revokeOtherSessions: () => api.post<{ closed: number }>("/auth/sessions/revoke-others"),
+};
+
+/**
+ * Extrasele bancare și reconcilierea (§11–§15).
+ *
+ * `suggestions` **citește**. Nimic nu se leagă din ea, oricât de sigură ar fi
+ * propunerea: legătura se scrie numai din `match`, la apăsarea unui om.
+ */
+export const bank = {
+  statements: (clientId?: string) =>
+    api.get<BankStatement[]>("/bank/statements", clientId ? { clientId } : {}),
+
+  /** `apply: false` nu scrie nimic — spune doar ce s-ar întâmpla. */
+  importStatement: (file: File, params: QueryParams) =>
+    uploadCsv<BankImportResult>("/bank/statements/import", file, params),
+
+  transactions: (params: QueryParams) =>
+    api.get<BankTransaction[]>("/bank/transactions", params),
+
+  suggestions: (transactionId: string) =>
+    api.get<MatchSuggestion[]>(`/bank/transactions/${transactionId}/suggestions`),
+
+  match: (transactionId: string, documentId: string, amount?: string) =>
+    api.post<BankTransaction>(`/bank/transactions/${transactionId}/match`, {
+      documentId,
+      amount: amount ?? null,
+    }),
+
+  unmatch: (transactionId: string, documentId: string) =>
+    api.delete<BankTransaction>(
+      `/bank/transactions/${transactionId}/match/${documentId}`,
+    ),
+
+  ignore: (transactionId: string, note: string | null) =>
+    api.post<BankTransaction>(`/bank/transactions/${transactionId}/ignore`, { note }),
+
+  reopen: (transactionId: string) =>
+    api.post<BankTransaction>(`/bank/transactions/${transactionId}/reopen`),
 };
 
 export const reports = {

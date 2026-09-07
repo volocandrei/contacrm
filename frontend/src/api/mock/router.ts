@@ -6,6 +6,7 @@
 import { ApiError } from "@/api/types";
 import type { RoleCode } from "@/types/domain";
 import * as store from "@/api/mock/store";
+import * as bank from "@/api/mock/bank";
 
 type Ctx = {
   params: Record<string, string>;
@@ -48,6 +49,34 @@ const routes: Route[] = [
       store.changeOwnPassword(str(body, "currentPassword"), str(body, "newPassword")),
   },
   { method: "GET", pattern: "/auth/sessions", handler: () => store.listSessions() },
+  { method: "GET", pattern: "/bank/statements", handler: () => bank.listStatements() },
+  { method: "GET", pattern: "/bank/transactions", handler: () => bank.listTransactions() },
+  {
+    method: "GET",
+    pattern: "/bank/transactions/:id/suggestions",
+    handler: ({ params }) => bank.suggestions(params.id!),
+  },
+  {
+    method: "POST",
+    pattern: "/bank/transactions/:id/match",
+    handler: ({ params, body }) =>
+      bank.match(params.id!, str(body, "documentId"), (body.amount as string | null) ?? null),
+  },
+  {
+    method: "DELETE",
+    pattern: "/bank/transactions/:id/match/:documentId",
+    handler: ({ params }) => bank.unmatch(params.id!, params.documentId!),
+  },
+  {
+    method: "POST",
+    pattern: "/bank/transactions/:id/ignore",
+    handler: ({ params, body }) => bank.ignore(params.id!, (body.note as string | null) ?? null),
+  },
+  {
+    method: "POST",
+    pattern: "/bank/transactions/:id/reopen",
+    handler: ({ params }) => bank.reopen(params.id!),
+  },
   {
     method: "POST",
     pattern: "/auth/sessions/revoke-others",

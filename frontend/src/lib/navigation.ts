@@ -152,6 +152,15 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: "clients:read",
       },
       {
+        // Sub „Contabilitate", nu sub „Documente": un extras nu se verifică și nu
+        // se arhivează, se **desface** în rânduri care își caută factura. Munca
+        // de acolo este a contabilului, nu a operatorului care urcă fișiere.
+        label: "Bancă",
+        path: "/contabilitate/banca",
+        Icon: Landmark,
+        permission: "documents:read",
+      },
+      {
         label: "Perioade",
         path: "/contabilitate/perioade",
         Icon: CalendarRange,

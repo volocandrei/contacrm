@@ -11,6 +11,7 @@ import {
   administration,
   assistant,
   auth,
+  bank,
   clients,
   contacts,
   dashboard,
@@ -1056,6 +1057,98 @@ export function useRevokeOtherSessions() {
     mutationFn: () => auth.revokeOtherSessions(),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
+  });
+}
+
+// ── Bancă (§11–§15) ──────────────────────────────────────────────────────────
+
+/** Extrasele importate, cel mai recent întâi. */
+export function useBankStatements(clientId?: string) {
+  return useQuery({
+    queryKey: ["bank", "statements", clientId ?? null],
+    queryFn: () => bank.statements(clientId),
+  });
+}
+
+/** Rândurile unui extras, în ordinea din fișier. */
+export function useBankTransactions(params: QueryParams) {
+  return useQuery({
+    queryKey: ["bank", "transactions", params],
+    queryFn: () => bank.transactions(params),
+  });
+}
+
+/**
+ * Ce facturi ar putea fi plata asta.
+ *
+ * `enabled` pe rândul deschis: propunerile costă o interogare cu candidați, iar
+ * cerute pentru toate cele trei sute de rânduri deodată ar fi ținut ecranul
+ * blocat pentru un răspuns de care omul are nevoie pe unul singur.
+ */
+export function useMatchSuggestions(transactionId: string | null) {
+  return useQuery({
+    queryKey: ["bank", "suggestions", transactionId],
+    queryFn: () => bank.suggestions(transactionId!),
+    enabled: !!transactionId,
+  });
+}
+
+/** Ce se invalidează după orice schimbare pe o tranzacție. */
+function useBankMutation<TArgs>(fn: (args: TArgs) => Promise<unknown>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      // Tot: lista de tranzacții, contorul de pe extras și propunerile — o
+      // factură închisă nu mai are voie să apară ca propunere pe alt rând.
+      void queryClient.invalidateQueries({ queryKey: ["bank"] });
+    },
+  });
+}
+
+export function useMatchTransaction() {
+  return useBankMutation(
+    ({
+      transactionId,
+      documentId,
+      amount,
+    }: {
+      transactionId: string;
+      documentId: string;
+      amount?: string;
+    }) => bank.match(transactionId, documentId, amount),
+  );
+}
+
+export function useUnmatchTransaction() {
+  return useBankMutation(({ transactionId, documentId }: { transactionId: string; documentId: string }) =>
+    bank.unmatch(transactionId, documentId),
+  );
+}
+
+export function useIgnoreTransaction() {
+  return useBankMutation(({ transactionId, note }: { transactionId: string; note: string | null }) =>
+    bank.ignore(transactionId, note),
+  );
+}
+
+export function useReopenTransaction() {
+  return useBankMutation(({ transactionId }: { transactionId: string }) =>
+    bank.reopen(transactionId),
+  );
+}
+
+/** Importul unui extras. `apply: false` este previzualizarea. */
+export function useImportStatement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, params }: { file: File; params: QueryParams }) =>
+      bank.importStatement(file, params),
+    onSuccess: (_result, variables) => {
+      if (variables.params.apply) {
+        void queryClient.invalidateQueries({ queryKey: ["bank"] });
+      }
     },
   });
 }
