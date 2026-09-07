@@ -1,0 +1,5 @@
+# Demonstrația nu are ce căuta într-un motor de căutare: datele sunt sintetice,
+# iar autentificarea acceptă orice parolă. Antetul X-Robots-Tag din vercel.json
+# spune același lucru — fișierul acesta este pentru cine se uită înainte să ceară.
+User-agent: *
+Disallow: /
