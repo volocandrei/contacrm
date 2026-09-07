@@ -20,6 +20,7 @@ import {
   getClientFeeHistory,
   getFeeMonth,
   listClients,
+  listDocuments,
   markFeePaid,
   mockLogin,
   setClientFee,
@@ -268,5 +269,20 @@ describe("istoricul unui client", () => {
     mockLogin("contabil@contacrm.test");
 
     expect(() => getClientFeeHistory(clientId)).toThrow(/permisiune/i);
+  });
+});
+
+describe("cât de mult de lucru pentru câți bani", () => {
+  it("rândul poartă numărul de documente al lunii", () => {
+    const month = getFeeMonth(MONTH);
+
+    // Setul sintetic are documente pe luna în curs; dacă nu ar avea, testul de
+    // mai jos ar trece degeaba.
+    expect(month.rows.some((row) => row.documents > 0)).toBe(true);
+    for (const row of month.rows) {
+      expect(row.documents).toBe(
+        listDocuments({ clientId: row.clientId, referenceMonth: MONTH, pageSize: 200 }).total,
+      );
+    }
   });
 });

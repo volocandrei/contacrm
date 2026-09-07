@@ -20,6 +20,7 @@ import { Link } from "react-router-dom";
 import { CircleAlert, LoaderCircle, Play, Undo2, Wallet } from "lucide-react";
 import { useFees, useGenerateFees, useMarkFeePaid, useUnmarkFeePaid } from "@/api/hooks";
 import { ApiError } from "@/api/types";
+import { ExportButton } from "@/components/export-button";
 import { MonthFilter } from "@/components/form-controls";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { usePermissionCheck } from "@/features/auth/use-auth";
@@ -41,9 +42,18 @@ export function FeesPage() {
         title="Onorarii"
         description="Cât are cabinetul de încasat luna aceasta, de la cine, și ce a rămas din lunile trecute."
         actions={
-          canManage && data ? (
-            <GenerateMonth referenceMonth={values.referenceMonth} rows={data.rows} />
-          ) : undefined
+          <>
+            <ExportButton
+              filters={{ referenceMonth: values.referenceMonth }}
+              path="/fees/register.csv"
+              fallbackName="onorarii.csv"
+              label="Descarcă luna"
+              title="Un rând pe client, cu onorariul, încasarea și numărul de documente. Se deschide în Excel."
+            />
+            {canManage && data && (
+              <GenerateMonth referenceMonth={values.referenceMonth} rows={data.rows} />
+            )}
+          </>
         }
       />
 
@@ -88,6 +98,15 @@ export function FeesPage() {
                   <tr>
                     <th scope="col" className="px-5 py-2.5">Client</th>
                     <th scope="col" className="px-5 py-2.5 text-right">Onorariu</th>
+                    {/* Volumul stă lângă sumă, nu în alt ecran: întrebarea „cine
+                        îmi dă cel mai mult de lucru pe cei mai puțini bani" se
+                        pune uitându-te la amândouă deodată. */}
+                    <th scope="col" className="px-5 py-2.5 text-right" title="Documente primite de la client în luna aceasta">
+                      Documente
+                    </th>
+                    <th scope="col" className="px-5 py-2.5 text-right" title="Onorariul împărțit la numărul de documente. Nu este o măsură a efortului, dar este singura pe care o avem.">
+                      lei/doc.
+                    </th>
                     <th scope="col" className="px-5 py-2.5">Încasat</th>
                     <th scope="col" className="px-5 py-2.5" />
                   </tr>
@@ -234,6 +253,12 @@ function Row({
           <span className={cn("text-xs", mutedText)}>fără onorariu</span>
         )}
       </td>
+      <td className="px-5 py-2.5 text-right tabular-nums text-slate-700 dark:text-slate-300">
+        {row.documents || <span className={mutedText}>—</span>}
+      </td>
+      <td className="px-5 py-2.5 text-right tabular-nums">
+        <PerDocument row={row} />
+      </td>
       <td className="px-5 py-2.5">
         {row.isPaid && row.paidOn !== null ? (
           <span className="text-sm text-slate-700 dark:text-slate-300">
@@ -250,6 +275,32 @@ function Row({
         {canManage && row.isGenerated && <PaymentButton row={row} referenceMonth={referenceMonth} />}
       </td>
     </tr>
+  );
+}
+
+/**
+ * Cât iese onorariul pe document.
+ *
+ * **Nu este o măsură a efortului** — o factură cu treizeci de poziții și un bon
+ * de benzină se numără la fel — dar este singura pe care cabinetul o are, și pusă
+ * lângă sumă răspunde la întrebarea care altfel se pune o dată pe an, din
+ * memorie: pe cine am subevaluat.
+ *
+ * Fără documente nu se împarte nimic: un „∞" sau un zero ar fi două feluri de a
+ * minți despre o lună în care clientul n-a trimis nimic.
+ */
+function PerDocument({ row }: { row: FeeRow }) {
+  if (!row.isGenerated || row.amount === null || row.documents === 0) {
+    return <span className={mutedText}>—</span>;
+  }
+  const value = Number(row.amount) / row.documents;
+  return (
+    <span
+      className="text-slate-700 dark:text-slate-300"
+      title={`${formatMoney(row.amount, row.currency)} pentru ${row.documents} documente`}
+    >
+      {formatMoney(value.toFixed(2), row.currency)}
+    </span>
   );
 }
 

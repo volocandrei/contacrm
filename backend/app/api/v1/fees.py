@@ -15,7 +15,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Response, status
 from pydantic import Field
 
 from app.api.deps import DbSession, require_permission
@@ -25,8 +25,10 @@ from app.domain.permissions import Permission
 from app.models.fee import DEFAULT_CURRENCY, ClientFee
 from app.models.user import User
 from app.schemas.common import ApiModel
+from app.services import fee_register
 from app.services.audit import AuditService
 from app.services.fees import Arrear, FeeRow, FeeService, FeeTotals
+from app.services.report_service import ReportService
 
 router = APIRouter(route_class=CommittingRoute, prefix="/fees", tags=["fees"])
 
@@ -46,6 +48,10 @@ class FeeRowOut(ApiModel):
     note: str | None
     is_generated: bool
     is_paid: bool
+    #: Câte documente a trimis clientul în luna aceasta. Nu este o măsură a
+    #: efortului, dar este singura pe care cabinetul o are — și răspunde la
+    #: întrebarea „cine îmi dă cel mai mult de lucru pe cei mai puțini bani".
+    documents: int
 
 
 class FeeTotalsOut(ApiModel):
@@ -117,7 +123,7 @@ class PaymentKey(ApiModel):
     reference_month: str = Field(pattern=REFERENCE_MONTH)
 
 
-def _row_out(row: FeeRow) -> FeeRowOut:
+def _row_out(row: FeeRow, documents: int = 0) -> FeeRowOut:
     return FeeRowOut(
         client_id=row.client_id,
         client_name=row.client_name,
@@ -130,6 +136,7 @@ def _row_out(row: FeeRow) -> FeeRowOut:
         note=row.note,
         is_generated=row.is_generated,
         is_paid=row.is_paid,
+        documents=documents,
     )
 
 
@@ -155,9 +162,12 @@ def _arrear_out(row: Arrear) -> ArrearOut:
 def _month_out(service: FeeService, reference_month: str) -> FeeMonthOut:
     """Un singur loc care compune ecranul, ca toate rutele să spună la fel."""
     rows = service.month(reference_month)
+    documents = ReportService(service.session, service.organization_id).documents_per_client(
+        reference_month
+    )
     return FeeMonthOut(
         reference_month=reference_month,
-        rows=[_row_out(row) for row in rows],
+        rows=[_row_out(row, documents.get(row.client_id, 0)) for row in rows],
         totals=[_totals_out(item) for item in service.totals(rows)],
         unpaid_clients=service.unpaid_count(rows),
         arrears=[_arrear_out(row) for row in service.arrears(reference_month)],
@@ -188,6 +198,33 @@ def fee_month(
     session: DbSession, user: FeeReader, filters: Annotated[MonthQuery, Query()]
 ) -> FeeMonthOut:
     return _month_out(FeeService(session, user.organization_id), filters.reference_month)
+
+
+@router.get("/register.csv")
+def register_csv(
+    session: DbSession, user: FeeReader, filters: Annotated[MonthQuery, Query()]
+) -> Response:
+    """Onorariile lunii, ca fișier.
+
+    Cine emite facturile lucrează în alt program, iar cine ține evidența le vrea
+    în Excel. Până acum le retastau amândoi, client cu client, de pe ecran.
+    """
+    service = FeeService(session, user.organization_id)
+    rows = service.month(filters.reference_month)
+    documents = ReportService(session, user.organization_id).documents_per_client(
+        filters.reference_month
+    )
+    return Response(
+        content=fee_register.to_csv(rows, documents),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{fee_register.filename(filters.reference_month)}"'
+            ),
+            # Sumele clienților nu au ce căuta în cache-ul unui proxy.
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.post("/generate", response_model=FeeMonthOut)
@@ -225,7 +262,9 @@ def client_history(session: DbSession, user: FeeReader, client_id: uuid.UUID) ->
     martie" — și la care, altfel, se răspunde paginând ecranul de onorarii lună cu
     lună până se dă de ea.
     """
-    return [_row_out(row) for row in FeeService(session, user.organization_id).history(client_id)]
+    rows = FeeService(session, user.organization_id).history(client_id)
+    documents = ReportService(session, user.organization_id).documents_per_month(client_id)
+    return [_row_out(row, documents.get(row.period, 0)) for row in rows]
 
 
 @router.put("/clients/{client_id}", response_model=ClientFeeOut)
@@ -272,7 +311,7 @@ def mark_paid(session: DbSession, user: FeeManager, payload: PaymentIn) -> FeeRo
         user_id=user.id,
         user_name=user.full_name,
     )
-    return _row_out(service.row(payload.client_id, payload.reference_month))
+    return _single_row(service, payload.client_id, payload.reference_month)
 
 
 @router.delete("/payments", response_model=FeeRowOut)
@@ -291,7 +330,15 @@ def unmark_paid(
         user_id=user.id,
         user_name=user.full_name,
     )
-    return _row_out(service.row(key.client_id, key.reference_month))
+    return _single_row(service, key.client_id, key.reference_month)
+
+
+def _single_row(service: FeeService, client_id: uuid.UUID, reference_month: str) -> FeeRowOut:
+    """Un rând, compus la fel ca cele din lista lunii — volumul inclusiv."""
+    documents = ReportService(service.session, service.organization_id).documents_per_client(
+        reference_month
+    )
+    return _row_out(service.row(client_id, reference_month), documents.get(client_id, 0))
 
 
 __all__ = ["router"]

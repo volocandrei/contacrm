@@ -277,6 +277,41 @@ copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email,
 verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
 confirmat.
 
+### Cât de mult de lucru pentru câți bani (7 septembrie 2026)
+
+Un cabinet știe cine îi plătește prost. Îl știe **din memorie**, o dată pe an, când
+se uită peste onorarii și își aduce aminte cât a muncit pentru fiecare — adică
+exact felul de cunoaștere care se pierde și care nu se poate arăta nimănui.
+
+Aplicația avea deja amândouă cifrele, în ecrane diferite: onorariul, de ieri, și
+numărul de documente al lunii, din rapoarte. Pe ecranul de onorarii stau acum una
+lângă alta, plus împărțirea lor.
+
+**Ce nu este.** Numărul de documente **nu este o măsură a efortului** — o factură
+cu treizeci de poziții și un bon de benzină se numără la fel. Este singura măsură
+pe care cabinetul o are, iar coloana o spune pe față: se numește „lei/doc.", nu
+„profitabilitate". O cifră cu nume mare peste o măsură mică este felul obișnuit în
+care un raport ajunge să fie crezut mai mult decât merită.
+
+**O singură numărătoare.** `ReportService.documents_per_client` trece prin aceleași
+condiții ca raportul, nu prin altele scrise încă o dată: două numărători ar fi
+ajuns, într-o zi, la două cifre diferite pentru aceeași lună — una pe raport și
+alta lângă bani. Are test care compară cele două răspunsuri.
+
+Fără documente nu se împarte nimic: rândul scrie „—". Un „∞" sau un zero ar fi
+două feluri de a minți despre o lună în care clientul n-a trimis nimic.
+
+**Luna iese și ca fișier.** `GET /fees/register.csv` — un rând pe client, cu
+onorariul, încasarea și numărul de documente, în forma pe care o deschide Excel
+românesc (`;`, BOM, CRLF, virgulă la zecimale). Cine emite facturile lucrează în
+alt program, iar cine ține evidența le vrea în Excel; până acum le retastau
+amândoi, de pe ecran. Fișierul conține și clienții fără onorariu stabilit: unul
+care i-ar tăcea ar arăta identic într-un cabinet pus la punct și în unul care a
+uitat jumătate din listă.
+
+`ExportButton` s-a mutat din ecranul de rapoarte în `components/`: a doua copie
+s-ar fi despărțit de prima la primul defect reparat într-una din ele.
+
 ### Trei ecrane spuneau că aplicația nu poate trimite (7 septembrie 2026)
 
 Găsit trecând în revistă ce **afirmă** interfața, nu ce face codul — aceeași

@@ -957,6 +957,13 @@ export interface FeeRow {
   note: string | null;
   isGenerated: boolean;
   isPaid: boolean;
+  /**
+   * Câte documente a trimis clientul în luna aceasta.
+   *
+   * Nu este o măsură a efortului, dar este singura pe care cabinetul o are —
+   * iar pusă lângă onorariu spune cine este subevaluat.
+   */
+  documents: number;
 }
 
 /** Cifrele lunii, pentru o monedă. */

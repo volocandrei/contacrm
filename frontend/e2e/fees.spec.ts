@@ -11,6 +11,7 @@
  * 3. **Banii nu se văd de la orice rol.** Lista este ordinea în care cabinetul
  *    își ține clienții după bani.
  */
+import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import { ACCOUNTS, SEED_CLIENT, loginAs } from "./support";
 
@@ -82,6 +83,28 @@ test("fișa clientului arată onorariul și ultimele luni facturate", async ({ p
 
   await expect(page.getByRole("heading", { name: "Onorariu lunar" })).toBeVisible();
   await expect(page.getByText("Ultimele luni facturate")).toBeVisible();
+});
+
+test("luna se descarcă drept fișier, cu numele pus de server", async ({ page }) => {
+  // Motivul pentru care există fișierul: cine emite facturile lucrează în alt
+  // program, iar până acum retasta sumele de pe ecran, client cu client.
+  await loginAs(page, ACCOUNTS.admin);
+  await page.goto("/crm/onorarii");
+
+  const started = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Descarcă luna" }).click();
+  const file = await started;
+
+  expect(file.suggestedFilename()).toMatch(/^onorarii-\d{4}-\d{2}\.csv$/);
+
+  const text = (await readFile((await file.path())!, "utf8")).replace(/^﻿/, "");
+  const lines = text.trim().split("\r\n");
+  const columns = lines[0]!.split(";");
+  expect(columns).toContain("Client");
+  expect(columns).toContain("Documente");
+
+  const row = lines.slice(1).find((line) => line.startsWith(SEED_CLIENT.name));
+  expect(row, `${SEED_CLIENT.name} lipsește din fișier`).toBeDefined();
 });
 
 test("un contabil nu ajunge la onorarii", async ({ page }) => {

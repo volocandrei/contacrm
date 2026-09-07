@@ -25,9 +25,10 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.domain.enums import ClientStatus
+from app.domain.enums import ClientStatus, DocumentSource, DocumentStatus
 from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS, RoleCode
 from app.models.client import Client
+from app.models.document import Document
 from app.models.fee import ClientFee, FeeEntry
 from app.models.organization import Organization
 from app.models.user import Permission, Role, User
@@ -477,3 +478,159 @@ class TestTheClientHistory:
         stranger = make_client(db, stranger_org, "Străin SRL")
 
         assert as_admin.get(f"{URL}/clients/{stranger.id}/history").status_code == 404
+
+
+class TestTheFileThatLeaves:
+    """Un număr care nu poate ieși din aplicație se copiază de mână."""
+
+    def test_it_has_the_romanian_excel_shape(self, as_admin: TestClient, alfa: Client) -> None:
+        """Aceleași patru reguli ca la registrul de documente, verificate din nou.
+
+        Un al doilea export scris de la zero le-ar fi respectat pe unele și nu pe
+        toate, iar un fișier care se deschide „aproape bine" se repară de mână, de
+        fiecare dată.
+        """
+        set_fee(as_admin, alfa, "1234.50")
+        generate(as_admin)
+
+        response = as_admin.get(f"{URL}/register.csv", params={"referenceMonth": MONTH})
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/csv")
+        assert f"onorarii-{MONTH}.csv" in response.headers["content-disposition"]
+        assert response.headers["cache-control"] == "no-store"
+
+        text = response.content.decode("utf-8")
+        assert text.startswith("﻿"), "fără BOM, Excel citește diacriticele greșit"
+        assert ";" in text.splitlines()[0], "separatorul trebuie să fie punct și virgulă"
+        assert "\r\n" in text
+        # Virgulă la zecimale, fără separator de mii: altfel Excel românesc nu
+        # adună coloana și nimeni nu observă până la primul total.
+        assert "1234,50" in text
+        assert "1234.50" not in text
+
+    def test_it_lists_the_clients_without_a_fee_too(
+        self, as_admin: TestClient, alfa: Client, beta: Client
+    ) -> None:
+        """Un fișier care i-ar tăcea ar arăta identic într-un cabinet pus la punct
+        și în unul care a uitat jumătate din listă."""
+        set_fee(as_admin, alfa, "500.00")
+        generate(as_admin)
+
+        text = as_admin.get(f"{URL}/register.csv", params={"referenceMonth": MONTH}).content.decode(
+            "utf-8"
+        )
+
+        assert alfa.name in text
+        assert beta.name in text
+
+    def test_another_organizations_clients_are_not_in_it(
+        self, as_admin: TestClient, db: Session, alfa: Client
+    ) -> None:
+        stranger_org = Organization(name="Alt Cabinet SRL")
+        db.add(stranger_org)
+        db.flush()
+        stranger = make_client(db, stranger_org, "Străin SRL")
+        db.add(
+            FeeEntry(
+                organization_id=stranger_org.id,
+                client_id=stranger.id,
+                period=MONTH,
+                amount=Decimal("900.00"),
+                currency="RON",
+            )
+        )
+        db.flush()
+
+        text = as_admin.get(f"{URL}/register.csv", params={"referenceMonth": MONTH}).content.decode(
+            "utf-8"
+        )
+
+        assert stranger.name not in text
+
+    def test_an_accountant_cannot_download_it(
+        self, api: TestClient, db: Session, org: Organization, roles: dict[RoleCode, Role]
+    ) -> None:
+        user = make_user(db, org, roles, email="contabil@contacrm.test", role=RoleCode.ACCOUNTANT)
+        api.post("/api/v1/auth/login", json={"email": user.email, "password": PASSWORD})
+
+        response = api.get(f"{URL}/register.csv", params={"referenceMonth": MONTH})
+
+        assert response.status_code == 403
+
+
+def add_document(db: Session, client: Client, reference_month: str) -> None:
+    """Un document al clientului, în luna cerută. Doar ce cere modelul."""
+    db.add(
+        Document(
+            organization_id=client.organization_id,
+            client_id=client.id,
+            status=DocumentStatus.APPROVED,
+            source=DocumentSource.UPLOAD,
+            original_filename="factura.pdf",
+            storage_key=f"{uuid.uuid4().hex}/original/source.pdf",
+            mime_type="application/pdf",
+            file_size=512,
+            sha256_hash=f"{uuid.uuid4().hex}{uuid.uuid4().hex}",
+            received_at=datetime.now(UTC),
+            reference_month=reference_month,
+        )
+    )
+    db.flush()
+
+
+class TestHowMuchWorkForHowMuchMoney:
+    """Întrebarea pe care un cabinet și-o pune o dată pe an și n-o poate răspunde.
+
+    Numărul de documente nu este o măsură a efortului, dar este singura pe care
+    cabinetul o are — și pusă lângă onorariu spune cine este subevaluat.
+    """
+
+    def test_the_row_carries_the_document_count_of_the_month(
+        self, as_admin: TestClient, db: Session, alfa: Client
+    ) -> None:
+        set_fee(as_admin, alfa, "500.00")
+        generate(as_admin)
+        for _ in range(3):
+            add_document(db, alfa, MONTH)
+        # O lună vecină nu are ce căuta în cifra lunii de pe ecran.
+        add_document(db, alfa, EARLIER)
+
+        payload = as_admin.get(URL, params={"referenceMonth": MONTH}).json()
+
+        assert row_for(payload, alfa)["documents"] == 3
+
+    def test_it_counts_the_same_as_the_report(
+        self, as_admin: TestClient, db: Session, alfa: Client
+    ) -> None:
+        """Două numărători ar fi ajuns, într-o zi, la două cifre diferite pentru
+        aceeași lună — una pe raport și alta lângă bani."""
+        set_fee(as_admin, alfa, "500.00")
+        generate(as_admin)
+        for _ in range(2):
+            add_document(db, alfa, MONTH)
+
+        fees_row = row_for(as_admin.get(URL, params={"referenceMonth": MONTH}).json(), alfa)
+        report = as_admin.get(
+            "/api/v1/reports/summary", params={"fromMonth": MONTH, "toMonth": MONTH}
+        ).json()
+
+        by_client = {bucket["key"]: bucket["count"] for bucket in report["byClient"]}
+        assert fees_row["documents"] == by_client[str(alfa.id)]
+
+    def test_the_history_carries_the_count_of_each_month(
+        self, as_admin: TestClient, db: Session, alfa: Client
+    ) -> None:
+        set_fee(as_admin, alfa, "500.00")
+        generate(as_admin, EARLIER)
+        generate(as_admin, MONTH)
+        add_document(db, alfa, EARLIER)
+        for _ in range(2):
+            add_document(db, alfa, MONTH)
+
+        rows = {
+            row["period"]: row for row in as_admin.get(f"{URL}/clients/{alfa.id}/history").json()
+        }
+
+        assert rows[EARLIER]["documents"] == 1
+        assert rows[MONTH]["documents"] == 2

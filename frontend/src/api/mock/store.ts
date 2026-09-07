@@ -3959,6 +3959,18 @@ function seedFees() {
 }
 
 /** De când face clientul parte din lunile facturabile. */
+/**
+ * Câte documente are clientul în luna cerută.
+ *
+ * Se numără din aceeași listă ca rapoartele — `state.documents` — nu dintr-un
+ * contor propriu: două numărători ar fi ajuns la două cifre pentru aceeași lună.
+ */
+function documentsInMonth(clientId: string, period: string): number {
+  return state.documents.filter(
+    (row) => row.clientId === clientId && row.referenceMonth === period,
+  ).length;
+}
+
 function feeStartOf(client: Client, fee: StoredFee | undefined): string {
   if (fee) return fee.startsOn;
   return `${monthOf(client.createdAt)}-01`;
@@ -3987,6 +3999,7 @@ function buildFeeMonth(referenceMonth: string): FeeMonth {
       note: entry?.note ?? null,
       isGenerated: Boolean(entry),
       isPaid: Boolean(entry?.paidOn),
+      documents: documentsInMonth(client.id, referenceMonth),
     });
   }
   rows.sort((a, b) => a.clientName.localeCompare(b.clientName, "ro"));
@@ -4083,6 +4096,7 @@ export function getClientFeeHistory(clientId: string): FeeRow[] {
       note: entry.note,
       isGenerated: true,
       isPaid: Boolean(entry.paidOn),
+      documents: documentsInMonth(clientId, entry.period),
     }));
 }
 

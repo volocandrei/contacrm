@@ -203,6 +203,39 @@ class ReportService:
         )
         return ranked[:TOP_CLIENTS]
 
+    def documents_per_client(self, reference_month: str) -> dict[uuid.UUID, int]:
+        """Câte documente are fiecare client în luna cerută.
+
+        Trece prin **aceleași** condiții ca raportul, nu prin altele scrise încă
+        o dată: ecranul de onorarii arată numărul acesta lângă sumă, iar două
+        numărători ar fi ajuns, într-o zi, la două cifre diferite pentru aceeași
+        lună — una pe raport și alta lângă bani.
+        """
+        conditions = self._conditions(
+            from_month=reference_month, to_month=reference_month, client_id=None
+        )
+        rows = self.session.execute(
+            select(Document.client_id, func.count(Document.id))
+            .where(*conditions, Document.client_id.is_not(None))
+            .group_by(Document.client_id)
+        ).all()
+        return {client_id: count for client_id, count in rows if client_id is not None}
+
+    def documents_per_month(self, client_id: uuid.UUID) -> dict[str, int]:
+        """Câte documente are un client, lună cu lună.
+
+        O singură interogare pentru tot istoricul lui: câte una pe lună ar fi
+        însemnat douăsprezece cereri pentru un panou care încape pe jumătate de
+        ecran.
+        """
+        conditions = self._conditions(from_month=None, to_month=None, client_id=client_id)
+        rows = self.session.execute(
+            select(Document.reference_month, func.count(Document.id))
+            .where(*conditions, Document.reference_month.is_not(None))
+            .group_by(Document.reference_month)
+        ).all()
+        return {month: count for month, count in rows if month is not None}
+
     def _client_count(self, conditions: list[ColumnElement[bool]]) -> int:
         """Câți clienți distincți au documente — inclusiv „niciunul", ca grup."""
         rows = self.session.execute(

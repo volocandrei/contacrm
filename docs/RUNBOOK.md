@@ -123,8 +123,8 @@ lucru care spune dacă cele două copii sunt din același moment.
 ### A venit un coleg nou / a plecat unul
 
 *Administrare → Utilizatori → **Coleg nou***. Parola o alegi tu și i-o spui
-direct: aplicația nu trimite mesaje, deci nu pleacă nicio invitație. Minimum 12
-caractere, la fel ca la `create-admin`.
+direct: aplicația trimite mesaje clienților, dar niciodată o parolă, deci nu
+pleacă nicio invitație. Minimum 12 caractere, la fel ca la `create-admin`.
 
 Când pleacă cineva: **Dezactivează** pe rândul lui. Nu există ștergere, și e
 intenționat — numele lui apare în jurnalul de audit ca autor al unor acțiuni
@@ -194,6 +194,12 @@ Ce trebuie știut, ca ecranul să nu surprindă:
   Este singurul loc din aplicație unde se mai văd: luna trece, ecranul se schimbă,
   banii rămân neîncasați.
 - **Sumele în altă monedă se totalizează separat.** Lei plus euro nu este o sumă.
+- **Coloana „lei/doc."** este onorariul împărțit la câte documente a trimis
+  clientul în luna aceea. Nu este o măsură a efortului — o factură cu treizeci de
+  poziții și un bon de benzină se numără la fel — dar este singura pe care o are
+  cabinetul, și arată cine este subevaluat.
+- **„Descarcă luna"** scoate un CSV cu un rând pe client: onorariu, încasare,
+  număr de documente. Se deschide direct în Excel românesc.
 
 Când clientul sună și spune „eu am plătit în martie", răspunsul stă pe fișa lui:
 `Clienți → [client] → Contabilitate → Onorariu lunar`, sub „Ultimele luni
