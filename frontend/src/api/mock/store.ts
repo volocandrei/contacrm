@@ -67,6 +67,9 @@ import type {
   FeeMonth,
   FeeRow,
   FeeTotals,
+  ImportOutcome,
+  ImportPlan,
+  ImportRow,
   Intake,
   IssuedUploadLink,
   MailBrowseItem,
@@ -3005,6 +3008,218 @@ export function composeDocumentRequest(
       state.contacts.find(
         (contact) => contact.clientId === clientId && Boolean(contact.whatsappNumber),
       )?.whatsappNumber ?? null,
+  };
+}
+
+/* ─── Import de clienți ────────────────────────────────────────────────────── */
+
+/**
+ * Oglinda lui `services/client_import.py`.
+ *
+ * **De ce merită oglindit, nu simulat sumar.** Importul este prima funcție pe
+ * care o încearcă un cabinet: fără el, nimeni nu tastează două sute de firme ca
+ * să vadă dacă aplicația e bună de ceva. Dacă demonstrația ar accepta un fișier
+ * pe care serverul real îl refuză — sau invers —, omul ar afla asta abia după
+ * ce a hotărât să cumpere.
+ *
+ * Regulile sunt aceleași și trebuie să rămână aceleași: nu se suprascrie nimic,
+ * previzualizarea nu scrie, același CUI de două ori face un singur client.
+ */
+
+/** Antetele acceptate, în forma redusă la ce se poate compara. */
+const IMPORT_COLUMNS: Record<string, string[]> = {
+  name: ["denumire", "nume", "client", "firma", "denumire client"],
+  taxId: ["cui", "cif", "cod fiscal", "cod unic", "cod unic de inregistrare"],
+  registrationNumber: ["nr reg com", "reg com", "numar registrul comertului", "j"],
+  address: ["adresa", "sediu", "sediu social"],
+  status: ["status", "stare"],
+  contactName: ["persoana de contact", "contact", "persoana contact"],
+  email: ["email", "e-mail", "adresa email"],
+  phone: ["telefon", "tel", "mobil"],
+  whatsappNumber: ["whatsapp", "numar whatsapp"],
+};
+
+const IMPORT_STATUS_WORDS: Record<string, ClientStatus> = {
+  activ: "ACTIVE",
+  active: "ACTIVE",
+  inactiv: "INACTIVE",
+  inactive: "INACTIVE",
+  prospect: "PROSPECT",
+  potential: "PROSPECT",
+};
+
+/** Câte rânduri se acceptă odată. Aceeași limită ca pe server. */
+const MOCK_MAX_IMPORT_ROWS = 1000;
+
+/** Antetul, redus la ce se poate compara: fără diacritice, punctuație, caz. */
+function importKey(header: string): string {
+  const lowered = header.trim().toLowerCase().replace("﻿", "");
+  const plain = lowered
+    .replace(/[ăâ]/g, "a")
+    .replace(/î/g, "i")
+    .replace(/ș|ş/g, "s")
+    .replace(/ț|ţ/g, "t");
+  return [...plain]
+    .filter((character) => /[a-z0-9 ]/.test(character))
+    .join("")
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Cifra de control a unui CUI. Aceeași cheie ca în `romanian_documents.py`. */
+function validTaxId(digits: string): boolean {
+  if (!/^\d+$/.test(digits) || digits.length < 2 || digits.length > 10) return false;
+  const key = "753217532";
+  const body = digits.slice(0, -1);
+  const control = Number(digits.slice(-1));
+  const used = key.slice(-body.length);
+  const padded = body.slice(-used.length);
+  let total = 0;
+  for (let index = 0; index < used.length; index += 1) {
+    total += Number(padded[index]) * Number(used[index]);
+  }
+  const remainder = (total * 10) % 11;
+  return (remainder === 10 ? 0 : remainder) === control;
+}
+
+/** Un rând de CSV, respectând ghilimelele. */
+function splitCsvLine(line: string, delimiter: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === '"') {
+      if (quoted && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (character === delimiter && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += character;
+    }
+  }
+  cells.push(current);
+  return cells;
+}
+
+/**
+ * Citește fișierul și spune ce s-ar întâmpla; cu `apply`, chiar creează.
+ *
+ * Aceeași funcție pentru amândouă, ca pe server: două căi ar fi însemnat că
+ * previzualizarea promite una și importul face alta.
+ */
+export function importClients(csv: string, apply: boolean): ImportPlan {
+  requirePermission("clients:write");
+
+  const lines = csv.split(/\r?\n/);
+  if (lines.length === 0 || !lines[0]) {
+    throw new ApiError("VALIDATION_ERROR", "Fișierul este gol.", 422, {
+      file: ["Nu are niciun rând."],
+    });
+  }
+
+  const delimiter = (lines[0].split(";").length >= lines[0].split(",").length ? ";" : ",");
+  const header = splitCsvLine(lines[0], delimiter).map(importKey);
+  const mapping: Record<string, number> = {};
+  header.forEach((key, index) => {
+    for (const [field, aliases] of Object.entries(IMPORT_COLUMNS)) {
+      if (!(field in mapping) && aliases.includes(key)) mapping[field] = index;
+    }
+  });
+  if (!("name" in mapping)) {
+    throw new ApiError("VALIDATION_ERROR", "Fișierul nu are o coloană de denumire.", 422, {
+      file: ["Prima coloană trebuie să fie denumirea clientului."],
+    });
+  }
+
+  const known = new Set(
+    state.clients.filter((row) => row.taxId).map((row) => normalizeTaxId(row.taxId ?? undefined)),
+  );
+  const seen = new Set<string>();
+  const rows: ImportRow[] = [];
+  let counted = 0;
+
+  for (let index = 1; index < lines.length; index += 1) {
+    const cells = splitCsvLine(lines[index], delimiter);
+    if (!cells.some((cell) => cell.trim())) continue; // rânduri goale, cum lasă Excel
+    counted += 1;
+    if (counted > MOCK_MAX_IMPORT_ROWS) {
+      throw new ApiError("VALIDATION_ERROR", "Fișierul are prea multe rânduri.", 422, {
+        file: [`Maximum ${MOCK_MAX_IMPORT_ROWS} de clienți odată.`],
+      });
+    }
+
+    const value = (field: string) => (cells[mapping[field] ?? -1] ?? "").trim();
+    const name = value("name");
+    const taxId = normalizeTaxId(value("taxId")) || null;
+    const line = index + 1;
+
+    if (!name) {
+      rows.push({ line, name: "", taxId, outcome: "INVALID", note: "Rândul nu are denumire.", warning: null });
+      continue;
+    }
+    if (taxId && seen.has(taxId)) {
+      rows.push({ line, name, taxId, outcome: "DUPLICATE", note: "Același CUI apare mai sus în fișier.", warning: null });
+      continue;
+    }
+    if (taxId && known.has(taxId)) {
+      rows.push({
+        line,
+        name,
+        taxId,
+        outcome: "EXISTING",
+        note: "Există deja un client cu acest CUI. Rândul nu îl modifică.",
+        warning: null,
+      });
+      continue;
+    }
+
+    let warning: string | null = null;
+    if (taxId && !validTaxId(taxId)) warning = "CUI-ul nu trece verificarea cifrei de control.";
+    else if (!taxId) warning = "Fără CUI: documentele din e-Factura nu se vor lega singure.";
+    else if (!value("email")) warning = "Fără email: clientul nu poate primi solicitări sau remindere.";
+
+    rows.push({ line, name, taxId, outcome: "NEW", note: null, warning });
+    if (taxId) seen.add(taxId);
+
+    if (apply) {
+      const client = createClient({
+        name,
+        taxId,
+        registrationNumber: value("registrationNumber") || null,
+        address: value("address") || null,
+        status: IMPORT_STATUS_WORDS[importKey(value("status"))] ?? "ACTIVE",
+      });
+      if (value("contactName") || value("email") || value("phone")) {
+        createContact(client.id, {
+          fullName: value("contactName") || name,
+          email: value("email") || null,
+          phone: value("phone") || null,
+          whatsappNumber: value("whatsappNumber") || null,
+          isPrimary: true,
+        });
+      }
+    }
+  }
+
+  const count = (outcome: ImportOutcome) => rows.filter((row) => row.outcome === outcome).length;
+  if (apply) {
+    // Cifrele, nu numele: fiecare client creat are deja rândul lui.
+    recordAudit("CLIENTS_IMPORTED", "Client", "import", `${count("NEW")} clienți noi`);
+  }
+  return {
+    dryRun: !apply,
+    created: count("NEW"),
+    existing: count("EXISTING"),
+    duplicates: count("DUPLICATE"),
+    invalid: count("INVALID"),
+    rows,
   };
 }
 

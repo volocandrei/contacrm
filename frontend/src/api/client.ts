@@ -345,6 +345,42 @@ async function mockUpload<T>(path: string, file: File): Promise<T> {
   }) as T;
 }
 
+/**
+ * Un fișier de text urcat cu tot cu conținutul lui.
+ *
+ * **De ce nu `uploadFile`.** Acela trimite un document, iar în modul simulat
+ * backendul din browser nu are cum să citească octeții unui PDF — primește doar
+ * ce declară fișierul. Un CSV este altceva: se poate citi întreg, în browser,
+ * cu `file.text()`. Fără asta, importul de clienți ar fi mers doar pe serverul
+ * real, iar demonstrația ar fi arătat un ecran care nu face nimic — exact
+ * funcția pe care cabinetul o încearcă prima.
+ */
+export async function uploadCsv<T>(path: string, file: File, params: QueryParams): Promise<T> {
+  if (MODE === "mock") {
+    const mockRequest = await loadMock();
+    return mockRequest("POST", path, queryObject(params), { csv: await file.text() }) as T;
+  }
+
+  const send = () => {
+    const form = new FormData();
+    form.append("file", file);
+    return fetch(`${BASE_URL}${path}${buildQueryString(params)}`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: form,
+      credentials: "include",
+    });
+  };
+
+  let response = await send();
+  if (response.status === 401) {
+    if (await refreshSession()) response = await send();
+    else onSessionLost?.();
+  }
+  if (!response.ok) throw await toApiError(response);
+  return (await response.json()) as T;
+}
+
 export function uploadFile<T>(
   path: string,
   file: File,

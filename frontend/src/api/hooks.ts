@@ -811,6 +811,25 @@ export function useSyncAnaf() {
   return useAnafMutation(() => anaf.sync());
 }
 
+/**
+ * Importă o listă de clienți dintr-un fișier.
+ *
+ * Invalidează listele doar când chiar a scris: o previzualizare nu schimbă
+ * nimic, iar un refetch după ea ar fi doar zgomot.
+ */
+export function useImportClients() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, apply }: { file: File; apply: boolean }) =>
+      clients.importClients(file, apply),
+    onSuccess: (plan) => {
+      if (plan.dryRun) return;
+      void queryClient.invalidateQueries({ queryKey: ["clients"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard });
+    },
+  });
+}
+
 /* ─── Remindere ──────────────────────────────────────────────────────────── */
 
 /**

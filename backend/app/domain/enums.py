@@ -139,6 +139,25 @@ class TimelineEventKind(StrEnum):
 
 
 # Ordinea în care sarcinile apar în interfață: ce e de făcut, înaintea ce e gata.
+class ImportOutcome(StrEnum):
+    """Ce s-ar întâmpla cu un rând dintr-un fișier de clienți importat.
+
+    Ca și `ReminderStatus`, ecranul are nevoie de **motiv**, nu doar de rezultat:
+    diferența dintre „am importat 40 din 200" și „am importat 200" trebuie să se
+    poată explica rând cu rând, altfel importul se reface orbește.
+    """
+
+    #: Se creează.
+    NEW = "NEW"
+    #: Există deja un client cu acest CUI. Nu se atinge: fișierul poate fi vechi
+    #: de un an, iar ce a tastat un om în aplicație este mai proaspăt.
+    EXISTING = "EXISTING"
+    #: Același CUI apare de două ori în fișier. Se ia primul.
+    DUPLICATE = "DUPLICATE"
+    #: Nu se poate crea — lipsește denumirea.
+    INVALID = "INVALID"
+
+
 class ReminderStatus(StrEnum):
     """De ce pleacă sau nu pleacă un reminder către un client.
 

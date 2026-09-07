@@ -1,5 +1,5 @@
 /** Funcțiile tipate care acoperă API-ul (§38). Un singur loc care cunoaște căile. */
-import { api, request } from "@/api/client";
+import { api, request, uploadCsv } from "@/api/client";
 import type { Paginated, QueryParams } from "@/api/types";
 import type {
   AccountingPeriod,
@@ -35,6 +35,7 @@ import type {
   FeeMonth,
   FeeRow,
   FilingsResult,
+  ImportPlan,
   Intake,
   IssuedUploadLink,
   MailBrowseItem,
@@ -180,6 +181,14 @@ export const clients = {
       params: { referenceMonth },
       body: { to: to ?? null },
     }),
+  /**
+   * Citește un fișier de clienți și spune ce s-ar întâmpla.
+   *
+   * Implicit nu scrie. Cu `apply`, aceeași funcție de pe server chiar creează —
+   * două căi ar fi însemnat că previzualizarea promite una și importul face alta.
+   */
+  importClients: (file: File, apply: boolean) =>
+    uploadCsv<ImportPlan>("/clients/import", file, { apply }),
   documentRequest: (id: string, referenceMonth: string) =>
     // `request` direct, nu `api.post`: interogarea trebuie să meargă prin
     // `params`, iar `api.post` ia doar corpul. Lipită în cale, backendul simulat

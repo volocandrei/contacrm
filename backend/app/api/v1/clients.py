@@ -11,7 +11,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 
 from app.api.deps import DbSession, client_ip, require_permission
 from app.api.route import CommittingRoute
@@ -19,7 +19,7 @@ from app.api.v1.documents import to_list_item
 from app.api.v1.periods import MissingFilters
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode, NotFoundError, ValidationError
-from app.domain.enums import TimelineEventKind
+from app.domain.enums import ImportOutcome, TimelineEventKind
 from app.domain.permissions import Permission
 from app.models.client import Client
 from app.models.user import User
@@ -41,6 +41,7 @@ from app.schemas.document import DocumentFilters, DocumentListItemOut
 from app.schemas.email import EmailAddress
 from app.services.audit import AuditService
 from app.services.client_aliases import ClientAliasService
+from app.services.client_import import ClientImportService, ImportPlan, decode, template
 from app.services.client_service import ActorContext, ClientService
 from app.services.client_timeline import (
     DEFAULT_LIMIT as DEFAULT_TIMELINE,
@@ -500,6 +501,113 @@ def _actor(user: User, request: Request) -> ActorContext:
     return ActorContext(
         user=user, ip=client_ip(request), user_agent=request.headers.get("User-Agent")
     )
+
+
+class ImportRowOut(ApiModel):
+    """Un rând din fișier, așa cum îl vede omul înainte să apese."""
+
+    #: Numărul rândului din fișier, ca să-l poată găsi în Excel.
+    line: int
+    name: str
+    tax_id: str | None
+    outcome: ImportOutcome
+    #: De ce, când rezultatul nu se explică singur.
+    note: str | None
+    #: Rândul intră, dar ceva merită o privire.
+    warning: str | None
+
+
+class ImportPlanOut(ApiModel):
+    """Ce s-ar întâmpla, sau ce s-a întâmplat."""
+
+    #: Adevărat cât timp nu s-a scris nimic. Ecranul se uită la el ca să știe
+    #: dacă mai are un buton de apăsat sau doar un rezultat de arătat.
+    dry_run: bool
+    created: int
+    existing: int
+    duplicates: int
+    invalid: int
+    rows: list[ImportRowOut]
+
+
+def _plan_out(plan: ImportPlan) -> ImportPlanOut:
+    return ImportPlanOut(
+        dry_run=plan.dry_run,
+        created=plan.created,
+        existing=plan.existing,
+        duplicates=plan.duplicates,
+        invalid=plan.invalid,
+        rows=[
+            ImportRowOut(
+                line=row.line,
+                name=row.name,
+                tax_id=row.tax_id,
+                outcome=row.outcome,
+                note=row.note,
+                warning=row.warning,
+            )
+            for row in plan.rows
+        ],
+    )
+
+
+@router.get("/import/template.csv")
+def import_template(_: ClientWriter) -> Response:
+    """Modelul de fișier, cu antetul și un rând de exemplu.
+
+    Există pentru că altfel prima încercare eșuează pe antet, iar a doua nu mai
+    are loc: omul închide ecranul și scrie clienții de mână. Rândul de exemplu
+    este inventat, ca toate datele din repository (§70).
+    """
+    return Response(
+        content=template(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="model-clienti.csv"'},
+    )
+
+
+@router.post("/import", response_model=ImportPlanOut)
+def import_clients(
+    session: DbSession,
+    user: ClientWriter,
+    request: Request,
+    file: Annotated[UploadFile, File()],
+    apply: Annotated[bool, Query()] = False,
+) -> ImportPlanOut:
+    """Citește fișierul și spune ce s-ar întâmpla; cu `apply`, chiar creează.
+
+    **De ce aceeași rută pentru amândouă.** Previzualizarea și importul trebuie
+    să decidă identic — două căi ar fi însemnat că ecranul promite „40 noi" și
+    baza primește altceva, iar diferența s-ar fi văzut abia după ce clienții
+    greșiți erau deja înăuntru. Aici este chiar aceeași funcție, chemată de două
+    ori.
+
+    **Implicit nu scrie.** Un `POST` care creează două sute de clienți la prima
+    apăsare, fără ca cineva să vadă întâi ce iese, este exact greșeala pe care
+    previzualizarea o previne.
+
+    Nu suprascrie niciodată un client existent: fișierul poate fi vechi de un an,
+    iar ce a tastat un om în aplicație este mai proaspăt decât ce a exportat
+    cineva din alt program.
+    """
+    raw = file.file.read()
+    plan = ClientImportService(session, user.organization_id).plan(
+        decode(raw), actor=_actor(user, request), apply=apply
+    )
+    if apply:
+        AuditService(session).record(
+            organization_id=user.organization_id,
+            action="CLIENTS_IMPORTED",
+            entity_type="Client",
+            user_id=user.id,
+            user_name=user.full_name,
+            # Cifrele, nu numele: fiecare client creat are deja rândul lui de
+            # `CLIENT_CREATED`, iar ăsta spune că a fost un import, nu o zi de
+            # tastat.
+            detail=f"{plan.created} clienți noi, {plan.existing} existenți deja",
+            ip=client_ip(request),
+        )
+    return _plan_out(plan)
 
 
 @router.post("", response_model=ClientOut, status_code=status.HTTP_201_CREATED)

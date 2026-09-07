@@ -139,6 +139,25 @@ acces la contul altcuiva — dar nu reține nicio parolă.
 singur administrator care greșește acolo rămâne afară din propria aplicație, iar
 remediul ar fi un terminal și un SQL. Roagă alt administrator.
 
+### Cabinetul abia a început: cum intră cei două sute de clienți
+
+`CRM → Clienți → Importă`. Fișierul poate fi orice CSV salvat din Excel — cu `;`
+sau cu `,`, cu diacritice, în codificarea veche. Singura coloană obligatorie este
+denumirea; antetul se recunoaște și scris altfel („Nume", „CIF", „Reg com").
+Modelul se descarcă din același ecran.
+
+**Se citește întâi, se scrie a doua oară.** Primul pas nu atinge nimic și arată
+ce s-ar întâmpla, rând cu rând. Abia butonul „Importă N" scrie.
+
+Ce nu face: **nu suprascrie** un client care există deja (potrivirea se face pe
+CUI), deci același fișier importat de două ori nu dublează pe nimeni. Un CUI care
+nu trece verificarea cifrei de control intră totuși, cu o notă — sunt firme
+străine și PFA-uri care nu trec.
+
+Adaugă coloanele de email și telefon din prima: fără adresă, clientul nu poate
+primi nici solicitarea de documente, nici reminderul, iar asta se descoperă abia
+la sfârșitul primei luni.
+
 ### A venit un client nou
 
 Din interfață: **Clienți → Client nou**. Salvarea duce direct pe fișa lui, unde

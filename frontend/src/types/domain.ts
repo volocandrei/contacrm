@@ -90,6 +90,40 @@ export const DOCUMENT_ACTION = [
 export type DocumentAction = (typeof DOCUMENT_ACTION)[number];
 
 /**
+ * Ce s-ar întâmpla cu un rând dintr-un fișier de clienți importat.
+ *
+ * Ca și `REMINDER_STATUS`, ecranul are nevoie de **motiv**, nu doar de
+ * rezultat: diferența dintre „am importat 40 din 200" și „am importat 200"
+ * trebuie să se poată explica rând cu rând.
+ */
+export const IMPORT_OUTCOME = ["NEW", "EXISTING", "DUPLICATE", "INVALID"] as const;
+export type ImportOutcome = (typeof IMPORT_OUTCOME)[number];
+
+/** Un rând din fișier, așa cum îl vede omul înainte să apese. */
+export type ImportRow = {
+  /** Numărul rândului din fișier, ca să-l poată găsi în Excel. */
+  line: number;
+  name: string;
+  taxId: string | null;
+  outcome: ImportOutcome;
+  /** De ce, când rezultatul nu se explică singur. */
+  note: string | null;
+  /** Rândul intră, dar ceva merită o privire. */
+  warning: string | null;
+};
+
+/** Ce s-ar întâmpla, sau ce s-a întâmplat. */
+export type ImportPlan = {
+  /** Adevărat cât timp nu s-a scris nimic. */
+  dryRun: boolean;
+  created: number;
+  existing: number;
+  duplicates: number;
+  invalid: number;
+  rows: ImportRow[];
+};
+
+/**
  * De ce pleacă sau nu pleacă un reminder către un client.
  *
  * Nu este o stare stocată, ci răspunsul la o întrebare pusă azi. Backend-ul este

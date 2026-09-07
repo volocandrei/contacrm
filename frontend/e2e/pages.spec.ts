@@ -17,6 +17,7 @@ import { ACCOUNTS, loginAs } from "./support";
 const SCREENS = [
   ["/", "Panou principal"],
   ["/crm/clienti", "Clienți"],
+  ["/crm/clienti/import", "Importă clienți"],
   ["/crm/contacte", "Contacte"],
   ["/crm/sarcini", "Sarcini"],
   ["/documente/inbox", "Inbox documente"],

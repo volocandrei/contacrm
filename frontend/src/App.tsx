@@ -5,6 +5,7 @@ import { AnafPage } from "@/features/admin/anaf-page";
 import { DrivePage } from "@/features/admin/drive-page";
 import { LoginPage } from "@/features/auth/login-page";
 import { RequireAuth } from "@/features/auth/require-auth";
+import { ClientImportPage } from "@/features/clients/client-import-page";
 import { ClientDetailPage } from "@/features/clients/client-detail-page";
 import { ContactsPage } from "@/features/clients/contacts-page";
 import { PortalPage } from "@/features/portal/portal-page";
@@ -41,6 +42,8 @@ function App() {
 
           {/* CRM */}
           <Route path="/crm/clienti" element={<ClientsPage />} />
+          {/* Înaintea tiparului dinamic: altfel „import" ar fi citit ca un id de client. */}
+          <Route path="/crm/clienti/import" element={<ClientImportPage />} />
           <Route path="/crm/clienti/:id" element={<ClientDetailPage />} />
           <Route path="/crm/contacte" element={<ContactsPage />} />
           <Route path="/crm/sarcini" element={<TasksPage />} />

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { useClients } from "@/api/hooks";
 import { usePermissionCheck } from "@/features/auth/use-auth";
 import { ClientForm } from "@/features/clients/client-form";
@@ -10,7 +10,7 @@ import { ClientStatusBadge } from "@/components/status-badge";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { formatDateTime } from "@/lib/format";
 import { avatarTone, initials } from "@/lib/avatar";
-import { buttonPrimary, iconChip, pillClass, scrollX } from "@/lib/ui";
+import { buttonPrimary, buttonSecondary, iconChip, pillClass, scrollX } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { CLIENT_STATUS } from "@/types/domain";
 
@@ -44,14 +44,23 @@ export function ClientsPage() {
           // Butonul se ascunde fără permisiune, dar decizia rămâne pe server:
           // ascunderea este ergonomie, nu securitate.
           has("clients:write") && !adding ? (
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              className={cn(buttonPrimary, "h-10")}
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Client nou
-            </button>
+            <span className="flex items-center gap-2">
+              {/* Importul stă lângă „Client nou", nu îngropat în administrare:
+                  este primul lucru pe care îl caută un cabinet care abia a
+                  deschis aplicația și are deja două sute de firme. */}
+              <Link to="/crm/clienti/import" className={cn(buttonSecondary, "h-10")}>
+                <Upload className="h-4 w-4" aria-hidden="true" />
+                Importă
+              </Link>
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                className={cn(buttonPrimary, "h-10")}
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Client nou
+              </button>
+            </span>
           ) : null
         }
       />

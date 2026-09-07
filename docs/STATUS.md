@@ -277,6 +277,65 @@ copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email,
 verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
 confirmat.
 
+### Lista de clienți intră dintr-un fișier (7 septembrie 2026)
+
+**Golul care ținea aplicația neîncercată.** Un cabinet are între treizeci și trei
+sute de clienți, iar lista lor există deja undeva: într-un Excel, în exportul din
+programul vechi, în tabelul contabilului-șef. Singurul drum înăuntru era
+formularul, client cu client. Nimeni nu tastează două sute de firme ca să vadă
+dacă un program e bun de ceva — deci nimeni nu ajungea să vadă. Toate celelalte
+funcții construite până acum presupun clienți în bază; fără ei, aplicația arată
+gol pe fiecare ecran, iar concluzia omului este că nu face nimic.
+
+`CRM → Clienți → Importă` citește fișierul, spune ce s-ar întâmpla, și abia la a
+doua apăsare scrie.
+
+**Doi pași, nu unul.** Prima trecere nu atinge nimic. Un import care creează
+tăcut două sute de clienți la prima apăsare este mai rău decât niciunul: dacă
+fișierul era greșit, nimeni nu-i mai poate deosebi de cei buni, iar ștergerea lor
+cere exact munca pe care importul o economisea. Ecranul arată **rândurile cu
+probleme**, nu toate — o listă de două sute de rânduri verzi nu se citește, iar
+cine o derulează caută oricum exact ce nu intră.
+
+**Aceeași funcție decide de două ori.** Previzualizarea și importul rulează
+literalmente același cod, cu un comutator. Două implementări ar fi însemnat că
+ecranul promite „40 noi" și baza primește altceva, iar diferența s-ar fi văzut
+abia după ce clienții greșiți erau înăuntru.
+
+**Nu suprascrie niciodată.** Un client al cărui CUI există deja se sare, chiar
+dacă rândul din fișier are altă adresă sau alt nume: fișierul poate fi vechi de
+un an, iar ce a tastat un om în aplicație este mai proaspăt decât ce a exportat
+cineva din alt program. Rândul spune „există deja" în loc să dispară — altfel
+diferența dintre „am importat 40" și „am importat 200" nu s-ar putea explica.
+Consecința practică: același fișier importat de două ori nu dublează pe nimeni.
+
+**Citește fișierul pe care îl produce Excel românesc**, nu pe cel care ne-ar fi
+comod: separator `;` sau `,`, ghilimele, și **cp1250** — pagina de cod
+central-europeană, singura în care există „ă". Un import care cere UTF-8 refuză
+exact fișierul salvat de programul din care vine lista, cu un mesaj despre
+codificare pe care nimeni nu are cum să-l urmeze. Antetul se recunoaște și scris
+altfel: „Nume", „CIF", „Reg com".
+
+**Un CUI greșit se semnalează, nu se refuză.** Cifra de control prinde tastările
+greșite, dar nu orice cod care nu trece este fals — sunt firme străine, PFA-uri,
+coduri vechi. Rândul intră, cu o notă lângă el. Aplicația nu știe mai bine decât
+omul cine sunt clienții lui, iar rândul refuzat s-ar fi tastat oricum de mână, la
+fel de greșit.
+
+**Contactul intră odată cu firma.** Coloanele de email, telefon și WhatsApp fac
+diferența dintre o listă de nume și o agendă: fără adresă, clientul nou nu poate
+primi nici solicitarea de documente, nici reminderul, iar cabinetul descoperă
+asta abia la sfârșitul primei luni. Cine adaugă contactele pe urmă, unul câte
+unul, nu le adaugă niciodată.
+
+**Implicit activ, nu prospect.** Cine importă o listă importă clienții pe care îi
+are. Două sute de prospecți ar fi lăsat cabinetul fără nicio lună de urmărit și
+fără niciun termen — adică fără aplicație.
+
+Modelul de fișier se descarcă din același ecran, fiindcă altfel prima încercare
+eșuează pe antet și a doua nu mai are loc. Rândul de exemplu este inventat, ca
+toate datele din repository (§70).
+
 ### Aplicația scrie clienților, dar știe și când să tacă (7 septembrie 2026)
 
 Decizia care lipsea s-a luat: **cabinetul a hotărât că aplicația are voie să
@@ -1628,7 +1687,8 @@ sincronizarea.
 
 **Niciunul la nivel de rută.** Frontend-ul cheamă **74 de rute** (65 numărate din
 `src/api/endpoints.ts` pe 6 septembrie 2026, plus cele șapte ale onorariilor și
-cele două ale reminderelor, fără descărcările de fișiere, care merg pe alt drum),
+cele două ale reminderelor și importul de clienți, fără descărcările de
+fișiere, care merg pe alt drum),
 iar backendul real le implementează pe toate.
 
 Numărul se învechește la fiecare adăugare, deci nu el este garanția.

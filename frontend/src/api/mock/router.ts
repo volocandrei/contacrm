@@ -161,6 +161,14 @@ const routes: Route[] = [
     pattern: "/periods/missing/send-requests",
     handler: ({ query }) => store.sendDocumentRequests(query.referenceMonth ?? ""),
   },
+  /* Importul de clienți. `csv` vine din corp: în modul simulat fișierul se
+     citește în browser, fiindcă un CSV chiar poate fi citit acolo. */
+  {
+    method: "POST",
+    pattern: "/clients/import",
+    handler: ({ query, body }) =>
+      store.importClients(String(body.csv ?? ""), query.apply === "true"),
+  },
   {
     method: "POST",
     pattern: "/clients/:id/document-request/send",
