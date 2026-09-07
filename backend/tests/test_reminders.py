@@ -141,9 +141,9 @@ def asked(
     )
     if used_days_ago is not None:
         link.upload_count = 1
-        link.last_used_at = datetime.combine(
-            WORKDAY, datetime.min.time(), tzinfo=UTC
-        ) - timedelta(days=used_days_ago)
+        link.last_used_at = datetime.combine(WORKDAY, datetime.min.time(), tzinfo=UTC) - timedelta(
+            days=used_days_ago
+        )
     db.add(link)
     db.flush()
     return link
@@ -431,9 +431,7 @@ class TestTheTrace:
 
         service.send(Collecting(), today=WORKDAY, actor=admin)
 
-        entry = db.scalars(
-            select(AuditLog).where(AuditLog.action == "CLIENT_REMINDER_SENT")
-        ).one()
+        entry = db.scalars(select(AuditLog).where(AuditLog.action == "CLIENT_REMINDER_SENT")).one()
         assert entry.user_id == admin.id
         assert entry.detail is not None
         assert client_row.name in entry.detail
@@ -459,9 +457,7 @@ class TestTheTrace:
 
         service.send(Collecting(), today=WORKDAY)
 
-        entry = db.scalars(
-            select(AuditLog).where(AuditLog.action == "CLIENT_REMINDER_SENT")
-        ).one()
+        entry = db.scalars(select(AuditLog).where(AuditLog.action == "CLIENT_REMINDER_SENT")).one()
         assert entry.user_id is None
         assert entry.user_name == "Aplicația"
         assert db.scalars(select(ClientReminder)).one().sent_by_id is None
