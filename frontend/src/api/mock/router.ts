@@ -152,6 +152,10 @@ const routes: Route[] = [
     handler: ({ params, body }) =>
       store.applyExpectationTemplate(params.id!, body.clientIds as string[]),
   },
+  /* Reminderele către clienți. Citirea nu trimite nimic; `/reminders/send`
+     trimite, cu aceleași reguli ca planificatorul. */
+  { method: "GET", pattern: "/reminders", handler: () => store.getReminders() },
+  { method: "POST", pattern: "/reminders/send", handler: () => store.sendReminders() },
   {
     method: "POST",
     pattern: "/periods/missing/send-requests",

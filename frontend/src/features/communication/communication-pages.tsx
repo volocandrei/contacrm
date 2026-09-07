@@ -9,20 +9,21 @@ import {
   Mail,
   MessageCircle,
   MessageSquare,
-  ScrollText,
   Send,
   TriangleAlert,
   Upload,
   Plug,
   type LucideIcon,
 } from "lucide-react";
-import { useIntakes } from "@/api/hooks";
+import { useIntakes, useReminders, useSendReminders } from "@/api/hooks";
+import { ApiError } from "@/api/types";
 import { ErrorState, LoadingState, PageHeader, Panel } from "@/components/page";
 import { SelectFilter } from "@/components/form-controls";
-import { dayLabel, formatDate, formatTime } from "@/lib/format";
-import { iconChip, mutedText, pillClass, surface, type Tone } from "@/lib/ui";
+import { dayLabel, formatDate, formatReferenceMonth, formatTime } from "@/lib/format";
+import { buttonPrimary, iconChip, mutedText, pillClass, surface, type Tone } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import type { Intake } from "@/types/domain";
+import { whatsappHref } from "@/lib/whatsapp";
+import type { Intake, ReminderRow, ReminderStatus } from "@/types/domain";
 
 /**
  * Cronologia recepțiilor.
@@ -229,9 +230,13 @@ function IntakeRow({ intake }: { intake: Intake }) {
  * care aplicația nu le trimisese niciodată, ceea ce este mai rău decât un ecran
  * gol: cine le citea credea că le poate aștepta.
  *
- * Acum sunt cele două mesaje reale. Textul autoritar stă în backend
+ * Acum sunt cele trei mesaje reale. Textul autoritar stă în backend
  * (`build_request_message` și `app/services/daily_digest.py`), iar
  * `tests/test_contract_messages.py` cade dacă frazele de aici se despart de el.
+ *
+ * **Al treilea pleacă singur** — reamintirea. De aceea poartă data mesajului
+ * anterior: „vă reamintim" o poate scrie oricine despre orice, iar pe cine chiar
+ * a trimis documentele îl enervează. Data se poate verifica.
  */
 const TEMPLATES: Array<{
   code: string;
@@ -254,6 +259,19 @@ const TEMPLATES: Array<{
       "{{lista}} Vă rugăm să ni le transmiteți până la {{termen}}, " +
       "ca declarațiile să poată fi depuse la timp. " +
       "Cel mai simplu este să le încărcați direct aici, fără cont și fără parolă: {{link}}",
+  },
+  {
+    code: "CLIENT_REMINDER",
+    title: "Reamintirea documentelor",
+    channel: "Email",
+    audience: "către client, automat",
+    Icon: Bell,
+    tone: "amber",
+    preview:
+      "V-am scris pe {{data}} despre documentele pentru luna {{luna}}. Deocamdată nu " +
+      "ne-au ajuns toate, așa că vă reamintim ce mai așteptăm: {{lista}} " +
+      "Vă rugăm să ni le transmiteți până la {{termen}}, ca declarațiile să poată fi " +
+      "depuse la timp.",
   },
   {
     code: "DAILY_DIGEST",
@@ -353,113 +371,334 @@ function Placeholders({ text }: { text: string }) {
 /* ─── Remindere ────────────────────────────────────────────────────────────── */
 
 /**
- * Ce pleacă azi din aplicație, și ce nu.
+ * Ce pleacă singur către clienți, cui, și **de ce ceilalți nu**.
  *
- * **Ce era înainte aici.** Trei „reguli planificate", fiecare cu o pastilă
- * „oprit". Se citeau ca niște reguli care există și doar așteaptă să fie pornite
- * — dar nu exista nici regula, nici comutatorul. Iar panoul de alături scria că
- * lipsește „un provider de email, adică Faza 2", ceea ce nu mai este adevărat de
- * când solicitarea chiar pleacă din aplicație. Un ecran care subestimează ce
- * poate produsul ascunde exact funcția pe care cabinetul o caută.
+ * **Ce era înainte aici.** O listă de trei propoziții care explicau că aplicația
+ * nu trimite nimic automat, fiindcă decizia nu fusese luată. Decizia s-a luat:
+ * cabinetul a hotărât că aplicația are voie să scrie clienților lui. Din clipa
+ * aceea ecranul are altă treabă — nu să explice o abținere, ci să arate ce se
+ * întâmplă, înainte să se întâmple.
  *
- * Distincția care contează nu este între „pornit" și „oprit", ci între **ce
- * pleacă la apăsarea unui om** și **ce ar pleca singur**. Prima jumătate există.
- * A doua nu, și nu din lipsă de cod: un mesaj trimis automat, în numele
- * cabinetului, unui client, este o decizie care se ia o dată, explicit, de
- * cabinet — nu de aplicație.
+ * **Coloana care contează este „de ce".** Un ecran care arată doar cine primește
+ * un mesaj lasă deschisă exact întrebarea pe care o pune contabilul: „bine, dar
+ * pe ăsta de ce nu-l anunță?". Fără răspuns scris pe rând, singura cale de a
+ * afla ar fi să citească cineva codul — deci nimeni nu află, și fiecare tăcere a
+ * aplicației arată ca o scăpare.
+ *
+ * **Butonul există deși există și ceasul.** Ora planificatorului nu se potrivește
+ * cu toată lumea, iar un cabinet care tocmai a terminat de urcat documentele
+ * vrea să scrie acum, nu mâine dimineață. Apasă aceleași reguli: plafonul lunar
+ * și tăcerea de câteva zile rămân — altfel lista de deasupra ar fi o
+ * previzualizare mincinoasă.
  */
-const WHAT_LEAVES: Array<{ what: string; where: string; to: string; tone: Tone }> = [
-  {
-    what: "Solicitarea de documente, către un client",
-    where: "Fișa clientului → Comunicare",
-    to: "/crm/clienti",
-    tone: "blue",
-  },
-  {
-    what: "Solicitarea către toți clienții cărora le lipsește ceva",
-    where: "Documente lipsă → Cere la toți",
-    to: "/contabilitate/lipsa",
-    tone: "blue",
-  },
-  {
-    what: "Rezumatul zilei, către colegii din cabinet",
-    where: "Automat, o dată pe zi, dacă a fost pornit",
-    to: "/administrare/setari",
-    tone: "green",
-  },
+const REMINDER_STATUS_LABEL: Record<ReminderStatus, string> = {
+  DUE: "pleacă acum",
+  WAITING: "așteptăm",
+  NOT_ASKED: "necerut",
+  ANSWERED: "a trimis ceva",
+  MAX_REACHED: "a primit deja tot",
+  PAST_DEADLINE: "după termen",
+  NO_EMAIL: "fără email",
+};
+
+const REMINDER_STATUS_TONE: Record<ReminderStatus, Tone> = {
+  DUE: "blue",
+  WAITING: "slate",
+  NOT_ASKED: "amber",
+  ANSWERED: "green",
+  MAX_REACHED: "slate",
+  PAST_DEADLINE: "red",
+  NO_EMAIL: "red",
+};
+
+/**
+ * Ordinea rândurilor: ce pleacă acum, apoi ce cere un om, apoi restul.
+ *
+ * Nu alfabetic. Primul rând trebuie să fie cel despre care se ia o decizie azi;
+ * clienții care n-au fost întrebați niciodată vin imediat după, fiindcă acolo
+ * aplicația chiar nu poate face nimic singură și așteaptă un om.
+ */
+const REMINDER_ORDER: ReminderStatus[] = [
+  "DUE",
+  "NOT_ASKED",
+  "NO_EMAIL",
+  "PAST_DEADLINE",
+  "WAITING",
+  "ANSWERED",
+  "MAX_REACHED",
 ];
 
 export function RemindersPage() {
+  const { data, isLoading, error } = useReminders();
+
+  if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState error={error} />;
+  if (!data) return null;
+
+  const rows = [...data.rows].sort(
+    (a, b) =>
+      REMINDER_ORDER.indexOf(a.status) - REMINDER_ORDER.indexOf(b.status) ||
+      a.clientName.localeCompare(b.clientName, "ro"),
+  );
+
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="Remindere"
-        description="Ce pleacă din aplicație și la ce apăsare"
+        description={
+          data.referenceMonth
+            ? `Cui îi reamintește aplicația documentele lunii ${formatReferenceMonth(data.referenceMonth)} — și de ce celorlalți nu`
+            : "Cui îi reamintește aplicația documentele lipsă"
+        }
+        actions={<SendNow due={data.due} canSend={data.mailConfigured} />}
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Panel title="Ce pleacă azi" className="lg:col-span-2" bodyClassName="p-0">
+      <Rules
+        silenceDays={data.silenceDays}
+        maxPerMonth={data.maxPerMonth}
+        deadline={data.deadline}
+        automaticEnabled={data.automaticEnabled}
+        mailConfigured={data.mailConfigured}
+      />
+
+      <Panel bodyClassName="p-0">
+        {rows.length === 0 ? (
+          <p className="px-5 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+            Nimeni nu are documente lipsă luna aceasta. Nu e nimic de reamintit.
+          </p>
+        ) : (
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {WHAT_LEAVES.map((row) => (
-              <li key={row.what} className="flex items-center gap-4 px-5 py-4">
-                <span
-                  className={cn(
-                    "grid h-10 w-10 shrink-0 place-content-center rounded-xl",
-                    iconChip[row.tone],
-                  )}
-                >
-                  <Send className="h-5 w-5" aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    {row.what}
-                  </p>
-                  <Link
-                    to={row.to}
-                    className={cn("text-xs hover:underline", mutedText)}
-                  >
-                    {row.where}
-                  </Link>
-                </div>
-              </li>
+            {rows.map((row) => (
+              <ReminderLine key={row.clientId} row={row} />
             ))}
           </ul>
-        </Panel>
+        )}
+      </Panel>
+    </div>
+  );
+}
 
-        <Panel title="Ce nu pleacă singur">
-          <div className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
-            <p className="flex items-start gap-2">
-              <Bell className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-              <span>
-                <strong>Niciun mesaj automat către clienți.</strong> Datele ar ajunge:{" "}
-                <Link
-                  to="/contabilitate/lipsa"
-                  className="font-medium text-blue-600 hover:underline dark:text-blue-400"
-                >
-                  Documente lipsă
-                </Link>{" "}
-                știe cine n-a trimis și de câte zile.
-              </span>
-            </p>
-            <p className="flex items-start gap-2">
-              <ScrollText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-              <span>
-                Ce lipsește nu este codul, ci <strong>decizia</strong>: un mesaj trimis
-                automat, în numele cabinetului, unui client, se hotărăște o dată și
-                explicit — de cabinet, nu de aplicație.
-              </span>
-            </p>
+/**
+ * Regulile, scrise pe ecran.
+ *
+ * Vin de la server (`silenceDays`, `maxPerMonth`), nu sunt rescrise aici: două
+ * numere diferite pentru aceeași regulă ar însemna că ecranul promite altceva
+ * decât face aplicația, iar diferența s-ar vedea abia la client.
+ */
+function Rules({
+  silenceDays,
+  maxPerMonth,
+  deadline,
+  automaticEnabled,
+  mailConfigured,
+}: {
+  silenceDays: number;
+  maxPerMonth: number;
+  deadline: string | null;
+  automaticEnabled: boolean;
+  mailConfigured: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <Panel title="Când scrie aplicația singură" className="lg:col-span-2">
+        <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+          <li className="flex items-start gap-2">
+            <Send className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+            <span>
+              Numai cui i s-a <strong>cerut deja</strong> și n-a răspuns de{" "}
+              <strong>{silenceDays} zile</strong>. Primul mesaj rămâne al omului: se trimite
+              din{" "}
+              <Link
+                to="/contabilitate/lipsa"
+                className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+              >
+                Documente lipsă
+              </Link>
+              .
+            </span>
+          </li>
+          <li className="flex items-start gap-2">
+            <Bell className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+            <span>
+              Cel mult <strong>{maxPerMonth} pe lună</strong>. Al treilea nu aduce documente
+              mai repede, aduce un client care filtrează adresa cabinetului.
+            </span>
+          </li>
+          <li className="flex items-start gap-2">
+            <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+            <span>
+              Niciodată după termen
+              {deadline ? ` (${formatDate(deadline)})` : ""}: de acolo încolo se sună. Un mesaj
+              care spune „ca să depunem la timp" după termen este o minciună.
+            </span>
+          </li>
+        </ul>
+      </Panel>
+
+      <Panel title="Starea trimiterii">
+        <div className="space-y-3 text-sm">
+          <p className="flex items-start gap-2">
+            <span className={pillClass(automaticEnabled ? "green" : "slate")}>
+              {automaticEnabled ? "pornit" : "oprit"}
+            </span>
+            <span className={mutedText}>
+              Trimiterea automată, o dată pe zi. Butonul „Trimite acum" merge oricum: un om
+              care apasă nu face automatizare.
+            </span>
+          </p>
+          {!mailConfigured && (
             <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
               <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               <span>
-                Chiar și ce pleacă la apăsare are nevoie de un server de email
-                configurat. Fără el, textul se copiază și se trimite de mână, iar
-                rândul rămâne „Pregătit", nu „Trimis".
+                Nu este configurat niciun server de email, deci <strong>nu pleacă nimic</strong>.
+                Lista de mai jos arată ce ar pleca. Până atunci, textul se copiază din
+                „Documente lipsă", iar WhatsApp-ul de pe fiecare rând merge oricum.
               </span>
             </p>
-          </div>
-        </Panel>
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+/**
+ * Un client, starea lui, și cele două drumuri către el.
+ *
+ * Exportat ca să poată fi randat singur în test: motivul de sub pastilă este
+ * chiar partea utilă a ecranului, iar el nu se poate verifica din date — în
+ * toate stările rândul arată la fel până la text.
+ */
+export function ReminderLine({ row }: { row: ReminderRow }) {
+  const href = whatsappHref(row.whatsappNumber);
+  return (
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
+      <div className="min-w-0 flex-1">
+        <Link
+          to={`/crm/clienti/${row.clientId}`}
+          className="truncate text-sm font-medium text-slate-900 hover:underline dark:text-slate-100"
+        >
+          {row.clientName}
+        </Link>
+        <p className={cn("text-xs", mutedText)}>
+          {row.missingCount} {row.missingCount === 1 ? "tip de document" : "tipuri de documente"}
+          {row.email ? ` · ${row.email}` : " · fără adresă de email"}
+        </p>
       </div>
+
+      <span className="shrink-0 text-right">
+        <span className={pillClass(REMINDER_STATUS_TONE[row.status])}>
+          {REMINDER_STATUS_LABEL[row.status]}
+        </span>
+        <span className={cn("mt-0.5 block text-xs", mutedText)}>{reason(row)}</span>
+      </span>
+
+      {/* WhatsApp-ul stă pe fiecare rând, nu doar pe cele care primesc un email:
+          clientul mic citește emailul a doua zi și WhatsApp-ul în două minute,
+          iar pe cel fără adresă de email ăsta este singurul drum rămas. */}
+      {href && (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer noopener"
+          title={`Scrie-i pe WhatsApp lui ${row.clientName}`}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 dark:border-slate-800 dark:text-slate-400 dark:hover:border-emerald-900 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300"
+        >
+          <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+          WhatsApp
+        </a>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Rândul mic de sub pastilă: de ce starea este cea care este.
+ *
+ * Pastila spune *ce*, asta spune *de ce* — și fără al doilea, primul nu se poate
+ * verifica. „Așteptăm" fără „i-am scris acum două zile" este o afirmație pe care
+ * contabilul o poate doar crede.
+ */
+function reason(row: ReminderRow): string {
+  const silence =
+    row.daysSilent === null
+      ? ""
+      : row.daysSilent === 0
+        ? "i-am scris azi"
+        : `i-am scris acum ${row.daysSilent} ${row.daysSilent === 1 ? "zi" : "zile"}`;
+
+  switch (row.status) {
+    case "NOT_ASKED":
+      return "nu i s-a cerut încă nimic";
+    case "NO_EMAIL":
+      return "adaugă un contact cu email pe fișă";
+    case "MAX_REACHED":
+      return `${row.sentCount} remindere luna asta`;
+    case "PAST_DEADLINE":
+      return "termenul a trecut — sună-l";
+    case "ANSWERED":
+      return "a trimis ceva după ultimul mesaj";
+    default:
+      return silence;
+  }
+}
+
+/**
+ * Trimite acum, cu numărul pe buton.
+ *
+ * Numărul nu este decor: un buton fără el se apasă din curiozitate, iar aici
+ * apăsarea trimite mesaje unor oameni. Zero de trimis înseamnă niciun buton —
+ * nu unul dezactivat, care ar sugera că lipsește o permisiune.
+ */
+function SendNow({ due, canSend }: { due: number; canSend: boolean }) {
+  const send = useSendReminders();
+  const [result, setResult] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  if (due === 0) return null;
+
+  function submit() {
+    setProblem(null);
+    send.mutate(undefined, {
+      onSuccess: (report) =>
+        setResult(
+          report.sent === 0
+            ? "Nu a plecat niciun mesaj."
+            : `${report.sent} ${report.sent === 1 ? "mesaj trimis" : "mesaje trimise"}` +
+              (report.failed > 0 ? `, ${report.failed} nereușite` : ""),
+        ),
+      onError: (caught) =>
+        setProblem(
+          caught instanceof ApiError ? caught.message : "Reminderele nu au putut fi trimise.",
+        ),
+    });
+  }
+
+  if (result) {
+    return <span className="text-sm text-emerald-700 dark:text-emerald-400">{result}</span>;
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={submit}
+        disabled={send.isPending || !canSend}
+        title={
+          canSend
+            ? `Trimite acum ${due} ${due === 1 ? "reminder" : "remindere"}`
+            : "Nu este configurat niciun server de email"
+        }
+        className={cn(buttonPrimary, "h-9 px-4 text-sm disabled:opacity-50")}
+      >
+        <Send className="h-4 w-4" aria-hidden="true" />
+        {send.isPending ? "Se trimit…" : `Trimite acum (${due})`}
+      </button>
+      {problem && (
+        <span role="alert" className="text-xs text-red-600 dark:text-red-400">
+          {problem}
+        </span>
+      )}
     </div>
   );
 }

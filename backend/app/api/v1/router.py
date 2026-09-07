@@ -27,6 +27,7 @@ from app.api.v1 import (
     obligations,
     periods,
     portal,
+    reminders,
     reports,
     settings,
     tasks,
@@ -46,6 +47,7 @@ api_router.include_router(intakes.router)
 api_router.include_router(periods.router)
 api_router.include_router(obligations.router)
 api_router.include_router(fees.router)
+api_router.include_router(reminders.router)
 api_router.include_router(reports.router)
 api_router.include_router(settings.router)
 api_router.include_router(tasks.router)

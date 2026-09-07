@@ -11,14 +11,11 @@ import type {
   ChecklistItem,
   Client,
   ClientAlias,
-  DocumentRequest,
-  DocumentRequestSent,
-  SendRequestsResult,
-  IssuedUploadLink,
   ClientExpectation,
-  ExpectationTemplate,
+  ClientFee,
   ClientNote,
   ClientStatus,
+  ClientTimelineEvent,
   Contact,
   ContactListItem,
   CurrentUser,
@@ -26,30 +23,35 @@ import type {
   DocumentDetail,
   DocumentFieldName,
   DocumentListItem,
+  DocumentRequest,
+  DocumentRequestSent,
   DocumentType,
-  Intake,
   DriveBrowseItem,
   DriveFolder,
   DriveStatus,
   DriveSyncResult,
-  MailBrowseItem,
-  MailFolder,
   DueObligation,
-  ClientFee,
+  ExpectationTemplate,
   FeeMonth,
   FeeRow,
   FilingsResult,
+  Intake,
+  IssuedUploadLink,
+  MailBrowseItem,
+  MailFolder,
   ObligationFiling,
   ObligationType,
+  Reminders,
+  ReminderSendReport,
   ReportSummary,
   RoleCode,
   RoleInfo,
+  SendRequestsResult,
   SettingEntry,
   Task,
   TaskPriority,
-  UploadLink,
-  ClientTimelineEvent,
   TaskStatus,
+  UploadLink,
   UserSummary,
 } from "@/types/domain";
 
@@ -185,6 +187,17 @@ export const clients = {
     request<DocumentRequest>("POST", `/clients/${id}/document-request`, {
       params: { referenceMonth },
     }),
+};
+
+/**
+ * Reminderele către clienți.
+ *
+ * Citirea nu trimite nimic și nu deschide niciun link: ecranul arată cine ar
+ * primi și **de ce ceilalți nu**. Efectele se produc doar din `send`.
+ */
+export const reminders = {
+  list: () => api.get<Reminders>("/reminders"),
+  send: () => api.post<ReminderSendReport>("/reminders/send"),
 };
 
 /**

@@ -317,6 +317,10 @@ class DocumentRequestOut(ApiModel):
     message: str
     upload_url: str
     upload_expires_at: datetime
+    #: Numărul de WhatsApp al clientului, ca ecranul să poată oferi și drumul
+    #: ăsta. Clientul mic din România citește emailul a doua zi și WhatsApp-ul în
+    #: două minute; mesajul este același, iar apăsarea rămâne a omului.
+    whatsapp_number: str | None = None
 
 
 class DocumentRequestSendIn(ApiModel):
@@ -427,13 +431,15 @@ def document_request(
     cabinet fără SMTP configurat, sau pentru o zi în care mesajul trebuie scris
     altfel. Compunerea nu are voie să trimită ca efect secundar.
     """
-    composed = DocumentRequestService(session, user.organization_id).compose(
+    service = DocumentRequestService(session, user.organization_id)
+    composed = service.compose(
         client_id, filters.reference_month, actor=user, ip=client_ip(request)
     )
     return DocumentRequestOut(
         message=composed.message,
         upload_url=composed.upload_url,
         upload_expires_at=composed.upload_expires_at,
+        whatsapp_number=service.whatsapp_number(composed.client),
     )
 
 

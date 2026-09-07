@@ -205,6 +205,18 @@ Când clientul sună și spune „eu am plătit în martie", răspunsul stă pe 
 `Clienți → [client] → Contabilitate → Onorariu lunar`, sub „Ultimele luni
 facturate" — douăsprezece luni, cu suma fiecăreia și data încasării.
 
+### Un client spune că primește prea multe mesaje
+
+Deschide `Comunicare → Remindere`. Rândul lui arată câte au plecat luna asta și
+de ce mai pleacă. Aplicația trimite cel mult **două pe lună**, numai după patru
+zile de tăcere și numai dacă i s-a cerut deja — dar la ele se adaugă solicitările
+apăsate de oameni, care nu au plafon. Dacă numărul vine de acolo, problema nu este
+aplicația, ci că doi colegi cer aceluiași client.
+
+Pentru a opri complet trimiterea automată, pune `CLIENT_REMINDERS_ENABLED=false`
+și repornește. Ecranul rămâne, cu butonul lui: se poate trimite mai departe la
+apăsare.
+
 ### Un client nu apare niciodată în „Documente lipsă"
 
 Cel mai probabil nu i s-a spus **ce** se așteaptă de la el. Checklistul lunii,
@@ -322,11 +334,20 @@ un job întrerupt oricum ar fi fost recuperat.
   pornește explicit.
 - **Nu scrie în OneDrive.** Accesul cerut este de citire; dosarele clienților nu
   se ating.
-- **Nu trimite nimic de la sine către clienți.** Solicitarea de documente pleacă
-  pe email doar când o apasă cineva, și numai dacă `SMTP_*` este configurat;
-  altfel textul se copiază și se trimite de mână. Rezumatul zilnic merge la
-  colegii din cabinet, nu la clienți. Reminderele automate către clienți nu
-  există: sunt o decizie care se ia o dată, explicit, și nu de aplicație.
+- **Trimite singur un singur fel de mesaj către clienți: reminderul.** Pleacă la
+  ora planificatorului (`GET /api/v1/internal/reminders`), numai către clienții
+  cărora **li s-a cerut deja** și n-au răspuns de patru zile, cel mult de două ori
+  pe lună și niciodată după termenul de depunere. Se oprește din
+  `CLIENT_REMINDERS_ENABLED=false`; butonul „Trimite acum" din
+  `Comunicare → Remindere` rămâne, fiindcă un om care apasă nu face automatizare.
+  Nimic nu pleacă fără `SMTP_*` configurat.
+- **Nu trimite nimic altceva de la sine către clienți.** Prima solicitare de
+  documente pleacă doar când o apasă cineva; fără SMTP, textul se copiază și se
+  trimite de mână, sau pe WhatsApp, dintr-un buton. Rezumatul zilnic merge la
+  colegii din cabinet, nu la clienți.
+- **Nu trimite niciodată singur pe WhatsApp.** Butoanele deschid conversația cu
+  mesajul scris în câmpul de trimitere; ce pleacă hotărăște omul, iar aplicația
+  nu are cum să afle dacă a plecat — deci nu scrie nicăieri că s-a trimis.
 - **Nu emite facturi.** „Onorarii" este registrul cabinetului — cine cât plătește
   și cine a plătit. Nu are serie, număr, TVA sau e-Factura, iar marcarea unei
   încasări este gestul omului care a văzut extrasul.

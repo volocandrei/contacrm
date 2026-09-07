@@ -45,6 +45,7 @@ from app.services.daily_digest import DailyDigestService
 from app.services.mail import build_email_sender
 from app.services.microsoft.runner import run_drive_sync
 from app.services.processing_recovery import recover
+from app.services.reminders import run_reminders
 from app.worker import run_once
 
 logger = get_logger(__name__)
@@ -138,12 +139,13 @@ def daily_digest(authorization: Annotated[str | None, Header()] = None) -> Diges
     trei clienți n-au răspuns de o săptămână și că un termen e peste două zile,
     dar așteaptă să fie întrebată.
 
-    **Către cabinet, nu către clienți.** Un mesaj trimis automat unui client, în
-    numele cabinetului, este o decizie de altă natură — se ia o dată, explicit, și
-    nu de aplicație.
+    **Către cabinet, nu către clienți.** Mesajele către clienți pleacă pe cealaltă
+    rută, `/internal/reminders`, cu regulile ei. Sunt lucruri diferite și au
+    comutatoare diferite: un cabinet poate vrea rezumatul de dimineață fără să lase
+    aplicația să scrie clienților, iar invers nu are sens.
 
-    **Oprit implicit**, și cu comutator propriu: un cabinet poate vrea rezumatul
-    fără să lase aplicația să scrie clienților.
+    **Oprit implicit**, spre deosebire de remindere: rezumatul este o obișnuință a
+    cabinetului, nu o funcție de care depinde cineva.
 
     Se cheamă o dată pe zi, dimineața. Chemată de două ori, trimite de două ori:
     nu are idempotență, fiindcă un rezumat este o fotografie a momentului, nu o
@@ -170,3 +172,37 @@ def daily_digest(authorization: Annotated[str | None, Header()] = None) -> Diges
 
     logger.info("daily_digest", organizations=organizations, sent=sent)
     return DigestRunOut(organizations=organizations, sent=sent)
+
+
+class ReminderRunOut(ApiModel):
+    """Câte reamintiri au plecat. O linie în logul planificatorului."""
+
+    sent: int
+    failed: int
+
+
+@router.get("/reminders", response_model=ReminderRunOut)
+def reminders(authorization: Annotated[str | None, Header()] = None) -> ReminderRunOut:
+    """Reamintirile către clienți, o dată pe zi.
+
+    **De ce este singura rută care scrie în afara cabinetului.** Rezumatul zilnic
+    merge la colegi; asta merge la clienții cabinetului, în numele lui. Cabinetul
+    a hotărât că are voie, iar `app/services/reminders.py` ține tot ce face
+    hotărârea suportabilă: nu se reamintește ce nu s-a cerut, nu mai des de câteva
+    zile, nu celui care tocmai a trimis ceva, cel mult două pe lună, deloc după
+    termen.
+
+    Se cheamă dimineața. Chemată de două ori în aceeași zi nu trimite de două ori:
+    primul mesaj face ca al doilea să cadă sub regula zilelor de tăcere. Asta nu
+    este idempotență, este exact regula de business — dar are același efect acolo
+    unde contează, la client.
+
+    *NEVERIFICAT — NECESITĂ CREDENȚIALE EXTERNE.*
+    """
+    if not _authorized(authorization):
+        logger.warning("cron_unauthorized")
+        raise AppError(ErrorCode.NOT_FOUND, "Resursa nu există.")
+
+    report = run_reminders(build_email_sender())
+    logger.info("cron_reminders", sent=report.sent, failed=report.failed)
+    return ReminderRunOut(sent=report.sent, failed=report.failed)

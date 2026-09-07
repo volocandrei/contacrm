@@ -85,6 +85,13 @@ class RequestTrace:
     #: și îl trimite din clientul lui de email. Este singura informație care poate
     #: face diferența dintre „Pregătit" și „Trimis" fără să mintă.
     notified_at: datetime | None = None
+    #: Ultima dată când a intrat ceva pe vreunul dintre drumurile lunii.
+    #:
+    #: `received_through_link` spune *dacă* a trimis ceva; asta spune *când*, iar
+    #: reminderul are nevoie de al doilea: un client care a trimis jumătate acum
+    #: două ore lucrează, nu tace. Comparat cu momentul ultimului nostru mesaj,
+    #: separă „nu a răspuns" de „a răspuns, dar tot mai lipsește".
+    last_used_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -210,6 +217,7 @@ class UploadLinkService:
                 ClientUploadLink.created_at,
                 ClientUploadLink.upload_count,
                 ClientUploadLink.notified_at,
+                ClientUploadLink.last_used_at,
             )
             .where(
                 ClientUploadLink.organization_id == organization_id,
@@ -219,7 +227,7 @@ class UploadLinkService:
         ).all()
 
         traces: dict[uuid.UUID, RequestTrace] = {}
-        for client_id, created_at, upload_count, notified_at in rows:
+        for client_id, created_at, upload_count, notified_at, last_used_at in rows:
             previous = traces.get(client_id)
             traces[client_id] = RequestTrace(
                 # Prima apariție este cea mai recentă — lista vine deja sortată.
@@ -233,6 +241,9 @@ class UploadLinkService:
                 # ecran ce trimisese omul după prima — și l-am fi sunat degeaba.
                 received_through_link=(previous.received_through_link if previous else 0)
                 + upload_count,
+                # Cea mai recentă folosire, peste toate drumurile lunii: contează
+                # când a trimis omul ceva, nu pe care link a nimerit.
+                last_used_at=_latest(previous.last_used_at if previous else None, last_used_at),
             )
         return traces
 

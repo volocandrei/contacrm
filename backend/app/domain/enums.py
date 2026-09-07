@@ -139,6 +139,35 @@ class TimelineEventKind(StrEnum):
 
 
 # Ordinea în care sarcinile apar în interfață: ce e de făcut, înaintea ce e gata.
+class ReminderStatus(StrEnum):
+    """De ce pleacă sau nu pleacă un reminder către un client.
+
+    **Nu este o stare stocată**, ci răspunsul la o întrebare pusă azi: dacă
+    aplicația ar trimite acum, ce s-ar întâmpla cu rândul acesta. Mâine poate fi
+    alta, fără ca nimic să se fi schimbat în bază — a trecut o zi.
+
+    Există ca listă cu nume tocmai pentru ca ecranul să poată arăta **motivul**.
+    Un ecran care afișează numai cine primește un mesaj lasă deschisă exact
+    întrebarea pe care o pune contabilul: „bine, dar pe ăsta de ce nu-l anunță?".
+    """
+
+    #: Pleacă la următoarea rulare, sau acum, dacă se apasă butonul.
+    DUE = "DUE"
+    #: I s-a cerut, dar prea recent. Un mesaj pe zi nu grăbește pe nimeni.
+    WAITING = "WAITING"
+    #: Nu i s-a cerut încă nimic. Primul mesaj este o solicitare, nu o
+    #: reamintire: aplicația nu reamintește ceva ce n-a cerut niciodată.
+    NOT_ASKED = "NOT_ASKED"
+    #: A trimis ceva după ultimul nostru mesaj. Mai lipsește, dar omul lucrează.
+    ANSWERED = "ANSWERED"
+    #: A primit deja câte remindere trimite aplicația într-o lună.
+    MAX_REACHED = "MAX_REACHED"
+    #: A trecut termenul de depunere. De aici încolo se sună, nu se scrie.
+    PAST_DEADLINE = "PAST_DEADLINE"
+    #: Nu are nicio adresă de email pe fișă.
+    NO_EMAIL = "NO_EMAIL"
+
+
 TASK_STATUS_ORDER: dict[TaskStatus, int] = {
     TaskStatus.TODO: 0,
     TaskStatus.IN_PROGRESS: 1,

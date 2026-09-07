@@ -89,6 +89,24 @@ export const DOCUMENT_ACTION = [
 ] as const;
 export type DocumentAction = (typeof DOCUMENT_ACTION)[number];
 
+/**
+ * De ce pleacă sau nu pleacă un reminder către un client.
+ *
+ * Nu este o stare stocată, ci răspunsul la o întrebare pusă azi. Backend-ul este
+ * autoritatea (`app/domain/enums.py`), iar `test_contract_enums.py` cade dacă
+ * lista de aici se desparte de el.
+ */
+export const REMINDER_STATUS = [
+  "DUE",
+  "WAITING",
+  "NOT_ASKED",
+  "ANSWERED",
+  "MAX_REACHED",
+  "PAST_DEADLINE",
+  "NO_EMAIL",
+] as const;
+export type ReminderStatus = (typeof REMINDER_STATUS)[number];
+
 export const TASK_STATUS = ["TODO", "IN_PROGRESS", "BLOCKED", "DONE"] as const;
 export type TaskStatus = (typeof TASK_STATUS)[number];
 
@@ -221,6 +239,50 @@ export type DocumentRequest = {
   message: string;
   uploadUrl: string;
   uploadExpiresAt: string;
+  /**
+   * Numărul de WhatsApp al clientului, așa cum e scris pe fișă.
+   *
+   * Vine odată cu textul ca butonul „pe WhatsApp" să existe din prima clipă.
+   * Cerut separat, ar fi apărut abia după ce se încarcă și contactele — adică
+   * uneori după ce omul a apăsat deja altceva.
+   */
+  whatsappNumber: string | null;
+};
+
+/** Un client căruia îi lipsește ceva, și ce se întâmplă azi cu el. */
+export type ReminderRow = {
+  clientId: string;
+  clientName: string;
+  /** Câte tipuri de document mai lipsesc. */
+  missingCount: number;
+  status: ReminderStatus;
+  lastMessageAt: string | null;
+  daysSilent: number | null;
+  sentCount: number;
+  email: string | null;
+  whatsappNumber: string | null;
+};
+
+/** Tot ce afișează ecranul de remindere. */
+export type Reminders = {
+  /** Nulă când cabinetul nu are încă nicio lună începută. */
+  referenceMonth: string | null;
+  deadline: string | null;
+  rows: ReminderRow[];
+  due: number;
+  /** Dacă planificatorul trimite singur. Butonul merge oricum. */
+  automaticEnabled: boolean;
+  /** Dacă există prin ce trimite. */
+  mailConfigured: boolean;
+  silenceDays: number;
+  maxPerMonth: number;
+};
+
+/** Ce a plecat dintr-o apăsare pe „Trimite acum". */
+export type ReminderSendReport = {
+  sent: number;
+  failed: number;
+  skipped: number;
 };
 
 /**

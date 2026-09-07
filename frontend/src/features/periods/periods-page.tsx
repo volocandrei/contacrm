@@ -6,6 +6,7 @@ import {
   CircleCheck,
   Copy,
   LoaderCircle,
+  MessageCircle,
   Send,
   TriangleAlert,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import { useFilterParams } from "@/hooks/use-filter-params";
 import { currentMonth } from "@/lib/current-month";
 import { dayLabel, daysSince, formatDate, formatReferenceMonth } from "@/lib/format";
 import { usePermissionCheck } from "@/features/auth/use-auth";
+import { whatsappHref } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 import {
   PERIOD_STATUS,
@@ -421,6 +423,12 @@ function CopyRequestButton({
         clientName={clientName}
         referenceMonth={referenceMonth}
       />
+
+      <WhatsAppRequestButton
+        clientId={clientId}
+        clientName={clientName}
+        referenceMonth={referenceMonth}
+      />
     </div>
   );
 }
@@ -495,6 +503,106 @@ function SendRequestButton({
   );
 }
 
+
+
+/**
+ * Aceeași solicitare, pe WhatsApp.
+ *
+ * **De ce merită un al treilea buton.** Clientul mic din România citește emailul
+ * a doua zi, dacă îl citește; WhatsApp-ul îl citește în două minute. Aplicația
+ * știa numerele de mult — le folosea ca să recunoască expeditorul unui document
+ * —, dar ca să-i scrii cuiva trebuia să copiezi textul, să deschizi telefonul și
+ * să cauți contactul. Trei pași pentru un mesaj deja scris.
+ *
+ * **Mesajul nu pleacă singur.** Se deschide conversația cu textul pregătit în
+ * câmpul de scris; ce pleacă hotărăște omul. Este exact diferența dintre a-i
+ * pune unealta în mână și a scrie în locul lui — iar aplicația nu are cum să
+ * afle dacă mesajul a plecat, deci nu scrie nicăieri că s-a trimis.
+ *
+ * **De ce compune înainte să deschidă.** Textul poartă linkul de trimitere, iar
+ * linkul se deschide pe server. Butonul face deci exact ce face „Copiază", plus
+ * destinația.
+ *
+ * **De ce există și varianta cu încă un clic.** Fereastra se deschide după ce
+ * răspunde serverul, iar unele browsere blochează asta. Blocat, butonul ar fi
+ * părut că nu face nimic — cea mai proastă stare posibilă. Atunci apare un link
+ * obișnuit, pe care omul îl apasă el.
+ */
+function WhatsAppRequestButton({
+  clientId,
+  clientName,
+  referenceMonth,
+}: {
+  clientId: string;
+  clientName: string;
+  referenceMonth: string;
+}) {
+  const request = useDocumentRequest();
+  const [fallback, setFallback] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  async function open() {
+    setProblem(null);
+    try {
+      const { message, whatsappNumber } = await request.mutateAsync({
+        clientId,
+        referenceMonth,
+      });
+      const href = whatsappHref(whatsappNumber, message);
+      if (!href) {
+        // Numărul lipsește sau nu poate fi un număr de telefon. Se spune, în loc
+        // să se deschidă o pagină de eroare a WhatsApp-ului.
+        setProblem("Clientul nu are un număr de WhatsApp pe fișă.");
+        return;
+      }
+      if (window.open(href, "_blank", "noopener,noreferrer") === null) {
+        setFallback(href);
+      }
+    } catch (caught) {
+      setProblem(
+        caught instanceof ApiError ? caught.message : "Solicitarea nu a putut fi compusă.",
+      );
+    }
+  }
+
+  if (fallback) {
+    return (
+      <a
+        href={fallback}
+        target="_blank"
+        rel="noreferrer noopener"
+        className={cn(buttonSecondary, "h-8 px-3 text-xs")}
+      >
+        <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+        Deschide WhatsApp
+      </a>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => void open()}
+        disabled={request.isPending}
+        className={cn(buttonSecondary, "h-8 px-3 text-xs")}
+        title={`Deschide conversația pe WhatsApp cu ${clientName}, cu solicitarea scrisă`}
+      >
+        {request.isPending ? (
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        ) : (
+          <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+        )}
+        Pe WhatsApp
+      </button>
+      {problem && (
+        <span role="alert" className="max-w-64 text-right text-xs text-red-600 dark:text-red-400">
+          {problem}
+        </span>
+      )}
+    </>
+  );
+}
 
 /** De la câte zile fără răspuns o cerere devine ceva de urmărit. */
 const SILENT_AFTER_DAYS = 3;

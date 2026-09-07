@@ -277,6 +277,96 @@ copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email,
 verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
 confirmat.
 
+### Aplicația scrie clienților, dar știe și când să tacă (7 septembrie 2026)
+
+Decizia care lipsea s-a luat: **cabinetul a hotărât că aplicația are voie să
+trimită remindere clienților.** Toate datele existau de luni de zile — cine n-a
+trimis, de câte zile, ce anume lipsește, prin ce se trimite. Nu lipsea codul,
+lipsea hotărârea, fiindcă un mesaj plecat automat în numele cabinetului către
+clientul lui schimbă o relație, nu doar o stare din bază.
+
+Din clipa în care răspunsul este „da", întrebarea interesantă nu mai este *dacă*,
+ci **cât de des și cui**. Un robot care scrie prea des nu aduce documentele mai
+repede: aduce un client care mută adresa cabinetului în spam și pe urmă nu mai
+citește nici mesajele scrise de om. De aceea partea grea a funcției nu este
+trimiterea, ci cele cinci reguli care o opresc:
+
+- **Nu se reamintește ce nu s-a cerut.** Primul mesaj rămâne o solicitare și
+  pleacă la apăsarea unui om, din „Documente lipsă". Un client care primește
+  direct o reamintire pentru ceva ce nu i-a cerut nimeni nu înțelege ce se
+  întâmplă, și are dreptate.
+- **Nu mai des de patru zile.** Documentele se strâng de la contabilul intern, de
+  la casierie, uneori din alt oraș.
+- **Nu celui care tocmai a trimis ceva.** A trimis trei din cinci facturi acum
+  două ore: omul lucrează. Reminderul l-ar anunța că nu ne uităm la ce face.
+- **Cel mult două pe lună.** Al treilea nu aduce documente, aduce un filtru.
+- **Deloc după termen.** Fraza „ca declarațiile să poată fi depuse la timp"
+  devine falsă, iar un robot care scrie mai departe după termen este unul pe care
+  înveți să-l ignori — inclusiv luna următoare, când mesajul lui ar mai fi
+  ajutat. De acolo încolo se sună.
+
+**Ecranul arată motivul, nu doar lista.** Fiecare client căruia îi lipsește ceva
+apare cu o stare și cu explicația ei: *necerut*, *așteptăm — i-am scris acum două
+zile*, *a trimis ceva*, *a primit deja tot*, *după termen — sună-l*, *fără email*.
+Un ecran care ar arăta doar cine primește un mesaj ar lăsa deschisă exact
+întrebarea pe care o pune contabilul — „bine, dar pe ăsta de ce nu-l anunță?" —,
+iar fiecare tăcere a aplicației ar arăta ca o scăpare.
+
+**Mesajul spune de când așteptăm.** „Vă reamintim" o poate scrie oricine, oricând,
+despre orice: pe cine chiar a trimis documentele îl enervează, iar pe cine a uitat
+nu-l ajută. Reminderul poartă data mesajului anterior — verificabilă —, deci
+clientul care crede că a trimis deja se poate duce să caute în ziua aceea.
+
+**Comutatorul oprește ceasul, nu butonul.** `CLIENT_REMINDERS_ENABLED` decide dacă
+mesajele pleacă *singure*, la ora planificatorului
+(`GET /api/v1/internal/reminders`). Butonul „Trimite acum" merge oricum: un om
+care apasă nu face automatizare, face muncă. Ce nu face butonul este să ocolească
+regulile — altfel lista de deasupra ar fi o previzualizare mincinoasă.
+
+**Nimic nu pleacă din greșeală pe o instalare nouă.** Trimiterea automată este
+pornită implicit, fiindcă decizia s-a luat, dar providerul de email rămâne oprit
+până când cineva configurează `SMTP_*`. Un cabinet care importă o bază de test cu
+adrese reale nu scrie nimănui.
+
+**Un mesaj care n-a plecat nu lasă urmă că a plecat.** Rândul din
+`client_reminders` se scrie **după** ce providerul confirmă. Invers, un server de
+mail căzut ar fi consumat una din cele două șanse ale lunii pentru un client care
+n-a primit nimic — și nimeni n-ar fi aflat de ce.
+
+*NEVERIFICAT — NECESITĂ CREDENȚIALE EXTERNE:* fără `SMTP_*` nu a plecat încă
+niciun mesaj adevărat. Regulile sunt verificate prin substituție, în ambele
+implementări (`tests/test_reminders.py`, `src/api/mock/reminders.test.ts`).
+
+### WhatsApp, dintr-un clic — și butonul care nu funcționa (7 septembrie 2026)
+
+Clientul mic din România citește emailul a doua zi, dacă îl citește; WhatsApp-ul
+îl citește în două minute. Aplicația știa numerele de la început — le folosea ca
+să recunoască expeditorul unui document — dar ca să scrii cuiva trebuia să
+copiezi numărul cu ochiul din fișă în telefon.
+
+**Butonul care exista era stricat.** Agenda avea deja o acțiune de WhatsApp, care
+compunea `wa.me/` plus cifrele numărului așa cum era scris. Pentru `+40722123456`
+mergea. Pentru `0722 123 456` — forma în care îl scrie oricine în România —
+ieșea `wa.me/0722123456`: un număr fără prefix de țară și cu un zero în față, pe
+care WhatsApp îl refuză. Nu era o funcție lipsă, era una care părea că
+funcționează. Găsit uitându-mă ce face butonul, nu citind codul.
+
+`src/lib/whatsapp.ts` normalizează formele reale — locală, internațională cu sau
+fără plus, cu `0040`, dictată fără nimic în față — și **întoarce `null` când
+numărul nu poate fi un telefon**. Atunci butonul nu apare deloc: un link care se
+deschide într-o eroare este mai rău decât un buton absent, fiindcă omul apasă o
+dată și pe urmă nu mai are încredere în niciunul.
+
+**Unde se ajunge acum pe WhatsApp:** din agendă, de pe fișa clientului (contactul
+principal și tabelul de contacte), de pe fiecare rând din ecranul de remindere —
+inclusiv pentru clientul fără adresă de email, pentru care este singurul drum
+rămas — și, cel mai util, din „Documente lipsă": butonul **„Pe WhatsApp"** compune
+aceeași solicitare ca „Copiază" și deschide conversația cu textul deja scris.
+
+**Textul rămâne netrimis.** Se deschide conversația cu mesajul pregătit în câmpul
+de scris; ce pleacă hotărăște omul. Aplicația nu trimite singură pe WhatsApp și
+nu are cum să afle dacă mesajul a plecat, deci nu scrie nicăieri că s-a trimis.
+
 ### Banii ajung pe panou, dar numai la cine are voie să-i vadă
 
 Ecranul de onorarii răspunde la întrebarea „cine nu mi-a plătit" — dar numai dacă
@@ -475,7 +565,8 @@ mulțimea celor care **nu** răspund 401 cu o listă scrisă de om: sănătatea,
 `logout` și portalul clientului. O rută nouă lăsată din greșeală deschisă apare
 acolo, nu în producție.
 
-Nu a găsit nimic — toate cele 98 de rute de business cereau deja sesiune. Ceea ce
+Nu a găsit nimic — toate rutele de business cereau deja sesiune (110 la data
+verificării, 121 acum). Ceea ce
 este exact rezultatul pe care îl vrei de la o verificare de acest fel, și motivul
 pentru care ea rămâne scrisă: valoarea nu este în ce a găsit azi, ci în ruta care
 va fi adăugată în martie.
@@ -1154,7 +1245,7 @@ documentul aprobat și mai avea de făcut două lucruri pentru fiecare document
 următor. Scurtături: `Alt+S` salvează, `Alt+A` aprobă, `Alt+N` sare peste
 fără să atingă documentul.
 
-**Backendul simulat** (`src/api/mock/`, ~4.259 linii) implementează 74 de rute cu
+**Backendul simulat** (`src/api/mock/`, ~4.259 linii) implementează 100 de rute cu
 aceleași căi, paginare, filtrare, permisiuni și coduri de eroare ca API-ul real.
 Comutarea se face din `VITE_API_MODE` — restul aplicației nu știe cine răspunde.
 
@@ -1535,10 +1626,10 @@ sincronizarea.
 
 ### Golul concret
 
-**Niciunul la nivel de rută.** Frontend-ul cheamă **72 de rute** (65 numărate din
-`src/api/endpoints.ts` pe 6 septembrie 2026, plus cele șapte ale onorariilor, fără
-descărcările de fișiere, care merg pe alt drum), iar backendul real le
-implementează pe toate.
+**Niciunul la nivel de rută.** Frontend-ul cheamă **74 de rute** (65 numărate din
+`src/api/endpoints.ts` pe 6 septembrie 2026, plus cele șapte ale onorariilor și
+cele două ale reminderelor, fără descărcările de fișiere, care merg pe alt drum),
+iar backendul real le implementează pe toate.
 
 Numărul se învechește la fiecare adăugare, deci nu el este garanția.
 `e2e/pages.spec.ts` deschide fiecare ecran într-un browser adevărat și cade dacă
@@ -2075,13 +2166,14 @@ Necesită input uman, nu sunt de rezolvat în cod:
    Saga, luată dintr-un exemplu real, nu dedusă. *Vezi `docs/SAGA.md`.*
 6. **Tenant unic vs. multi-firmă** de la lansare. Schema suportă ambele;
    `organization_id` există peste tot de la început.
-7. **Are voie aplicația să trimită singură remindere clienților?** Tot ce trebuie
-   există: știm cine n-a trimis, de câte zile, ce anume lipsește, și avem prin ce
-   trimite. Ce lipsește este hotărârea. Un mesaj plecat automat, în numele
-   cabinetului, către un client, nu este o funcție tehnică — este o schimbare în
-   relația cu clientul, iar dacă textul sau momentul sunt greșite, cabinetul află
-   de la client. Se ia o dată, explicit, de cabinet. Până atunci, ecranul
-   „Remindere" spune pe față ce pleacă la apăsare și ce nu pleacă deloc.
+7. ~~**Are voie aplicația să trimită singură remindere clienților?**~~ —
+   **decis: da** (7 septembrie 2026). Odată luată hotărârea, întrebarea a devenit
+   *cât de des și cui*, iar răspunsul stă în cele cinci reguli din
+   `app/services/reminders.py`: nu se reamintește ce nu s-a cerut, nu mai des de
+   patru zile, nu celui care tocmai a trimis ceva, cel mult două pe lună, deloc
+   după termen. Ecranul „Remindere" arată pentru fiecare client **motivul**, nu
+   doar dacă primește. Comutatorul `CLIENT_REMINDERS_ENABLED` oprește ceasul, nu
+   butonul.
 8. **Onorariile: doar registru, sau și facturare?** Ce există acum este registrul
    cabinetului — cine cât plătește, cine a plătit. Facturarea propriu-zisă are
    serie, număr, TVA și, pentru B2B în România, e-Factura: alt regim de

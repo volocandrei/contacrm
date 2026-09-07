@@ -49,6 +49,10 @@ from app.services.mail import EmailMessage, EmailSender
 from app.services.period_service import PeriodService
 from app.services.upload_links import UploadLinkService
 
+#: Cine apare în jurnal când mesajul pleacă singur. Un nume, nu un gol: rândul
+#: trebuie să spună că a scris aplicația, nu să lase impresia că nu se știe cine.
+AUTOMATIC_ACTOR = "Aplicația"
+
 #: Numele lunilor, la genitiv-dativ cum cere fraza „pentru luna …".
 MONTHS = (
     "ianuarie",
@@ -105,6 +109,27 @@ def _upload_block(url: str, expires_on: date | None) -> list[str]:
     return lines
 
 
+def _opening(reference_month: str, previous_sent_on: date | None) -> str:
+    """Prima frază. Spune de a câta oară scriem, fiindcă asta schimbă tot.
+
+    **De ce reminderul poartă data mesajului anterior.** „Vă reamintim" este o
+    formulare pe care o poate scrie oricine, oricând, despre orice: pe cine chiar
+    a trimis documentele îl enervează, iar pe cine a uitat nu-l ajută cu nimic să
+    își amintească. Data spune verificabil de când așteptăm, iar clientul care
+    crede că a trimis deja se poate duce să caute în ziua aceea.
+    """
+    month = month_in_words(reference_month)
+    if previous_sent_on is None:
+        return (
+            f"Pentru evidența contabilă a lunii {month} mai avem nevoie de următoarele documente:"
+        )
+    return (
+        f"V-am scris pe {previous_sent_on.strftime('%d.%m.%Y')} despre documentele "
+        f"pentru luna {month}. Deocamdată nu ne-au ajuns toate, așa că vă "
+        "reamintim ce mai așteptăm:"
+    )
+
+
 def build_request_message(
     *,
     client_name: str,
@@ -114,14 +139,14 @@ def build_request_message(
     organization_name: str,
     upload_url: str | None = None,
     upload_expires_on: date | None = None,
+    previous_sent_on: date | None = None,
 ) -> str:
     del client_name  # se adresează firmei, nu o numește: mesajul îi este trimis ei
     return "\n".join(
         [
             "Bună ziua,",
             "",
-            f"Pentru evidența contabilă a lunii {month_in_words(reference_month)} "
-            "mai avem nevoie de următoarele documente:",
+            _opening(reference_month, previous_sent_on),
             "",
             *[_line(entry) for entry in missing],
             "",
@@ -176,8 +201,10 @@ class DocumentRequestService:
         client_id: uuid.UUID,
         reference_month: str,
         *,
-        actor: User,
+        actor: User | None,
         ip: str | None = None,
+        previous_sent_on: date | None = None,
+        missing: Sequence[ChecklistEntry] | None = None,
     ) -> ComposedRequest:
         """Deschide un drum de trimitere și scrie mesajul.
 
@@ -197,14 +224,20 @@ class DocumentRequestService:
         # îi arată butonul de cerere. Compunerea citea din cealaltă listă, deci
         # butonul răspundea „clientul nu are documente lipsă" exact pe rândurile
         # unde lipsea totul. Găsit apăsând butonul, nu citind codul.
-        gaps = [
-            entry
-            for view, entry in PeriodService(self.session).missing(
-                self.organization_id, reference_month
-            )
-            if view.client_id == client_id
-        ]
-        missing = gaps[0] if gaps else []
+        # **Calculate o dată, când sunt cerute pentru mai mulți clienți deodată.**
+        # `missing()` se uită la toți clienții cabinetului; chemat o dată per
+        # destinatar, o rulare de remindere l-ar fi rulat de douăzeci de ori peste
+        # aceleași două sute de clienți. Cronul are un timp maxim, iar munca
+        # începută și abandonată este cea mai proastă variantă.
+        if missing is None:
+            gaps = [
+                entry
+                for view, entry in PeriodService(self.session).missing(
+                    self.organization_id, reference_month
+                )
+                if view.client_id == client_id
+            ]
+            missing = gaps[0] if gaps else []
         if not missing:
             # Înainte de a deschide linkul: un drum public deschis pentru un mesaj
             # care oricum nu pleacă ar rămâne deschis degeaba 45 de zile.
@@ -216,7 +249,9 @@ class DocumentRequestService:
         issued = self.links.issue(
             self.organization_id,
             client_id,
-            created_by_id=actor.id,
+            # Nul când scrie planificatorul: „cine a deschis drumul" nu are voie
+            # să numească un om care dormea la ora aceea.
+            created_by_id=actor.id if actor else None,
             # Luna leagă linkul de cerere. Fără ea, rândul spune doar că s-a
             # deschis un drum; cu ea, spune că **i s-a cerut**, pentru ce lună și
             # când — iar raportul poate arăta cine încă n-a fost întrebat.
@@ -227,8 +262,8 @@ class DocumentRequestService:
             action="UPLOAD_LINK_ISSUED",
             entity_type="ClientUploadLink",
             entity_id=str(issued.id),
-            user_id=actor.id,
-            user_name=actor.full_name,
+            user_id=actor.id if actor else None,
+            user_name=actor.full_name if actor else AUTOMATIC_ACTOR,
             # Clientul și luna, nu tokenul: jurnalul nu ține chei (§33).
             detail=f"{client.name} · solicitare {reference_month}",
             ip=ip,
@@ -247,6 +282,7 @@ class DocumentRequestService:
                 ),
                 upload_url=url,
                 upload_expires_on=issued.expires_at.date(),
+                previous_sent_on=previous_sent_on,
             ),
             upload_url=url,
             upload_expires_at=issued.expires_at,
@@ -280,6 +316,30 @@ class DocumentRequestService:
                 {"to": ["Adaugă un contact cu email sau scrie adresa aici."]},
             )
         return address
+
+    def whatsapp_number(self, client: Client) -> str | None:
+        """Primul număr de WhatsApp de pe fișă, dacă există vreunul.
+
+        **De ce îl întoarce ruta care compune.** Textul și drumul pleacă
+        împreună; numărul este al treilea lucru de care are nevoie ecranul ca să
+        poată oferi „trimite pe WhatsApp" fără încă o cerere. Fără el, butonul ar
+        fi apărut abia după ce se încarcă și contactele — adică uneori după ce
+        omul a apăsat deja altceva.
+
+        Se întoarce **așa cum este scris pe fișă**. Transformarea în forma pe care
+        o cere `wa.me` este o chestiune de link, nu de date, și se face acolo unde
+        se construiește linkul.
+        """
+        return self.session.scalars(
+            select(Contact.whatsapp_number)
+            .where(
+                Contact.client_id == client.id,
+                Contact.whatsapp_number.is_not(None),
+                Contact.whatsapp_number != "",
+                Contact.deleted_at.is_(None),
+            )
+            .order_by(Contact.created_at)
+        ).first()
 
     def send(
         self,

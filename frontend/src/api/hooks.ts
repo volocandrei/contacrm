@@ -21,6 +21,7 @@ import {
   obligations,
   fees,
   periods,
+  reminders,
   reports,
   tasks,
   type BulkPayload,
@@ -64,6 +65,7 @@ export const queryKeys = {
   clientFee: (id: string) => ["fees", "clients", id] as const,
   clientFeeHistory: (id: string) => ["fees", "clients", id, "history"] as const,
   missingDocuments: (referenceMonth: string) => ["periods", "missing", referenceMonth] as const,
+  reminders: ["reminders"] as const,
   tasks: (params: QueryParams) => ["tasks", params] as const,
   reportSummary: (params: QueryParams) => ["reports", "summary", params] as const,
   auditLogs: (params: QueryParams) => ["audit-logs", params] as const,
@@ -807,6 +809,37 @@ export function useRemoveAnafMandate() {
 
 export function useSyncAnaf() {
   return useAnafMutation(() => anaf.sync());
+}
+
+/* ─── Remindere ──────────────────────────────────────────────────────────── */
+
+/**
+ * Cine primește azi o reamintire, și de ce ceilalți nu.
+ *
+ * Interogare obișnuită, fără efecte: deschiderea ecranului nu trimite nimic și
+ * nu deschide niciun link de trimitere.
+ */
+export function useReminders() {
+  return useQuery({ queryKey: queryKeys.reminders, queryFn: reminders.list });
+}
+
+/**
+ * Trimite acum tot ce era de trimis.
+ *
+ * Invalidează și lista de documente lipsă și panoul: după apăsare, rândurile
+ * trec din „de trimis" în „așteptăm", iar un ecran care arată contrariul a ceea
+ * ce tocmai ai făcut te face să apeși a doua oară.
+ */
+export function useSendReminders() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: reminders.send,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.reminders });
+      void queryClient.invalidateQueries({ queryKey: ["periods"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard });
+    },
+  });
 }
 
 /* ─── Mutații ──────────────────────────────────────────────────────────────── */

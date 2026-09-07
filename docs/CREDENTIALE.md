@@ -167,6 +167,24 @@ Nu pleacă în zilele în care nu e nimic de spus. Un rezumat care scrie „nimi
 fiecare dimineață antrenează pe toată lumea să nu-l mai deschidă — inclusiv în
 ziua în care are ceva înăuntru.
 
+**Reminderele către clienți** au și ele comutator propriu,
+`CLIENT_REMINDERS_ENABLED`, pornit implicit: cabinetul a hotărât că aplicația are
+voie să scrie clienților lui. Ce ține locul unui comutator oprit este chiar
+`NOTIFICATIONS_ENABLED` de mai sus — fără SMTP nu pleacă nimic, deci o instalare
+proaspătă nu scrie nimănui. Se cheamă o dată pe zi:
+
+```
+GET /api/v1/internal/reminders
+Authorization: Bearer $CRON_SECRET
+```
+
+Nu scrie oricui și nu oricât: numai celor cărora li s-a **cerut deja** și n-au
+răspuns de patru zile, cel mult de două ori pe lună, deloc după termen, și
+niciodată celui care tocmai a trimis ceva. Cine primește și **de ce ceilalți nu**
+se vede în `Comunicare → Remindere`, împreună cu butonul care trimite acum —
+butonul merge și cu comutatorul pe `false`, fiindcă un om care apasă nu face
+automatizare.
+
 *NEVERIFICAT — NECESITĂ CREDENȚIALE EXTERNE:* codul este acoperit de teste care
 înlocuiesc serverul de mail, deci se știe **ce** trimite și cum se poartă la
 eroare. Că un server real acceptă mesajul se vede la prima trimitere adevărată.

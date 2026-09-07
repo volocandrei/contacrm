@@ -5,10 +5,11 @@
 zile, dar așteaptă să fie întrebată. Un instrument pe care trebuie să-ți amintești
 să-l consulți este un instrument consultat neregulat.
 
-**Către cabinet, nu către clienți.** Un mesaj trimis automat în numele
-cabinetului, unui client, este o decizie de altă natură — se ia o dată, explicit,
-și nu de aplicație. Aici destinatarii sunt colegii, iar conținutul este ce văd
-oricum pe panou.
+**Către cabinet, nu către clienți.** Din 7 septembrie 2026 aplicația scrie și
+clienților — vezi `app/services/reminders.py` —, dar rămâne un comutator separat
+pentru fiecare, fiindcă sunt lucruri diferite: aici destinatarii sunt colegii, iar
+conținutul este ce văd oricum pe panou. Un cabinet poate vrea rezumatul fără să
+lase aplicația să scrie clienților.
 
 **Nu se trimite când nu e nimic de spus.** Un rezumat care scrie „nimic" în
 fiecare dimineață antrenează pe toată lumea să nu-l mai deschidă — inclusiv în

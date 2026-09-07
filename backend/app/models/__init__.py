@@ -30,6 +30,7 @@ from app.models.period import (
     ExpectationTemplateItem,
     ExpectationTemplateObligation,
 )
+from app.models.reminder import ClientReminder
 from app.models.task import Task
 from app.models.upload_link import ClientUploadLink
 from app.models.user import Permission, RefreshToken, Role, User, role_permissions, user_roles
@@ -58,6 +59,7 @@ ALL_MODELS = (
     ObligationFiling,
     ClientFee,
     FeeEntry,
+    ClientReminder,
     DocumentType,
     DocumentIntake,
     Document,
@@ -85,6 +87,7 @@ __all__ = [
     "ClientFee",
     "ClientNote",
     "ClientObligation",
+    "ClientReminder",
     "ClientUploadLink",
     "Contact",
     "Document",

@@ -35,6 +35,11 @@ REQUEST_PHRASES = (
     "Cel mai simplu este să le încărcați direct aici, fără cont și fără parolă:",
 )
 
+#: Frazele reamintirii. Deschiderea ei este singura parte care o deosebește de
+#: prima solicitare — restul mesajului este același, deliberat: clientul trebuie
+#: să vadă aceeași listă, nu una rescrisă.
+REMINDER_PHRASES = ("V-am scris pe", "reamintim ce mai așteptăm:")
+
 #: Frazele rezumatului zilnic.
 DIGEST_PHRASES = ("Bună dimineața,", "declarații nedepuse")
 
@@ -66,6 +71,19 @@ def test_the_request_preview_quotes_the_real_message(
     assert phrase in screen_source, f"previzualizarea de pe ecran a rămas în urmă: {phrase}"
 
 
+@pytest.mark.parametrize("phrase", REMINDER_PHRASES)
+def test_the_reminder_preview_quotes_the_real_message(
+    phrase: str, screen_source: str, request_source: str
+) -> None:
+    """Al treilea mesaj este singurul care pleacă fără ca cineva să apese.
+
+    Cu atât mai mult trebuie să scrie pe ecran exact ce primește clientul: pe
+    celelalte două le vede cineva înainte să apese, pe ăsta nu-l vede nimeni.
+    """
+    assert phrase in request_source, f"fraza nu mai există în backend: {phrase}"
+    assert phrase in screen_source, f"previzualizarea de pe ecran a rămas în urmă: {phrase}"
+
+
 @pytest.mark.parametrize("phrase", DIGEST_PHRASES)
 def test_the_digest_preview_quotes_the_real_message(
     phrase: str, screen_source: str, digest_source: str
@@ -79,9 +97,12 @@ def test_the_screen_does_not_advertise_channels_the_application_cannot_use(
 ) -> None:
     """WhatsApp a fost odată pe ecran ca un canal de trimitere.
 
-    Aplicația nu a trimis niciodată nimic pe WhatsApp. Poate **primi** documente
-    de acolo, iar `DocumentSource.WHATSAPP` este exact acea recepție — de aceea
-    testul se uită la lista de șabloane, nu la tot fișierul.
+    Aplicația nu trimite nimic pe WhatsApp și nu are cum: butoanele **deschid**
+    conversația cu mesajul scris, iar ce pleacă hotărăște omul. Poate și **primi**
+    documente de acolo — `DocumentSource.WHATSAPP` este exact acea recepție.
+    Niciuna dintre cele două nu este un șablon trimis de aplicație, de aceea
+    testul se uită la lista de șabloane, nu la tot fișierul: WhatsApp are voie să
+    apară oriunde altundeva pe ecran, dar nu ca un mesaj care pleacă singur.
     """
     start = screen_source.index("const TEMPLATES")
     end = screen_source.index("export function TemplatesPage")

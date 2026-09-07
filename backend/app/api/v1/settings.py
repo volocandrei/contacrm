@@ -123,6 +123,16 @@ EXPOSED: Final[tuple[tuple[str, SettingGroup, Callable[[Settings], str]], ...]] 
         SettingGroup.NOTIFICATIONS,
         lambda s: _yes_no(s.notifications_enabled),
     ),
+    # Are ce căuta pe ecran pentru că este singurul comutator din aplicație care
+    # decide dacă pleacă mesaje **către clienți** fără ca cineva să apese. Un
+    # administrator trebuie să poată vedea, nu să deducă, dacă aplicația scrie
+    # singură în numele cabinetului.
+    (
+        "CLIENT_REMINDERS_ENABLED",
+        SettingGroup.NOTIFICATIONS,
+        lambda s: _yes_no(s.client_reminders_enabled),
+    ),
+    ("DAILY_DIGEST_ENABLED", SettingGroup.NOTIFICATIONS, lambda s: _yes_no(s.daily_digest_enabled)),
     ("RETENTION_ENABLED", SettingGroup.RETENTION, lambda s: _yes_no(s.retention_enabled)),
     # Numărul de proxy-uri, nu adresele lor. Are ce căuta pe ecran pentru că de
     # el depinde dacă IP-ul din jurnalul de audit înseamnă ceva: pus pe 0 în

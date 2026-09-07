@@ -61,6 +61,7 @@ PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset(
 CRON_ROUTES: frozenset[tuple[str, str]] = frozenset(
     {
         ("GET", "/api/v1/internal/daily-digest"),
+        ("GET", "/api/v1/internal/reminders"),
         ("GET", "/api/v1/internal/run-queue"),
     }
 )

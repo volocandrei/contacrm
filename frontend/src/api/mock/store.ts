@@ -38,49 +38,53 @@ import type {
   AuditLogEntry,
   Client,
   ClientAlias,
-  DocumentRequest,
-  ExpectationTemplate,
-  IssuedUploadLink,
-  ClientStatus,
-  ClientFee,
-  DashboardFees,
-  FeeArrear,
-  FeeMonth,
-  FeeRow,
-  FeeTotals,
   ClientExpectation,
+  ClientFee,
   ClientNote,
-  DocumentTypeCode,
-  Intake,
-  Contact,
+  ClientStatus,
   ClientTimelineEvent,
+  Contact,
   ContactListItem,
   CurrentUser,
-  DueObligation,
-  ObligationFiling,
-  ObligationFrequency,
-  ObligationType,
   DashboardClosing,
   DashboardData,
+  DashboardFees,
   DayCount,
-  StatusSlice,
   DocumentAction,
   DocumentDetail,
   DocumentFieldName,
   DocumentListItem,
+  DocumentRequest,
   DocumentStatus,
+  DocumentTypeCode,
   DriveBrowseItem,
   DriveFolder,
   DriveStatus,
   DriveSyncResult,
+  DueObligation,
+  ExpectationTemplate,
+  FeeArrear,
+  FeeMonth,
+  FeeRow,
+  FeeTotals,
+  Intake,
+  IssuedUploadLink,
   MailBrowseItem,
   MailFolder,
+  ObligationFiling,
+  ObligationFrequency,
+  ObligationType,
   Permission,
+  ReminderRow,
+  Reminders,
+  ReminderSendReport,
+  ReminderStatus,
   ReportBucket,
   ReportSummary,
   RoleCode,
   RoleInfo,
   SettingEntry,
+  StatusSlice,
   Task,
   UploadLink,
   UserSummary,
@@ -2138,6 +2142,10 @@ export function listSettings(): SettingEntry[] {
     { key: "REFERENCE_PERIOD_STRATEGY", group: "PERIODS", value: "document_date" },
     { key: "DEFAULT_TIMEZONE", group: "PERIODS", value: "Europe/Bucharest" },
     { key: "NOTIFICATIONS_ENABLED", group: "NOTIFICATIONS", value: "false" },
+    // Pornit, ca pe server: decizia s-a luat. Ce ține locul unui comutator oprit
+    // este `NOTIFICATIONS_ENABLED` — fără el nu pleacă nimic nicăieri.
+    { key: "CLIENT_REMINDERS_ENABLED", group: "NOTIFICATIONS", value: "true" },
+    { key: "DAILY_DIGEST_ENABLED", group: "NOTIFICATIONS", value: "false" },
     { key: "RETENTION_ENABLED", group: "RETENTION", value: "false" },
     { key: "TRUSTED_PROXY_COUNT", group: "SECURITY", value: "0" },
     { key: "ONEDRIVE", group: "SECURITY", value: "true" },
@@ -2991,7 +2999,219 @@ export function composeDocumentRequest(
     }),
     uploadUrl: link.url,
     uploadExpiresAt: link.expiresAt,
+    // Primul număr de pe fișă, ca ecranul să poată oferi și drumul ăsta fără
+    // încă o cerere. Așa cum e scris: normalizarea ține de link, nu de date.
+    whatsappNumber:
+      state.contacts.find(
+        (contact) => contact.clientId === clientId && Boolean(contact.whatsappNumber),
+      )?.whatsappNumber ?? null,
   };
+}
+
+/* ─── Remindere către clienți ──────────────────────────────────────────────── */
+
+/**
+ * Oglinda lui `services/reminders.py`.
+ *
+ * Regulile trebuie să fie **exact** aceleași, fiindcă ecranul construit pe ele
+ * promite ceva despre ce pleacă din cabinet către clienți. Dacă backendul
+ * simulat ar reaminti într-o zi în care cel real tace, demonstrația ar arăta un
+ * produs care nu există — iar diferența s-ar descoperi abia după ce un client
+ * primește un mesaj în plus.
+ */
+const MOCK_SILENCE_DAYS = 4;
+const MOCK_MAX_REMINDERS = 2;
+
+type StoredReminder = {
+  clientId: string;
+  referenceMonth: string;
+  sentAt: string;
+  sentTo: string;
+};
+
+const reminderLog: StoredReminder[] = [];
+let remindersSeeded = false;
+
+/** „acum minus n zile", ca ISO. Datele de demonstrație se scriu relativ la azi. */
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString();
+}
+
+/**
+ * Câteva situații de pornire, ca ecranul să nu arate o singură stare.
+ *
+ * Un ecran de demonstrație în care toate rândurile spun același lucru nu arată
+ * la ce folosește: partea utilă aici este chiar **varietatea motivelor** — unul
+ * neîntrebat, unul care a răspuns, unul care a primit deja tot ce trimite
+ * aplicația într-o lună.
+ */
+function seedReminders(): void {
+  if (remindersSeeded) return;
+  remindersSeeded = true;
+
+  const entries = listMissingDocuments(CURRENT_MONTH);
+  entries.forEach((entry, index) => {
+    // Primul rămâne neîntrebat: aplicația nu reamintește ce nu s-a cerut.
+    if (index === 0) return;
+
+    const link = {
+      id: `link-seed-${index}`,
+      clientId: entry.period.clientId,
+      notifiedAt: daysAgo(index === 1 ? 1 : MOCK_SILENCE_DAYS + 2),
+      expiresAt: new Date(Date.now() + MOCK_LINK_VALIDITY_DAYS * 86_400_000).toISOString(),
+      revokedAt: null,
+      uploadCount: index === 2 ? 1 : 0,
+      lastUsedAt: index === 2 ? daysAgo(1) : null,
+      createdAt: daysAgo(index === 1 ? 1 : MOCK_SILENCE_DAYS + 2),
+      referenceMonth: CURRENT_MONTH,
+    };
+    uploadLinks.push(link);
+
+    if (index === 3) {
+      for (let sent = 0; sent < MOCK_MAX_REMINDERS; sent += 1) {
+        reminderLog.push({
+          clientId: entry.period.clientId,
+          referenceMonth: CURRENT_MONTH,
+          sentAt: daysAgo(MOCK_SILENCE_DAYS + 1 + sent * MOCK_SILENCE_DAYS),
+          sentTo: "contact@exemplu.ro",
+        });
+      }
+    }
+  });
+}
+
+/** Prima adresă și primul număr de pe fișă, în ordinea contactelor. */
+function reachOf(clientId: string): { email: string | null; whatsapp: string | null } {
+  const own = state.contacts.filter((contact) => contact.clientId === clientId);
+  return {
+    email: own.find((contact) => contact.email)?.email ?? null,
+    whatsapp: own.find((contact) => contact.whatsappNumber)?.whatsappNumber ?? null,
+  };
+}
+
+/**
+ * Un singur motiv per rând, în ordinea în care contează.
+ *
+ * Se răspunde întâi la ce **nu se schimbă prin așteptare**: un client fără
+ * adresă de email nu devine contactabil peste trei zile, iar arătat ca „mai
+ * așteptăm" s-ar fi descoperit abia la sfârșitul lunii.
+ */
+function reminderStatusOf(args: {
+  lastMessageAt: string | null;
+  lastUsedAt: string | null;
+  sentCount: number;
+  email: string | null;
+  deadline: string;
+  today: Date;
+}): ReminderStatus {
+  if (args.lastMessageAt === null) return "NOT_ASKED";
+  if (args.email === null) return "NO_EMAIL";
+  if (args.today > new Date(`${args.deadline}T23:59:59`)) return "PAST_DEADLINE";
+  if (args.sentCount >= MOCK_MAX_REMINDERS) return "MAX_REACHED";
+  if (args.lastUsedAt !== null && args.lastUsedAt > args.lastMessageAt) return "ANSWERED";
+
+  const silent = Math.floor(
+    (args.today.getTime() - new Date(args.lastMessageAt).getTime()) / 86_400_000,
+  );
+  return silent < MOCK_SILENCE_DAYS ? "WAITING" : "DUE";
+}
+
+/**
+ * Cine primește azi o reamintire, și **de ce ceilalți nu**.
+ *
+ * `today` există ca parametru din același motiv ca în backend: o regulă care
+ * depinde de dată nu se poate testa fără să i se poată spune ce zi este.
+ */
+export function getReminders(today: Date = new Date()): Reminders {
+  requirePermission("communication:send");
+  seedReminders();
+
+  const deadline = filingDeadline(CURRENT_MONTH);
+  const rows: ReminderRow[] = listMissingDocuments(CURRENT_MONTH).map((entry) => {
+    const mine = reminderLog.filter(
+      (row) => row.clientId === entry.period.clientId && row.referenceMonth === CURRENT_MONTH,
+    );
+    const lastReminder = mine.map((row) => row.sentAt).sort().at(-1) ?? null;
+    const lastMessageAt =
+      [entry.notifiedAt, lastReminder].filter((at): at is string => at !== null).sort().at(-1) ??
+      null;
+    const links = uploadLinks.filter(
+      (link) => link.clientId === entry.period.clientId && link.referenceMonth === CURRENT_MONTH,
+    );
+    const lastUsedAt =
+      links
+        .map((link) => link.lastUsedAt)
+        .filter((at): at is string => at !== null)
+        .sort()
+        .at(-1) ?? null;
+    const reach = reachOf(entry.period.clientId);
+
+    return {
+      clientId: entry.period.clientId,
+      clientName: entry.period.clientName,
+      missingCount: entry.missing.length,
+      status: reminderStatusOf({
+        lastMessageAt,
+        lastUsedAt,
+        sentCount: mine.length,
+        email: reach.email,
+        deadline,
+        today,
+      }),
+      lastMessageAt,
+      daysSilent:
+        lastMessageAt === null
+          ? null
+          : Math.floor((today.getTime() - new Date(lastMessageAt).getTime()) / 86_400_000),
+      sentCount: mine.length,
+      email: reach.email,
+      whatsappNumber: reach.whatsapp,
+    };
+  });
+
+  return {
+    referenceMonth: CURRENT_MONTH,
+    deadline,
+    rows,
+    due: rows.filter((row) => row.status === "DUE").length,
+    automaticEnabled: true,
+    // Backendul simulat nu are server de mail și nu se preface că are. Ecranul
+    // spune ce lipsește, în loc să lase pe cineva să creadă că a plecat ceva.
+    mailConfigured: false,
+    silenceDays: MOCK_SILENCE_DAYS,
+    maxPerMonth: MOCK_MAX_REMINDERS,
+  };
+}
+
+/**
+ * Trimite acum tot ce era de trimis.
+ *
+ * **Aceleași reguli ca la ora planificatorului.** Butonul nu ocolește plafonul
+ * lunar și nu scrie cuiva căruia nu i s-a cerut niciodată — altfel ecranul de
+ * deasupra ar fi o previzualizare mincinoasă.
+ */
+export function sendReminders(today: Date = new Date()): ReminderSendReport {
+  requirePermission("communication:send");
+  const rows = getReminders(today).rows;
+  const due = rows.filter((row) => row.status === "DUE");
+
+  for (const row of due) {
+    reminderLog.push({
+      clientId: row.clientId,
+      referenceMonth: CURRENT_MONTH,
+      sentAt: today.toISOString(),
+      sentTo: row.email ?? "",
+    });
+    // Mesajul poartă un drum nou, ca pe server: tokenul unui link existent nu se
+    // mai poate afla, deci refolosirea și hash-ul se exclud.
+    const link = createUploadLink(row.clientId, CURRENT_MONTH);
+    const stored = uploadLinks.find((entry) => entry.id === link.id);
+    if (stored) stored.notifiedAt = today.toISOString();
+    // Cui și pentru ce lună. Nu textul: jurnalul nu ține conținut (§33).
+    recordAudit("CLIENT_REMINDER_SENT", "Client", row.clientId, row.clientName);
+  }
+
+  return { sent: due.length, failed: 0, skipped: rows.length - due.length };
 }
 
 /* ─── Asistentul (M13) ─────────────────────────────────────────────────────── */

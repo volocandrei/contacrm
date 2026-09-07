@@ -284,6 +284,17 @@ class Settings(BaseSettings):
     #: fără să lase aplicația să scrie clienților, iar invers nu are sens.
     daily_digest_enabled: bool = False
 
+    #: Reminderele **către clienți**, trimise de planificator.
+    #:
+    #: Pornit implicit, fiindcă decizia s-a luat: cabinetul a hotărât că
+    #: aplicația are voie să scrie clienților. Ce ține locul unui comutator oprit
+    #: este `notifications_enabled`, care rămâne oprit până când cineva
+    #: configurează SMTP — deci o instalare proaspătă tot nu scrie nimănui.
+    #:
+    #: Se referă strict la ce pleacă **singur**. Butonul „Trimite acum" din
+    #: ecranul de remindere este muncă făcută de un om și nu trece pe aici.
+    client_reminders_enabled: bool = True
+
     @property
     def mail_is_configured(self) -> bool:
         """Se poate trimite ceva, cu adevărat?

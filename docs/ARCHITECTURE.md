@@ -172,11 +172,26 @@ formă a ceea ce ar trebui construit, nu ca descriere a ce este. Ecranele care
 le-ar fi consumat au fost făcute oneste la auditul de producție: nu mai cer
 rute inexistente.
 
-**Trimiterea, însă, există** de la M17, fără tabelele astea: solicitarea de
-documente pleacă pe email la apăsarea unui om, iar faptul că a plecat se reține
-în `client_upload_links.notified_at` — **că** s-a trimis și către cine, nu
-conținutul (§33, §52). Ce rămâne nefăcut este arhiva mesajelor și trimiterea
-automată, care este o decizie a cabinetului, nu o lipsă de cod.
+**Trimiterea există** de la M17, fără tabelele astea: solicitarea de documente
+pleacă pe email la apăsarea unui om, iar faptul că a plecat se reține în
+`client_upload_links.notified_at` — **că** s-a trimis și către cine, nu conținutul
+(§33, §52).
+
+**Trimiterea automată există** de la 7 septembrie 2026, tot fără ele. Cabinetul a
+hotărât că aplicația are voie să scrie clienților, iar singurul tabel de care a
+fost nevoie este `client_reminders`: cui, pentru ce lună, când, unde a ajuns. Nu
+un motor de notificări cu șabloane și coadă — textul se recompune oricând din ce
+lipsește, iar ce nu se poate reface este faptul că a plecat. Contorul lunar
+trebuie să fie o interogare, nu o citire din jurnalul de audit: o regulă de
+business n-are ce căuta în registrul de probe (§33).
+
+| Tabel | Câmpuri cheie |
+|---|---|
+| `client_reminders` | id, organization_id, client_id, reference_month, sent_at, sent_to, channel, link_id, sent_by_id — `sent_by_id` nul înseamnă că a scris planificatorul, nu un om |
+
+Ce rămâne nefăcut este arhiva mesajelor și trimiterea pe alte canale. WhatsApp-ul
+se deschide dintr-un buton, cu mesajul scris; nu pleacă singur și nu lasă urmă,
+fiindcă aplicația n-are cum să afle dacă omul a apăsat trimite.
 
 | Tabel | Câmpuri cheie |
 |---|---|
