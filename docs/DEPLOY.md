@@ -34,6 +34,46 @@ relativă `/api/v1`, care este exact ce trebuie.
 
 ---
 
+## Varianta de demonstrație: fără backend deloc
+
+Pentru arătat cuiva — un contabil care vine cu corecturi, un client care vrea să
+vadă înainte să hotărască — nu trebuie nici bază de date, nici S3, nici vreun
+secret. Aplicația întreagă rulează în browser, pe backendul simulat din
+`src/api/mock`, cu date sintetice (§70).
+
+**Este un al doilea proiect Vercel, nu o setare a celui real.** Cele două
+instalări răspund la întrebări diferite și n-au voie să se amestece: una arată
+ecranele, cealaltă ține documente contabile.
+
+| | proiectul real | demonstrația |
+|---|---|---|
+| Root Directory | rădăcina repo-ului | `frontend/` |
+| configurarea folosită | `vercel.json` de la rădăcină (două servicii) | `frontend/vercel.json` |
+| `VITE_API_MODE` | `http`, din variabile de mediu | `mock`, scris în `buildCommand` |
+| bază de date, S3, secrete | obligatorii | niciunul |
+
+**De ce modul stă în fișier, nu într-un panou.** O variabilă uitată într-un
+dashboard ar fi livrat exact aceeași aplicație, arătoasă și funcțională, rulând
+pe date inventate — iar peste o lună nimeni n-ar mai fi știut pe ce rulează
+fiecare instalare. Scris în `buildCommand`, răspunsul se citește din repository.
+
+Ecranul de autentificare spune oricum, pe față, că este o demonstrație și că
+parola nu se verifică. `X-Robots-Tag: noindex` și `robots.txt` țin adresa în
+afara motoarelor de căutare: o aplicație în care orice parolă intră n-are ce
+căuta acolo.
+
+Rescrierea către `index.html` există pentru că altfel un link trimis direct spre
+un ecran — `/crm/onorarii` — ar da 404. Exact linkurile pe care le trimiți cuiva
+ca să se uite la ceva anume.
+
+**Ce nu poate arăta demonstrația:** calitatea citirii pe documentele lui
+adevărate (nu există AI fără cheie), preluarea din e-Factura, trimiterea
+emailurilor. Restul — ecrane, fluxuri, texte, termene, coloane — este identic,
+fiindcă backendul simulat este ținut sincron cu cel real prin testele de contract
+(§14).
+
+---
+
 ## 1. Legarea proiectului
 
 Aplicația Vercel pentru GitHub are nevoie de acces la repo. Pe
