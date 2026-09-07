@@ -23,6 +23,8 @@ class Permission(StrEnum):
     DOCUMENTS_APPROVE = "documents:approve"
     DOCUMENTS_DELETE = "documents:delete"
     PERIODS_MANAGE = "periods:manage"
+    FEES_READ = "fees:read"
+    FEES_MANAGE = "fees:manage"
     TASKS_READ = "tasks:read"
     TASKS_WRITE = "tasks:write"
     COMMUNICATION_SEND = "communication:send"
@@ -54,6 +56,11 @@ ROLE_LABEL: Mapping[RoleCode, str] = MappingProxyType(
 _ALL = tuple(Permission)
 
 # Doar SUPER_ADMIN poate șterge documente: ștergerea atinge probe contabile (R8).
+#
+# Onorariile (`fees:*`) rămân la administratori, fiindcă lista lor este ordinea în
+# care cabinetul își ține clienții după bani — o informație de care nu are nevoie
+# nimeni ca să proceseze documente. Cabinetul care vrea altfel poate da rolul de
+# administrator; ce nu poate face este să afle mai târziu că a dat-o din greșeală.
 ROLE_PERMISSIONS: Mapping[RoleCode, frozenset[Permission]] = MappingProxyType(
     {
         RoleCode.SUPER_ADMIN: frozenset(_ALL),

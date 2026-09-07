@@ -78,6 +78,8 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "documents:approve": "Aprobare documente",
   "documents:delete": "Ștergere documente",
   "periods:manage": "Administrare perioade",
+  "fees:read": "Vizualizare onorarii",
+  "fees:manage": "Administrare onorarii",
   "tasks:read": "Vizualizare sarcini",
   "tasks:write": "Modificare sarcini",
   "communication:send": "Trimitere mesaje",
@@ -89,7 +91,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
 /**
  * Zona din aplicație pe care o deschide o permisiune.
  *
- * Treisprezece rânduri fără despărțituri se citesc ca o listă oarecare. Grupate,
+ * Cincisprezece rânduri fără despărțituri se citesc ca o listă oarecare. Grupate,
  * întrebarea „ce poate face un operator cu documentele?" are un răspuns care se
  * vede dintr-o privire.
  */
@@ -97,6 +99,7 @@ export const PERMISSION_AREA_LABEL: Record<string, string> = {
   clients: "Clienți",
   documents: "Documente",
   periods: "Perioade contabile",
+  fees: "Onorarii",
   tasks: "Sarcini",
   communication: "Comunicare",
   admin: "Administrare",

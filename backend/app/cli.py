@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import sys
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import make_url
@@ -30,6 +31,7 @@ from app.core.security import hash_password
 from app.domain.document_types import DEFAULT_DOCUMENT_TYPES
 from app.domain.enums import ClientStatus, TaskPriority, TaskStatus
 from app.domain.obligations import DEFAULT_OBLIGATIONS
+from app.domain.periods import format_reference_month
 from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS
 from app.domain.permissions import Permission as PermissionCode
 from app.models.client import Client, ClientNote, Contact, Tag
@@ -39,6 +41,7 @@ from app.models.organization import Organization
 from app.models.period import ClientExpectation
 from app.models.task import Task
 from app.models.user import Permission, Role, User
+from app.services.fees import FeeService
 from app.services.obligations import ObligationService
 
 DEV_PASSWORD = "contacrm-dev"
@@ -139,6 +142,7 @@ def seed_dev() -> None:
         expectations = _seed_expectations(session, organization)
         client_obligations = _seed_client_obligations(session, organization)
         filings = _seed_obligation_filings(session, organization)
+        fees = _seed_fees(session, organization)
 
         print(f"organizație: {organization.name}")
         print(f"utilizatori creați: {created} (parolă: {DEV_PASSWORD})")
@@ -148,6 +152,7 @@ def seed_dev() -> None:
         print(f"așteptări lunare adăugate: {expectations}")
         print(f"declarații atribuite clienților: {client_obligations}")
         print(f"depuneri marcate: {filings}")
+        print(f"luni de onorarii facturate: {fees}")
 
 
 def sync_obligation_types(session: Session, organization: Organization) -> int:
@@ -453,6 +458,69 @@ def _seed_obligation_filings(session: Session, organization: Organization) -> in
         )
         marked += 1
     return marked
+
+
+def _seed_fees(session: Session, organization: Organization) -> int:
+    """Onorariile din setul de development, cu două luni facturate.
+
+    Fără ele, ecranul „Onorarii" este gol pe o instalare proaspătă și arată
+    identic cu unul stricat. Ca la termene, setul este deliberat neuniform: un
+    client în euro, câțiva fără onorariu stabilit, luna trecută aproape încasată
+    și cea în curs pe jumătate. Un set în care toți plătesc la fel și la timp ar
+    ascunde exact rândurile pentru care ecranul există.
+
+    Idempotentă: rulată a doua oară nu schimbă sumele deja facturate.
+    """
+    clients = list(
+        session.scalars(
+            select(Client)
+            .where(
+                Client.organization_id == organization.id,
+                Client.deleted_at.is_(None),
+                Client.status == ClientStatus.ACTIVE,
+            )
+            .order_by(Client.name)
+        ).all()
+    )
+    if not clients:
+        return 0
+
+    service = FeeService(session, organization.id)
+    existing = service.fees()
+    # Din aceeași lună ca declarațiile: cabinetul acesta a început totul atunci.
+    starts_on = (datetime.now(UTC) - timedelta(days=SEED_HISTORY_DAYS)).date().replace(day=1)
+
+    for index, client in enumerate(clients):
+        # Câțiva rămân fără onorariu stabilit: ecranul trebuie să arate și cine a
+        # fost uitat, nu doar cine e configurat.
+        if client.id in existing or index % 4 == 3:
+            continue
+        service.set_for_client(
+            client.id,
+            amount=Decimal(350 + ((index * 137) % 12) * 50),
+            currency="EUR" if index % 11 == 5 else "RON",
+            starts_on=starts_on,
+        )
+
+    today = datetime.now(UTC).date()
+    current = format_reference_month(today)
+    previous = format_reference_month(today.replace(day=1) - timedelta(days=1))
+    created = service.generate(previous, today=today) + service.generate(current, today=today)
+
+    user = session.scalars(
+        select(User).where(User.organization_id == organization.id).order_by(User.email)
+    ).first()
+    if user is None:
+        return created
+
+    # Luna trecută este aproape încasată; cea în curs, pe jumătate. Ce rămâne
+    # neîncasat din luna trecută devine restanța care trebuie să se vadă sus.
+    for period, keep_unpaid in ((previous, 6), (current, 2)):
+        for index, row in enumerate(service.month(period)):
+            if not row.is_generated or row.is_paid or index % keep_unpaid == 0:
+                continue
+            service.mark_paid(row.client_id, period, paid_on=today - timedelta(days=5), user=user)
+    return created
 
 
 def recover_processing() -> None:

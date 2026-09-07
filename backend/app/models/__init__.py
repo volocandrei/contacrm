@@ -19,6 +19,7 @@ from app.models.document import (
     DocumentType,
     DocumentVersion,
 )
+from app.models.fee import ClientFee, FeeEntry
 from app.models.microsoft import DriveFolder, MailFolder, MicrosoftConnection
 from app.models.obligation import ClientObligation, ObligationFiling, ObligationType
 from app.models.organization import Organization
@@ -55,6 +56,8 @@ ALL_MODELS = (
     ObligationType,
     ClientObligation,
     ObligationFiling,
+    ClientFee,
+    FeeEntry,
     DocumentType,
     DocumentIntake,
     Document,
@@ -79,6 +82,7 @@ __all__ = [
     "Client",
     "ClientAlias",
     "ClientExpectation",
+    "ClientFee",
     "ClientNote",
     "ClientObligation",
     "ClientUploadLink",
@@ -93,6 +97,7 @@ __all__ = [
     "ExpectationTemplate",
     "ExpectationTemplateItem",
     "ExpectationTemplateObligation",
+    "FeeEntry",
     "MailFolder",
     "MicrosoftConnection",
     "ObligationFiling",

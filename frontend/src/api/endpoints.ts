@@ -35,6 +35,9 @@ import type {
   MailBrowseItem,
   MailFolder,
   DueObligation,
+  ClientFee,
+  FeeMonth,
+  FeeRow,
   FilingsResult,
   ObligationFiling,
   ObligationType,
@@ -325,6 +328,32 @@ export const obligations = {
     api.post<FilingsResult>("/obligations/filings/bulk", { filings }),
   unmarkFiled: (input: { clientId: string; obligationTypeId: string; period: string }) =>
     api.delete<void>("/obligations/filings", { ...input }),
+};
+
+/**
+ * Onorariile cabinetului.
+ *
+ * O singură cerere aduce tot ecranul: rândurile, cifrele și restanțele vechi.
+ * Trei cereri separate ar fi putut ajunge pe ecran în trei stări diferite ale
+ * aceleiași luni.
+ */
+export const fees = {
+  month: (referenceMonth: string) => api.get<FeeMonth>("/fees", { referenceMonth }),
+  generate: (referenceMonth: string) => api.post<FeeMonth>("/fees/generate", { referenceMonth }),
+  forClient: (clientId: string) => api.get<ClientFee>(`/fees/clients/${clientId}`),
+  setForClient: (
+    clientId: string,
+    input: {
+      amount: string | null;
+      currency?: string;
+      startsOn?: string | null;
+      note?: string | null;
+    },
+  ) => api.put<ClientFee>(`/fees/clients/${clientId}`, { ...input }),
+  markPaid: (input: { clientId: string; referenceMonth: string; paidOn?: string | null }) =>
+    api.post<FeeRow>("/fees/payments", { ...input }),
+  unmarkPaid: (input: { clientId: string; referenceMonth: string }) =>
+    api.delete<FeeRow>("/fees/payments", { ...input }),
 };
 
 export type TaskInput = {

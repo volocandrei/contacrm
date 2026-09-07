@@ -42,6 +42,11 @@ import type {
   ExpectationTemplate,
   IssuedUploadLink,
   ClientStatus,
+  ClientFee,
+  FeeArrear,
+  FeeMonth,
+  FeeRow,
+  FeeTotals,
   ClientExpectation,
   ClientNote,
   DocumentTypeCode,
@@ -108,6 +113,8 @@ const ALL_PERMISSIONS: Permission[] = [
   "documents:approve",
   "documents:delete",
   "periods:manage",
+  "fees:read",
+  "fees:manage",
   "tasks:read",
   "tasks:write",
   "communication:send",
@@ -3829,4 +3836,300 @@ export function unmarkObligationFiled(input: {
   const key = filingKey(input.clientId, input.obligationTypeId, input.period);
   if (!filings.has(key)) throw notFound("Depunere", key);
   filings.delete(key);
+}
+
+/* ─── Onorarii ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Registrul de onorarii, pe backendul simulat.
+ *
+ * Aceleași trei reguli ca în `app/services/fees.py`, fiindcă backendul simulat
+ * este contractul (§14): nu se facturează luni de dinaintea relației, nu se
+ * facturează luni viitoare, iar suma unei luni generate rămâne cea de atunci.
+ */
+type StoredFee = {
+  clientId: string;
+  amount: string;
+  currency: string;
+  startsOn: string;
+  note: string | null;
+};
+
+type StoredFeeEntry = {
+  clientId: string;
+  period: string;
+  amount: string;
+  currency: string;
+  paidOn: string | null;
+  paidByName: string | null;
+  note: string | null;
+};
+
+const clientFees = new Map<string, StoredFee>();
+const feeEntries = new Map<string, StoredFeeEntry>();
+
+function feeKey(clientId: string, period: string): string {
+  return `${clientId}::${period}`;
+}
+
+/** Luna calendaristică a unei zile ISO. */
+function monthOf(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+function money(value: number): string {
+  return value.toFixed(2);
+}
+
+function addMoney(total: string, value: string): string {
+  return money(Number(total) + Number(value));
+}
+
+/** Luna vecină, la `delta` luni distanță. */
+function shiftMonth(period: string, delta: number): string {
+  const [year, month] = period.split("-").map(Number) as [number, number];
+  const [movedYear, movedMonth] = shiftMonths(year, month, delta);
+  return `${movedYear}-${String(movedMonth).padStart(2, "0")}`;
+}
+
+/** Creează rândurile lipsă ale lunii. Nu atinge nimic din ce există deja. */
+function generateFeeEntries(period: string): number {
+  const start = `${period}-01`;
+  let created = 0;
+  for (const fee of clientFees.values()) {
+    if (feeEntries.has(feeKey(fee.clientId, period))) continue;
+    if (fee.startsOn > start) continue;
+    feeEntries.set(feeKey(fee.clientId, period), {
+      clientId: fee.clientId,
+      period,
+      // Înghețată acum: renegocierea de peste trei luni n-o schimbă.
+      amount: fee.amount,
+      currency: fee.currency,
+      paidOn: null,
+      paidByName: null,
+      note: null,
+    });
+    created += 1;
+  }
+  return created;
+}
+
+let feesSeeded = false;
+
+/**
+ * Setul sintetic: onorarii pentru majoritatea clienților activi, două luni
+ * generate, cea trecută aproape încasată.
+ *
+ * Câțiva clienți rămân **fără onorariu stabilit**, intenționat: ecranul trebuie
+ * să arate și cine a fost uitat, nu doar cine e configurat.
+ */
+function seedFees() {
+  if (feesSeeded) return;
+  feesSeeded = true;
+
+  const startsOn = addDays(new Date(MOCK_NOW), -MOCK_HISTORY_DAYS);
+  const active = state.clients
+    .filter((client) => client.status === "ACTIVE")
+    .sort((a, b) => a.name.localeCompare(b.name, "ro"));
+
+  active.forEach((client, index) => {
+    if (index % 7 === 3) return;
+    clientFees.set(client.id, {
+      clientId: client.id,
+      amount: money(350 + ((index * 137) % 12) * 50),
+      currency: index % 11 === 5 ? "EUR" : "RON",
+      startsOn,
+      note: null,
+    });
+  });
+
+  const current = monthOf(MOCK_NOW);
+  const previous = shiftMonth(current, -1);
+  generateFeeEntries(previous);
+  generateFeeEntries(current);
+
+  let index = 0;
+  for (const entry of feeEntries.values()) {
+    index += 1;
+    const paid = entry.period === previous ? index % 6 !== 0 : index % 2 === 0;
+    if (!paid) continue;
+    entry.paidOn = entry.period === previous ? `${previous}-20` : `${current}-10`;
+    entry.paidByName = USERS[0]!.fullName;
+  }
+}
+
+/** De când face clientul parte din lunile facturabile. */
+function feeStartOf(client: Client, fee: StoredFee | undefined): string {
+  if (fee) return fee.startsOn;
+  return `${monthOf(client.createdAt)}-01`;
+}
+
+function buildFeeMonth(referenceMonth: string): FeeMonth {
+  const start = `${referenceMonth}-01`;
+  const rows: FeeRow[] = [];
+
+  for (const client of state.clients) {
+    const entry = feeEntries.get(feeKey(client.id, referenceMonth));
+    const fee = clientFees.get(client.id);
+    // Cine are rând apare oricum: rândul este faptul, indiferent ce s-a
+    // întâmplat de atunci cu clientul.
+    if (!entry && client.status !== "ACTIVE") continue;
+    if (!entry && feeStartOf(client, fee) > start) continue;
+    rows.push({
+      clientId: client.id,
+      clientName: client.name,
+      configured: fee?.amount ?? null,
+      amount: entry?.amount ?? null,
+      currency: entry?.currency ?? fee?.currency ?? "RON",
+      paidOn: entry?.paidOn ?? null,
+      paidByName: entry?.paidByName ?? null,
+      note: entry?.note ?? null,
+      isGenerated: Boolean(entry),
+      isPaid: Boolean(entry?.paidOn),
+    });
+  }
+  rows.sort((a, b) => a.clientName.localeCompare(b.clientName, "ro"));
+
+  const byCurrency = new Map<string, FeeTotals>();
+  for (const row of rows) {
+    if (!row.isGenerated || !row.amount) continue;
+    const totals = byCurrency.get(row.currency) ?? {
+      currency: row.currency,
+      billed: "0.00",
+      collected: "0.00",
+      outstanding: "0.00",
+    };
+    totals.billed = addMoney(totals.billed, row.amount);
+    if (row.isPaid) totals.collected = addMoney(totals.collected, row.amount);
+    totals.outstanding = money(Number(totals.billed) - Number(totals.collected));
+    byCurrency.set(row.currency, totals);
+  }
+  const totals = [...byCurrency.values()].sort(
+    (a, b) =>
+      Number(a.currency !== "RON") - Number(b.currency !== "RON") ||
+      a.currency.localeCompare(b.currency),
+  );
+
+  const arrears: FeeArrear[] = [];
+  for (const entry of feeEntries.values()) {
+    if (entry.period >= referenceMonth || entry.paidOn) continue;
+    const client = state.clients.find((row) => row.id === entry.clientId);
+    if (!client) continue;
+    arrears.push({
+      clientId: entry.clientId,
+      clientName: client.name,
+      period: entry.period,
+      amount: entry.amount,
+      currency: entry.currency,
+    });
+  }
+  arrears.sort(
+    (a, b) => b.period.localeCompare(a.period) || a.clientName.localeCompare(b.clientName, "ro"),
+  );
+
+  return {
+    referenceMonth,
+    rows,
+    totals,
+    unpaidClients: rows.filter((row) => row.isGenerated && !row.isPaid).length,
+    arrears,
+  };
+}
+
+export function getFeeMonth(referenceMonth: string): FeeMonth {
+  requirePermission("fees:read");
+  seedFees();
+  return buildFeeMonth(referenceMonth);
+}
+
+export function generateFees(referenceMonth: string): FeeMonth {
+  requirePermission("fees:manage");
+  seedFees();
+  if (referenceMonth > monthOf(MOCK_NOW)) {
+    throw new ApiError("VALIDATION_ERROR", "Nu se pot factura luni care nu au început.", 422, {
+      referenceMonth: ["Luna nu a început."],
+    });
+  }
+  generateFeeEntries(referenceMonth);
+  return buildFeeMonth(referenceMonth);
+}
+
+export function getClientFee(clientId: string): ClientFee {
+  requirePermission("fees:read");
+  seedFees();
+  const client = state.clients.find((row) => row.id === clientId);
+  if (!client) throw notFound("Client", clientId);
+  const fee = clientFees.get(clientId);
+  return {
+    clientId,
+    amount: fee?.amount ?? null,
+    currency: fee?.currency ?? "RON",
+    startsOn: fee?.startsOn ?? null,
+    note: fee?.note ?? null,
+  };
+}
+
+export function setClientFee(
+  clientId: string,
+  input: {
+    amount: string | null;
+    currency?: string;
+    startsOn?: string | null;
+    note?: string | null;
+  },
+): ClientFee {
+  requirePermission("fees:manage");
+  seedFees();
+  const client = state.clients.find((row) => row.id === clientId);
+  if (!client) throw notFound("Client", clientId);
+
+  if (input.amount === null) {
+    clientFees.delete(clientId);
+    return { clientId, amount: null, currency: "RON", startsOn: null, note: null };
+  }
+  if (Number(input.amount) < 0) {
+    throw new ApiError("VALIDATION_ERROR", "Onorariul nu poate fi negativ.", 422, {
+      amount: ["Nu poate fi negativ."],
+    });
+  }
+  const existing = clientFees.get(clientId);
+  const fee: StoredFee = {
+    clientId,
+    amount: money(Number(input.amount)),
+    currency: (input.currency ?? existing?.currency ?? "RON").toUpperCase(),
+    startsOn: input.startsOn ?? existing?.startsOn ?? `${monthOf(MOCK_NOW)}-01`,
+    note: input.note ?? null,
+  };
+  clientFees.set(clientId, fee);
+  return { ...fee };
+}
+
+function feeRowOf(clientId: string, referenceMonth: string): FeeRow {
+  const row = buildFeeMonth(referenceMonth).rows.find((entry) => entry.clientId === clientId);
+  if (!row) throw notFound("Rând de onorariu", feeKey(clientId, referenceMonth));
+  return row;
+}
+
+export function markFeePaid(input: {
+  clientId: string;
+  referenceMonth: string;
+  paidOn?: string | null;
+}): FeeRow {
+  requirePermission("fees:manage");
+  seedFees();
+  const entry = feeEntries.get(feeKey(input.clientId, input.referenceMonth));
+  if (!entry) throw notFound("Lună facturată", feeKey(input.clientId, input.referenceMonth));
+  entry.paidOn = input.paidOn ?? MOCK_NOW.slice(0, 10);
+  entry.paidByName = currentUser.fullName;
+  return feeRowOf(input.clientId, input.referenceMonth);
+}
+
+export function unmarkFeePaid(input: { clientId: string; referenceMonth: string }): FeeRow {
+  requirePermission("fees:manage");
+  seedFees();
+  const entry = feeEntries.get(feeKey(input.clientId, input.referenceMonth));
+  if (!entry) throw notFound("Lună facturată", feeKey(input.clientId, input.referenceMonth));
+  entry.paidOn = null;
+  entry.paidByName = null;
+  return feeRowOf(input.clientId, input.referenceMonth);
 }

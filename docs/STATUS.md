@@ -277,6 +277,96 @@ copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email,
 verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
 confirmat.
 
+### Cabinetul își vede banii (7 septembrie 2026)
+
+**Ce lipsea.** Aplicația știa tot despre munca făcută pentru client — ce a sosit,
+ce lipsește, ce s-a depus, ce s-a arhivat — și nimic despre banii primiți pentru
+ea. Coloana aceea trăiește, în aproape fiecare cabinet, într-un Excel separat. Și
+tocmai de aceea nu se potrivește niciodată cu lista de clienți: clientul nou intră
+în aplicație și nu în Excel, cel plecat rămâne în Excel și nu în aplicație.
+
+`CRM → Onorarii` răspunde la trei întrebări, în ordinea în care se pun la început
+de lună: **cât am de încasat, de la cine, și ce a rămas neîncasat din lunile
+trecute.**
+
+**Ce nu face, deliberat.** Nu emite facturi. Nu are serie, număr, TVA sau
+e-Factura, și nu va avea aici: o factură este un document cu regim legal, iar un
+ecran care s-ar preface că emite una ar produce hârtii fără valoare și o falsă
+liniște. Ce se ține este exact ce ținea Excelul — sumă, lună, plătit sau nu. Și
+nu trimite nimic nimănui: marcarea unei încasări este gestul omului care a văzut
+extrasul.
+
+**Două tabele, din același motiv ca la declarații.** `client_fees` este
+înțelegerea în vigoare (cât plătește clientul, de când); `fee_entries` este luna
+facturată, cu **suma înghețată la generare**. Dacă onorariul crește în martie,
+ianuarie rămâne cât a fost — altfel istoricul s-ar rescrie singur la fiecare
+renegociere, iar un registru care își schimbă trecutul nu este un registru. Este
+testul cel mai important din fișier, verificat prin mutație în ambele
+implementări.
+
+**Trei reguli, toate din același principiu: aplicația nu inventează.**
+
+- **Nu facturează luni de dinaintea relației.** `starts_on` spune de când. Fără
+  regula asta, un cabinet care își configurează onorariile azi ar deschide ecranul
+  pe restanțe inventate pentru toate lunile din urmă — exact greșeala făcută o dată
+  la termene, cu cele 52 de rânduri roșii. Pentru un client fără onorariu stabilit,
+  linia este luna în care a intrat în cabinet.
+- **Nu facturează luni viitoare.** Luna în curs se facturează, cele de după nu
+  s-au întâmplat încă.
+- **Nu rescrie ce s-a generat.** „Generează luna" se poate apăsa de câte ori vrei:
+  nu dublează rândurile și nu pierde încasările marcate între timp.
+
+**Câmpul gol nu este zero.** Zero înseamnă „îl servesc gratuit" și produce un rând
+de 0 lei; câmpul gol înseamnă „nu-l facturez" și nu produce niciun rând. Două
+lucruri diferite care ar fi arătat identic dacă suma ar fi fost obligatorie.
+
+**Clienții fără onorariu se văd.** Un ecran care ar afișa doar clienții configurați
+ar arăta identic într-un cabinet pus la punct și în unul care a uitat jumătate din
+listă. Rândul scrie „fără onorariu", iar suma se pune din fișa clientului.
+
+**Un client plecat nu-și ia restanțele cu el.** Rândurile deja facturate rămân pe
+ecran chiar dacă între timp clientul a devenit inactiv — mai ales când sunt tocmai
+cele neîncasate. Ce se oprește este generarea lunilor următoare.
+
+**Totalurile sunt pe monedă.** Un cabinet cu un client în euro și restul în lei are
+două sume, nu una. Adunarea lor ar da un număr care nu înseamnă nimic, dar pe care
+cineva l-ar citi ca pe cifra lunii. Numărul de clienți neîncasați rămâne unul
+singur, peste toate monedele: acolo se numără oameni, nu bani.
+
+**Restanțele vechi stau deasupra listei**, ca la termene. Sunt singurele care nu se
+mai văd nicăieri altundeva: luna trece, ecranul se schimbă, iar banii rămân
+neîncasați fără ca cineva să afle.
+
+**Banii nu se văd de la orice rol.** Permisiuni proprii — `fees:read`,
+`fees:manage` — pe care implicit le au doar administratorii. Nu pentru că suma ar
+fi un secret, ci pentru că lista completă este ordinea în care cabinetul își ține
+clienții după bani, iar pentru procesarea documentelor nu folosește nimănui. Un
+cabinet care vrea altfel dă rolul de administrator; ce nu poate face este să afle
+mai târziu că l-a dat din greșeală.
+
+Auditul înregistrează **cine a făcut ce, nu cât** (§33): „12 rânduri", nu sumele.
+
+### Fiecare rută, întrebată fără sesiune
+
+Existau sweep-uri de autentificare per modul — documente, integrări, perioade — și
+fiecare își făcea treaba pe zona lui. Ce lipsea era unul **global**. Modulul de
+termene, scris cu o zi înainte, nu era acoperit de niciunul: nu pentru că cineva ar
+fi decis că nu are nevoie, ci pentru că un sweep per modul nu observă modulele care
+nu existau când a fost scris.
+
+`tests/test_security_routes.py` citește lista de rute din **arborele real de
+rutare**, nu din schema OpenAPI — rutele de cron sunt scoase din schemă
+(`include_in_schema=False`), deci un sweep citit din OpenAPI ar fi trecut exact
+peste ele. Toate cele 110 rute sunt întrebate fără sesiune, iar testul compară
+mulțimea celor care **nu** răspund 401 cu o listă scrisă de om: sănătatea, `login`,
+`logout` și portalul clientului. O rută nouă lăsată din greșeală deschisă apare
+acolo, nu în producție.
+
+Nu a găsit nimic — toate cele 98 de rute de business cereau deja sesiune. Ceea ce
+este exact rezultatul pe care îl vrei de la o verificare de acest fel, și motivul
+pentru care ea rămâne scrisă: valoarea nu este în ce a găsit azi, ci în ruta care
+va fi adăugată în martie.
+
 ### Panoul minte pe o instalare nouă
 
 Găsit la proba de fum, uitându-mă la ecran cu ochii unui cabinet care tocmai a
@@ -1332,9 +1422,10 @@ sincronizarea.
 
 ### Golul concret
 
-**Niciunul la nivel de rută.** Frontend-ul cheamă **65 de rute** (numărate din
-`src/api/endpoints.ts` pe 6 septembrie 2026, fără descărcările de fișiere, care
-merg pe alt drum), iar backendul real le implementează pe toate.
+**Niciunul la nivel de rută.** Frontend-ul cheamă **71 de rute** (65 numărate din
+`src/api/endpoints.ts` pe 6 septembrie 2026, plus cele șase ale onorariilor, fără
+descărcările de fișiere, care merg pe alt drum), iar backendul real le
+implementează pe toate.
 
 Numărul se învechește la fiecare adăugare, deci nu el este garanția.
 `e2e/pages.spec.ts` deschide fiecare ecran într-un browser adevărat și cade dacă

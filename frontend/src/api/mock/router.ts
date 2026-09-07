@@ -447,6 +447,49 @@ const routes: Route[] = [
   },
   { method: "GET", pattern: "/obligations", handler: ({ query }) => store.listObligations(query) },
 
+  /* Onorarii. Ca la termene, tiparele fixe vin înaintea celor dinamice. */
+  {
+    method: "POST",
+    pattern: "/fees/generate",
+    handler: ({ body }) => store.generateFees(String(body?.referenceMonth ?? "")),
+  },
+  {
+    method: "POST",
+    pattern: "/fees/payments",
+    handler: ({ body }) =>
+      store.markFeePaid({
+        clientId: String(body?.clientId ?? ""),
+        referenceMonth: String(body?.referenceMonth ?? ""),
+        paidOn: (body?.paidOn as string | null | undefined) ?? null,
+      }),
+  },
+  {
+    method: "DELETE",
+    pattern: "/fees/payments",
+    handler: ({ query }) =>
+      store.unmarkFeePaid({
+        clientId: query.clientId ?? "",
+        referenceMonth: query.referenceMonth ?? "",
+      }),
+  },
+  { method: "GET", pattern: "/fees/clients/:id", handler: ({ params }) => store.getClientFee(params.id!) },
+  {
+    method: "PUT",
+    pattern: "/fees/clients/:id",
+    handler: ({ params, body }) =>
+      store.setClientFee(params.id!, {
+        amount: (body?.amount as string | null | undefined) ?? null,
+        currency: body?.currency as string | undefined,
+        startsOn: (body?.startsOn as string | null | undefined) ?? null,
+        note: (body?.note as string | null | undefined) ?? null,
+      }),
+  },
+  {
+    method: "GET",
+    pattern: "/fees",
+    handler: ({ query }) => store.getFeeMonth(query.referenceMonth ?? "2026-08"),
+  },
+
   {
     method: "GET",
     pattern: "/reports/summary",

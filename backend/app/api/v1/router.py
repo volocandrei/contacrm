@@ -19,6 +19,7 @@ from app.api.v1 import (
     contacts,
     dashboard,
     documents,
+    fees,
     health,
     intakes,
     integrations,
@@ -44,6 +45,7 @@ api_router.include_router(anaf.router)
 api_router.include_router(intakes.router)
 api_router.include_router(periods.router)
 api_router.include_router(obligations.router)
+api_router.include_router(fees.router)
 api_router.include_router(reports.router)
 api_router.include_router(settings.router)
 api_router.include_router(tasks.router)

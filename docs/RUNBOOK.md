@@ -164,6 +164,37 @@ autentifici, aceeași treabă o face:
 uv run python -m app.cli add-client
 ```
 
+### Onorariile lunii: cine cât plătește și cine a plătit
+
+`CRM → Onorarii`. Se cere `fees:read` pentru a vedea și `fees:manage` pentru a
+schimba ceva — implicit, doar administratorii le au. Nu pentru că suma ar fi un
+secret, ci pentru că lista completă este ordinea în care cabinetul își ține
+clienții după bani, iar pentru procesarea documentelor nu folosește nimănui.
+
+Ordinea în care se face treaba:
+
+1. **Suma se pune pe fișa clientului**, în `Clienți → [client] → Contabilitate →
+   Onorariu lunar`. Câmpul gol înseamnă „nu-l facturez"; zero înseamnă „îl servesc
+   gratuit" și produce totuși un rând de 0 lei. Sunt două lucruri diferite.
+2. **„Generează luna"** creează rândurile lipsă. Se poate apăsa de câte ori vrei:
+   nu dublează nimic și nu pierde încasările marcate între timp.
+3. **„Am încasat"** se apasă când banii au intrat, nu când s-a trimis factura.
+   Butonul are pereche — „Anulează încasarea" — pentru cazul apăsat din greșeală.
+
+Ce trebuie știut, ca ecranul să nu surprindă:
+
+- **Suma unei luni generate nu se mai schimbă.** Dacă renegociezi onorariul, luna
+  deja facturată rămâne cât a fost; noul preț se aplică de la luna următoare pe
+  care o generezi. Registrul nu își rescrie trecutul.
+- **Un client contractat luna aceasta nu apare pe lunile trecute.** Data de la care
+  se facturează se pune tot din fișa lui.
+- **Un client care a plecat rămâne pe lunile deja facturate**, mai ales dacă sunt
+  neîncasate. Ce se oprește este generarea lunilor următoare.
+- **Restanțele din lunile trecute** stau într-un panou separat, deasupra listei.
+  Este singurul loc din aplicație unde se mai văd: luna trece, ecranul se schimbă,
+  banii rămân neîncasați.
+- **Sumele în altă monedă se totalizează separat.** Lei plus euro nu este o sumă.
+
 ### Un client nu apare niciodată în „Documente lipsă"
 
 Cel mai probabil nu i s-a spus **ce** se așteaptă de la el. Checklistul lunii,
@@ -281,7 +312,14 @@ un job întrerupt oricum ar fi fost recuperat.
   pornește explicit.
 - **Nu scrie în OneDrive.** Accesul cerut este de citire; dosarele clienților nu
   se ating.
-- **Nu trimite mesaje.** Nici email, nici WhatsApp. Reminderele sunt Faza 2.
+- **Nu trimite nimic de la sine către clienți.** Solicitarea de documente pleacă
+  pe email doar când o apasă cineva, și numai dacă `SMTP_*` este configurat;
+  altfel textul se copiază și se trimite de mână. Rezumatul zilnic merge la
+  colegii din cabinet, nu la clienți. Reminderele automate către clienți nu
+  există: sunt o decizie care se ia o dată, explicit, și nu de aplicație.
+- **Nu emite facturi.** „Onorarii" este registrul cabinetului — cine cât plătește
+  și cine a plătit. Nu are serie, număr, TVA sau e-Factura, iar marcarea unei
+  încasări este gestul omului care a văzut extrasul.
 - **Nu trimite facturi la ANAF.** e-Factura este, deocamdată, doar preluare: a
   emite un document fiscal în numele unui client este altă răspundere decât a-l
   descărca pe cel deja emis.

@@ -21,6 +21,7 @@ import {
   useClientAliases,
   useClientContacts,
   useClientExpectations,
+  useClientFee,
   useClientObligations,
   useClientTimeline,
   useClientNotes,
@@ -34,6 +35,7 @@ import {
   useRevokeUploadLink,
   useObligationTypes,
   useSaveExpectations,
+  useSetClientFee,
   useSetClientObligations,
   useTemplateFromClient,
   useUploadLinks,
@@ -360,6 +362,7 @@ function AccountingTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <ExpectationsPanel clientId={clientId} />
       <ObligationsPanel clientId={clientId} />
+      <FeePanel clientId={clientId} />
       {periods?.map((period) => (
         <Panel
           key={period.id}
@@ -1231,6 +1234,110 @@ function ObligationsPanel({ clientId }: { clientId: string }) {
           </button>
         </div>
       )}
+    </Panel>
+  );
+}
+
+/**
+ * Onorariul convenit cu clientul.
+ *
+ * Stă în fișa clientului, lângă ce depune și ce se așteaptă de la el, pentru că
+ * acolo se poartă discuția: „ce facem pentru firma asta și cât ia cabinetul
+ * pentru asta" este o singură conversație, nu două.
+ *
+ * **Ștergerea nu este zero.** Zero înseamnă „îl servesc gratuit" și se
+ * facturează; câmpul gol înseamnă „nu-l facturez" și nu produce niciun rând.
+ */
+function FeePanel({ clientId }: { clientId: string }) {
+  const can = usePermissionCheck();
+  const editable = can("fees:manage");
+  const { data, isLoading } = useClientFee(clientId);
+  const save = useSetClientFee();
+
+  const [draft, setDraft] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  // Cine nu are voie să vadă banii nu vede nici panoul. Ascunderea este
+  // ergonomie; refuzul îl dă serverul (§32).
+  if (!can("fees:read")) return null;
+  if (isLoading) return <LoadingState />;
+
+  const current = draft ?? data?.amount ?? "";
+  const currency = data?.currency ?? "RON";
+
+  function submit() {
+    setProblem(null);
+    const trimmed = current.trim();
+    save.mutate(
+      { clientId, amount: trimmed === "" ? null : trimmed, currency },
+      {
+        onSuccess: () => setDraft(null),
+        onError: (caught) =>
+          setProblem(
+            caught instanceof ApiError ? caught.message : "Onorariul nu a putut fi salvat.",
+          ),
+      },
+    );
+  }
+
+  return (
+    <Panel title="Onorariu lunar">
+      <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+        Din suma asta se construiesc rândurile din „Onorarii". Câmpul gol
+        înseamnă că acest client nu se facturează — altceva decât zero, care
+        înseamnă că se facturează gratuit.
+        {data?.startsOn && (
+          <span className={cn("ml-1", mutedText)}>
+            Se facturează din {formatDate(data.startsOn)}.
+          </span>
+        )}
+      </p>
+
+      {problem && (
+        <p
+          role="alert"
+          className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300"
+        >
+          {problem}
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+            Sumă ({currency})
+          </span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={current}
+            disabled={!editable || save.isPending}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="nefacturat"
+            className={cn(inputField, "w-40")}
+          />
+        </label>
+        {editable && (
+          <button
+            type="button"
+            onClick={submit}
+            disabled={draft === null || save.isPending}
+            className={cn(buttonPrimary, "h-9")}
+          >
+            {save.isPending && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            Salvează onorariul
+          </button>
+        )}
+        {draft !== null && (
+          <button
+            type="button"
+            onClick={() => setDraft(null)}
+            className="text-sm font-medium text-slate-600 hover:underline dark:text-slate-300"
+          >
+            Renunță
+          </button>
+        )}
+      </div>
     </Panel>
   );
 }

@@ -134,6 +134,8 @@ export type Permission =
   | "documents:approve"
   | "documents:delete"
   | "periods:manage"
+  | "fees:read"
+  | "fees:manage"
   | "tasks:read"
   | "tasks:write"
   | "communication:send"
@@ -929,4 +931,64 @@ export interface ClientTimelineEvent {
   detail: string | null;
   /** Prezent doar la documente: rândul devine un drum, nu doar o mențiune. */
   documentId: string | null;
+}
+
+/* ─── Onorarii ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Un client pe o lună: cât are de plătit și dacă a plătit.
+ *
+ * `configured` este onorariul în vigoare, `amount` este suma lunii — înghețată
+ * la generare. Cele două diferă exact după o renegociere, și tocmai de aceea
+ * sunt două câmpuri: unul spune ce s-a facturat, celălalt ce se va factura.
+ */
+export interface FeeRow {
+  clientId: string;
+  clientName: string;
+  configured: string | null;
+  /** `null` = luna nu este generată pentru acest client. */
+  amount: string | null;
+  currency: string;
+  /** `null` = neîncasat. Nu există stare „în curs". */
+  paidOn: string | null;
+  paidByName: string | null;
+  note: string | null;
+  isGenerated: boolean;
+  isPaid: boolean;
+}
+
+/** Cifrele lunii, pentru o monedă. */
+export interface FeeTotals {
+  currency: string;
+  billed: string;
+  collected: string;
+  outstanding: string;
+}
+
+/** O lună neîncasată, mai veche decât cea de pe ecran. */
+export interface FeeArrear {
+  clientId: string;
+  clientName: string;
+  period: string;
+  amount: string;
+  currency: string;
+}
+
+/** Tot ce afișează ecranul de onorarii, într-un singur răspuns. */
+export interface FeeMonth {
+  referenceMonth: string;
+  rows: FeeRow[];
+  /** Câte o linie pe monedă: adunarea lor ar da un număr fără sens. */
+  totals: FeeTotals[];
+  unpaidClients: number;
+  arrears: FeeArrear[];
+}
+
+/** Onorariul convenit cu un client. `amount = null` înseamnă că nu i s-a stabilit unul. */
+export interface ClientFee {
+  clientId: string;
+  amount: string | null;
+  currency: string;
+  startsOn: string | null;
+  note: string | null;
 }

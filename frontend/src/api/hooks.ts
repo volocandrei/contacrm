@@ -19,6 +19,7 @@ import {
   drive,
   intakes,
   obligations,
+  fees,
   periods,
   reports,
   tasks,
@@ -59,6 +60,8 @@ export const queryKeys = {
   obligations: (params: QueryParams) => ["obligations", params] as const,
   obligationTypes: ["obligations", "types"] as const,
   clientObligations: (id: string) => ["obligations", "clients", id] as const,
+  fees: (referenceMonth: string) => ["fees", referenceMonth] as const,
+  clientFee: (id: string) => ["fees", "clients", id] as const,
   missingDocuments: (referenceMonth: string) => ["periods", "missing", referenceMonth] as const,
   tasks: (params: QueryParams) => ["tasks", params] as const,
   reportSummary: (params: QueryParams) => ["reports", "summary", params] as const,
@@ -535,6 +538,67 @@ export function useSetClientObligations() {
   return useObligationMutation(
     ({ clientId, obligationTypeIds }: { clientId: string; obligationTypeIds: string[] }) =>
       obligations.setForClient(clientId, obligationTypeIds),
+  );
+}
+
+/**
+ * Onorariile lunii.
+ *
+ * O singură cheie pentru tot ecranul: rândurile, cifrele și restanțele vin
+ * împreună de la server, deci se și învechesc împreună.
+ */
+export function useFees(referenceMonth: string) {
+  return useQuery({
+    queryKey: queryKeys.fees(referenceMonth),
+    queryFn: () => fees.month(referenceMonth),
+  });
+}
+
+export function useClientFee(clientId: string) {
+  return useQuery({
+    queryKey: queryKeys.clientFee(clientId),
+    queryFn: () => fees.forClient(clientId),
+  });
+}
+
+/**
+ * Ca la termene, se invalidează **toată** familia „fees".
+ *
+ * Marcarea unei încasări schimbă și rândul, și totalurile, și lista de restanțe
+ * — iar aceasta din urmă stă sub cheia altei luni.
+ */
+function useFeeMutation<TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["fees"] }),
+  });
+}
+
+export function useGenerateFees() {
+  return useFeeMutation((referenceMonth: string) => fees.generate(referenceMonth));
+}
+
+export function useMarkFeePaid() {
+  return useFeeMutation(fees.markPaid);
+}
+
+export function useUnmarkFeePaid() {
+  return useFeeMutation(fees.unmarkPaid);
+}
+
+export function useSetClientFee() {
+  return useFeeMutation(
+    ({
+      clientId,
+      ...input
+    }: {
+      clientId: string;
+      amount: string | null;
+      currency?: string;
+      startsOn?: string | null;
+      note?: string | null;
+    }) => fees.setForClient(clientId, input),
   );
 }
 

@@ -21,6 +21,7 @@ import {
   Settings,
   ShieldCheck,
   Users,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import type { Tone } from "@/lib/ui";
@@ -184,6 +185,15 @@ export const NAV_GROUPS: NavGroup[] = [
         Icon: ClipboardList,
         badgeKey: "tasks",
         permission: "tasks:read",
+      },
+      {
+        // Lângă clienți, nu în contabilitate: onorariile sunt banii
+        // cabinetului, nu ai clientului. Se văd doar cu `fees:read`, care
+        // implicit este al administratorilor.
+        label: "Onorarii",
+        path: "/crm/onorarii",
+        Icon: Wallet,
+        permission: "fees:read",
       },
     ],
   },

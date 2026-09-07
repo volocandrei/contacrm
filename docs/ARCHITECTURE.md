@@ -106,6 +106,11 @@ entitățile de business au `deleted_at` (soft delete).
 |---|---|
 | `accounting_periods` | id, client_id, year, month, status (NOT_STARTED…FINALIZED), opened_at, closed_at, completed_at — **UNIQUE(client_id, year, month)** |
 | `client_expectations` | id, client_id, document_type_id, expected_min_count — ce se așteaptă lunar de la fiecare client |
+| `obligation_types` | id, code, label, frequency, months_after, deadline_day — catalogul de declarații al cabinetului, administrabil din aplicație |
+| `client_obligations` | id, client_id, obligation_type_id — cine ce depune |
+| `obligation_filings` | id, client_id, obligation_type_id, period, filed_at, filed_by — **doar faptul uman**; „întârziat" se calculează la citire |
+| `client_fees` | id, client_id, amount, currency, starts_on — onorariul în vigoare, **UNIQUE(client_id)** |
+| `fee_entries` | id, client_id, period, amount (înghețată la generare), paid_on, paid_by — **UNIQUE(client_id, period)** |
 
 ### Documente
 | Tabel | Câmpuri cheie |
