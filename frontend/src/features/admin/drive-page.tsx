@@ -37,6 +37,7 @@ import {
   Mail,
   MessageCircle,
   Plug,
+  Plus,
   RefreshCw,
   Trash2,
   Upload,
@@ -49,8 +50,12 @@ import {
   useConnectDrive,
   useDisconnectDrive,
   useDriveBrowse,
+  useAddImapMailbox,
   useDocumentSources,
   useDriveStatus,
+  useImapMailboxes,
+  useRemoveImapMailbox,
+  useSyncImapMailbox,
   useMailFolders,
   useSyncDrive,
   useTrackMailFolder,
@@ -77,6 +82,7 @@ import {
 import { cn } from "@/lib/utils";
 import type {
   DocumentSourceRow,
+  ImapMailbox,
   DriveFolder,
   DriveStatus,
   SourceExport,
@@ -100,6 +106,8 @@ export function DrivePage() {
       {/* Harta întâi, configurarea după: întrebarea „pe unde pot intra
           documentele" se pune înaintea celei despre un anume dosar din OneDrive. */}
       <SourceMap />
+
+      <ImapPanel />
 
       <ConnectionPanel status={data} />
       {data.connected && <FoldersPanel status={data} />}
@@ -416,6 +424,260 @@ function ExportCard({ item, index }: { item: SourceExport; index: number }) {
 
 /** Decalajele de intrare, reluate ciclic peste cardurile unei grile. */
 const RISE_DELAY = ["", "rise-delay-1", "rise-delay-2", "rise-delay-3", "rise-delay-4"];
+
+/* ─── Cutii poștale obișnuite (IMAP) ───────────────────────────────────────── */
+
+/**
+ * Cutia de la Gmail, Yahoo sau de la găzduire.
+ *
+ * **De ce contează mai mult decât pare.** Preluarea din email exista de la M10,
+ * dar numai prin Microsoft 365. În România, cabinetul mic are cutia oriunde
+ * altundeva — deci pentru el „documentele intră singure din email" era o
+ * propoziție adevărată despre alt cabinet.
+ *
+ * **Parola se testează la salvare, nu se salvează pe încredere.** O parolă
+ * greșită scrisă tăcut în bază nu se vede nicăieri: documentele pur și simplu nu
+ * vin, iar cabinetul află peste o săptămână, când caută facturi care nu există.
+ * Serverul încearcă conectarea **acum**, cu omul în fața ecranului, iar refuzul
+ * lui ajunge pe ecran neschimbat.
+ *
+ * **Parola nu se mai întoarce niciodată.** Nu există „arată parola" și nici
+ * „modifică parola": o cutie se șterge și se adaugă la loc. Un câmp care ar
+ * putea reafișa parola ar însemna că baza o păstrează în clar.
+ */
+function ImapPanel() {
+  const { data, isLoading } = useImapMailboxes();
+  const [adding, setAdding] = useState(false);
+
+  return (
+    <Panel
+      title="Cutii poștale (IMAP)"
+      action={
+        !adding && (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className={cn(buttonSecondary, "h-8 px-3 text-xs")}
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+            Adaugă o cutie
+          </button>
+        )
+      }
+    >
+      <p className={cn("mb-3 text-xs", mutedText)}>
+        Gmail, Yahoo, cutia de la găzduire — orice server IMAP. Atașamentele intră singure, iar
+        clientul se recunoaște după adresa expeditorului.{" "}
+        <strong>La Gmail și Microsoft este nevoie de o parolă de aplicație</strong>, nu de parola
+        contului.
+      </p>
+
+      {adding && <ImapForm onDone={() => setAdding(false)} />}
+
+      {isLoading ? (
+        <LoadingState />
+      ) : data && data.length > 0 ? (
+        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          {data.map((mailbox) => (
+            <ImapRow key={mailbox.id} mailbox={mailbox} />
+          ))}
+        </ul>
+      ) : (
+        !adding && (
+          <p className={cn("text-sm", mutedText)}>
+            Nicio cutie adăugată. Documentele pot intra oricând pe celelalte drumuri.
+          </p>
+        )
+      )}
+    </Panel>
+  );
+}
+
+/** O cutie: unde e, ce a adus, ce a pățit ultima dată. */
+function ImapRow({ mailbox }: { mailbox: ImapMailbox }) {
+  const remove = useRemoveImapMailbox();
+  const sync = useSyncImapMailbox();
+  const [report, setReport] = useState<string | null>(null);
+
+  function readNow() {
+    setReport(null);
+    sync.mutate(mailbox.id, {
+      onSuccess: (result) =>
+        setReport(
+          result.ingested === 0
+            ? "Niciun document nou."
+            : `${result.ingested} ${result.ingested === 1 ? "document nou" : "documente noi"}` +
+              (result.hasMore ? ", mai sunt" : ""),
+        ),
+    });
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+          {mailbox.username}
+          <span className={cn("ml-2 text-xs font-normal", mutedText)}>{mailbox.folder}</span>
+        </p>
+        <p className={cn("text-xs", mutedText)}>
+          {mailbox.host}:{mailbox.port}
+          {" · "}
+          {mailbox.filesIngested === 1
+            ? "1 document adus"
+            : `${mailbox.filesIngested} documente aduse`}
+          {mailbox.lastSyncedAt && ` · citită ${formatDateTime(mailbox.lastSyncedAt)}`}
+        </p>
+        {/* Ultima eroare se vede. O parolă schimbată oprește preluarea, iar fără
+            rândul ăsta documentele pur și simplu nu mai vin și nimeni nu află. */}
+        {mailbox.lastError && (
+          <p className="mt-1 flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400">
+            <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {mailbox.lastError}
+          </p>
+        )}
+        {report && (
+          <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">{report}</p>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={readNow}
+        disabled={sync.isPending}
+        className={cn(buttonSecondary, "h-8 shrink-0 px-3 text-xs")}
+      >
+        {sync.isPending ? (
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        ) : (
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+        )}
+        Citește acum
+      </button>
+      <button
+        type="button"
+        onClick={() => remove.mutate(mailbox.id)}
+        disabled={remove.isPending}
+        title="Scoate cutia"
+        className={cn(
+          "shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20",
+        )}
+      >
+        <Trash2 className="h-4 w-4" aria-hidden="true" />
+        <span className="sr-only">Scoate cutia</span>
+      </button>
+    </li>
+  );
+}
+
+/**
+ * Formularul de adăugare.
+ *
+ * Portul și dosarul au valori implicite pe care nimeni nu le schimbă aproape
+ * niciodată — 993 și INBOX — deci stau completate, nu goale. Un câmp gol
+ * obligatoriu într-un formular de configurare este o întrebare pusă degeaba.
+ */
+function ImapForm({ onDone }: { onDone: () => void }) {
+  const add = useAddImapMailbox();
+  const [values, setValues] = useState({
+    host: "",
+    port: "993",
+    username: "",
+    password: "",
+    folder: "INBOX",
+  });
+  const [problem, setProblem] = useState<string | null>(null);
+
+  function set(field: keyof typeof values, value: string) {
+    setValues((current) => ({ ...current, [field]: value }));
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setProblem(null);
+    add.mutate(
+      {
+        host: values.host.trim(),
+        port: Number(values.port) || 993,
+        username: values.username.trim(),
+        password: values.password,
+        folder: values.folder.trim() || "INBOX",
+      },
+      {
+        onSuccess: onDone,
+        onError: (caught) =>
+          setProblem(
+            caught instanceof ApiError ? caught.message : "Cutia nu a putut fi adăugată.",
+          ),
+      },
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="mb-4 space-y-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-800/40">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Server IMAP" value={values.host} onChange={(v) => set("host", v)} placeholder="imap.gmail.com" required />
+        <Field label="Port" value={values.port} onChange={(v) => set("port", v)} />
+        <Field label="Utilizator" value={values.username} onChange={(v) => set("username", v)} placeholder="cabinet@gmail.com" required />
+        <Field label="Parolă de aplicație" value={values.password} onChange={(v) => set("password", v)} type="password" required />
+        <Field label="Dosar" value={values.folder} onChange={(v) => set("folder", v)} />
+      </div>
+
+      {problem && (
+        <p role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800 dark:bg-red-950/30 dark:text-red-200">
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          {problem}
+        </p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <button type="submit" disabled={add.isPending} className={cn(buttonPrimary, "h-9 px-4 text-sm")}>
+          {add.isPending ? (
+            <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          )}
+          {add.isPending ? "Se verifică…" : "Verifică și adaugă"}
+        </button>
+        <button type="button" onClick={onDone} className={cn(buttonSecondary, "h-9 px-4 text-sm")}>
+          Renunță
+        </button>
+        {/* Se spune dinainte ce face butonul: altfel „se verifică…" pare o
+            întârziere, nu o conectare adevărată la serverul lor. */}
+        <span className={cn("text-xs", mutedText)}>Se încearcă o conectare înainte de salvare.</span>
+      </div>
+    </form>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  placeholder?: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="block text-xs">
+      <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">{label}</span>
+      <input
+        type={type}
+        value={value}
+        required={required}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+      />
+    </label>
+  );
+}
 
 /* ─── Conexiunea Microsoft ─────────────────────────────────────────────────── */
 

@@ -36,6 +36,9 @@ import type {
   FeeMonth,
   FeeRow,
   FilingsResult,
+  ImapMailbox,
+  ImapMailboxInput,
+  ImapSyncReport,
   ImportPlan,
   Intake,
   IssuedUploadLink,
@@ -454,6 +457,19 @@ export const anaf = {
  */
 export const documentSources = {
   list: () => api.get<DocumentSources>("/integrations/sources"),
+};
+
+/**
+ * Cutiile poștale obișnuite, citite prin IMAP.
+ *
+ * Parola pleacă o singură dată, la adăugare, și nu se mai întoarce niciodată în
+ * niciun răspuns (§73).
+ */
+export const imap = {
+  list: () => api.get<ImapMailbox[]>("/integrations/imap"),
+  add: (input: ImapMailboxInput) => api.post<ImapMailbox>("/integrations/imap", { ...input }),
+  remove: (id: string) => api.delete<void>(`/integrations/imap/${id}`),
+  sync: (id: string) => api.post<ImapSyncReport>(`/integrations/imap/${id}/sync`),
 };
 
 export const drive = {

@@ -35,17 +35,21 @@ from app.api.deps import DbSession, StorageDep, client_ip, require_permission
 from app.api.route import CommittingRoute
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt, encryption_available
-from app.core.errors import AppError, ErrorCode
+from app.core.errors import AppError, ErrorCode, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.core.security import TokenError, decode_state, encode_state
 from app.domain.enums import SourceState
 from app.domain.permissions import Permission
 from app.models.client import Client
+from app.models.imap import DEFAULT_FOLDER, DEFAULT_IMAP_PORT, ImapMailbox
 from app.models.microsoft import DriveFolder, MailFolder, MicrosoftConnection
 from app.models.user import User
 from app.schemas.common import ApiModel
 from app.services.audit import AuditService
 from app.services.document_sources import EXPORTS, DocumentSourceService, SourceCode
+from app.services.imap.base import ImapAuthError, ImapCredentials, ImapError
+from app.services.imap.deps import ImapClientDep
+from app.services.imap.sync import ImapSyncService
 from app.services.microsoft import DriveError, DriveSyncService
 from app.services.microsoft.deps import DriveClientDep
 from app.services.microsoft.graph import authorize_url
@@ -335,6 +339,204 @@ def list_sources(session: DbSession, user: SettingsAdmin) -> SourcesOut:
             for item in EXPORTS
         ],
         live=sum(1 for item in sources if item.state is SourceState.LIVE),
+    )
+
+
+class ImapMailboxOut(ApiModel):
+    """O cutie poștală conectată. **Fără parolă**, niciodată (§73)."""
+
+    id: uuid.UUID
+    host: str
+    port: int
+    use_ssl: bool
+    username: str
+    folder: str
+    last_synced_at: datetime | None
+    #: Ultima eroare, ca să se vadă. O parolă schimbată oprește preluarea, iar
+    #: fără rândul ăsta documentele pur și simplu nu mai vin și nimeni nu află.
+    last_error: str | None
+    files_ingested: int
+    is_active: bool
+
+
+class ImapMailboxIn(ApiModel):
+    """Ce se cere ca să adaugi o cutie. Parola intră, nu mai iese."""
+
+    host: str = Field(min_length=1, max_length=255)
+    port: int = Field(default=DEFAULT_IMAP_PORT, ge=1, le=65535)
+    use_ssl: bool = True
+    username: str = Field(min_length=1, max_length=320)
+    password: str = Field(min_length=1, max_length=512)
+    folder: str = Field(default=DEFAULT_FOLDER, min_length=1, max_length=255)
+
+
+def _imap_out(mailbox: ImapMailbox) -> ImapMailboxOut:
+    return ImapMailboxOut(
+        id=mailbox.id,
+        host=mailbox.host,
+        port=mailbox.port,
+        use_ssl=mailbox.use_ssl,
+        username=mailbox.username,
+        folder=mailbox.folder,
+        last_synced_at=mailbox.last_synced_at,
+        last_error=mailbox.last_error,
+        files_ingested=mailbox.files_ingested,
+        is_active=mailbox.is_active,
+    )
+
+
+@router.get("/imap", response_model=list[ImapMailboxOut])
+def list_mailboxes(session: DbSession, user: SettingsAdmin) -> list[ImapMailboxOut]:
+    """Cutiile poștale citite prin IMAP. Fără parole."""
+    rows = session.scalars(
+        select(ImapMailbox)
+        .where(ImapMailbox.organization_id == user.organization_id)
+        .order_by(ImapMailbox.created_at)
+    ).all()
+    return [_imap_out(mailbox) for mailbox in rows]
+
+
+@router.post("/imap", response_model=ImapMailboxOut, status_code=status.HTTP_201_CREATED)
+def add_mailbox(
+    session: DbSession,
+    user: SettingsAdmin,
+    request: Request,
+    client: ImapClientDep,
+    payload: ImapMailboxIn,
+) -> ImapMailboxOut:
+    """Adaugă o cutie — **după** ce se verifică, nu înainte.
+
+    **De ce se testează la salvare.** O parolă greșită salvată tăcut nu se vede
+    nicăieri: documentele pur și simplu nu vin, iar cabinetul află peste o
+    săptămână, când caută facturi care nu există. Conectarea se încearcă acum, cu
+    omul în fața ecranului, iar dacă serverul refuză, refuzul lui ajunge pe ecran
+    neschimbat.
+
+    Cea mai frecventă cauză a refuzului merită spusă dinainte: la Gmail și la
+    Microsoft, IMAP nu merge cu parola contului, ci cu o **parolă de aplicație**.
+    """
+    if not encryption_available():
+        # Mai bine refuzăm acum decât să primim o parolă pe care nu o putem
+        # păstra în siguranță și să o scriem în clar „doar de data asta".
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Lipsește DRIVE_TOKEN_KEY: fără ea, parola cutiei nu poate fi stocată criptată.",
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+    credentials = ImapCredentials(
+        host=payload.host,
+        port=payload.port,
+        username=payload.username,
+        password=payload.password,
+        use_ssl=payload.use_ssl,
+    )
+    try:
+        client.check(credentials, folder=payload.folder)
+    except ImapAuthError as exc:
+        raise ValidationError(str(exc), {"password": ["Utilizator sau parolă respinse."]}) from exc
+    except ImapError as exc:
+        raise ValidationError(str(exc), {"host": ["Conectarea nu a reușit."]}) from exc
+
+    mailbox = ImapMailbox(
+        organization_id=user.organization_id,
+        host=payload.host,
+        port=payload.port,
+        use_ssl=payload.use_ssl,
+        username=payload.username,
+        password=encrypt(payload.password),
+        folder=payload.folder,
+        created_by_id=user.id,
+    )
+    session.add(mailbox)
+    session.flush()
+
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="IMAP_MAILBOX_ADDED",
+        entity_type="ImapMailbox",
+        entity_id=str(mailbox.id),
+        user_id=user.id,
+        user_name=user.full_name,
+        # Cutia și dosarul. Niciodată parola, nici trunchiată (§73).
+        detail=f"{payload.username} · {payload.folder}",
+        ip=client_ip(request),
+    )
+    return _imap_out(mailbox)
+
+
+@router.delete("/imap/{mailbox_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_mailbox(
+    session: DbSession, user: SettingsAdmin, request: Request, mailbox_id: uuid.UUID
+) -> None:
+    """Scoate cutia și **șterge parola**.
+
+    Documentele deja intrate rămân: sunt probe contabile, iar drumul pe care au
+    venit nu le schimbă cu nimic.
+    """
+    mailbox = session.scalars(
+        select(ImapMailbox).where(
+            ImapMailbox.organization_id == user.organization_id,
+            ImapMailbox.id == mailbox_id,
+        )
+    ).first()
+    if mailbox is None:
+        raise NotFoundError("ImapMailbox", mailbox_id)
+
+    username, folder = mailbox.username, mailbox.folder
+    session.delete(mailbox)
+    AuditService(session).record(
+        organization_id=user.organization_id,
+        action="IMAP_MAILBOX_REMOVED",
+        entity_type="ImapMailbox",
+        entity_id=str(mailbox_id),
+        user_id=user.id,
+        user_name=user.full_name,
+        detail=f"{username} · {folder}",
+        ip=client_ip(request),
+    )
+
+
+class ImapSyncOut(ApiModel):
+    """Ce a adus un tur. Se citește de un om, deci e scurt."""
+
+    ingested: int
+    skipped: int
+    failed: int
+    #: Au mai rămas mesaje peste lot. Turul următor le ia.
+    has_more: bool
+    error: str | None
+
+
+@router.post("/imap/{mailbox_id}/sync", response_model=ImapSyncOut)
+def sync_mailbox_now(
+    session: DbSession,
+    user: SettingsAdmin,
+    storage: StorageDep,
+    client: ImapClientDep,
+    mailbox_id: uuid.UUID,
+) -> ImapSyncOut:
+    """Citește cutia acum, fără să aștepte planificatorul.
+
+    Un lot, nu tot: cine apasă vrea să vadă că merge, nu să aștepte o cutie cu
+    trei mii de mesaje. Restul vine de la sine, la bătăile următoare.
+    """
+    mailbox = session.scalars(
+        select(ImapMailbox).where(
+            ImapMailbox.organization_id == user.organization_id,
+            ImapMailbox.id == mailbox_id,
+        )
+    ).first()
+    if mailbox is None:
+        raise NotFoundError("ImapMailbox", mailbox_id)
+
+    outcome = ImapSyncService(session, storage, client).sync_mailbox(mailbox)
+    return ImapSyncOut(
+        ingested=outcome.ingested,
+        skipped=outcome.skipped,
+        failed=outcome.failed,
+        has_more=outcome.has_more,
+        error=outcome.error,
     )
 
 

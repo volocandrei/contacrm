@@ -291,6 +291,31 @@ reface.
    când reușește). **Reprocesarea nu ajută aici**: ea cheamă extracția, care
    citește XML-ul deja stocat, nu convertorul ANAF.
 
+### Conectarea unei cutii poștale obișnuite (Gmail, Yahoo, găzduire)
+
+`Administrare → Surse documente → Cutii poștale (IMAP) → Adaugă o cutie`.
+
+Ai nevoie de patru lucruri: serverul (`imap.gmail.com`, `imap.mail.yahoo.com`,
+sau ce spune găzduirea), portul (**993**, aproape întotdeauna), utilizatorul
+(adresa completă) și parola.
+
+⚠️ **La Gmail și la Microsoft trebuie o parolă de aplicație**, nu parola contului.
+Amândouă resping de mult IMAP cu parola obișnuită, iar mesajul lor de eroare nu
+spune asta. Se generează din setările de securitate ale contului, după ce
+activezi autentificarea în doi pași.
+
+Butonul **verifică înainte să salveze**: dacă serverul refuză, cutia nu se
+adaugă. Un refuz aici înseamnă că datele chiar nu merg, nu că aplicația a greșit
+ceva.
+
+Ce se întâmplă apoi: la fiecare bătaie de cron se citesc mesajele noi, iar
+atașamentele care arată a documente intră singure. Clientul se recunoaște după
+adresa expeditorului; una necunoscută nu oprește nimic — documentul intră
+neatribuit și așteaptă un om.
+
+**Aplicația nu scrie în cutia ta.** Nu marchează mesaje ca citite, nu le mută, nu
+le șterge. Ține minte doar unde a rămas.
+
 ### Nu vin documente dintr-o integrare
 
 `Administrare → Surse documente`. Rândul integrării spune una din trei:

@@ -277,6 +277,62 @@ copiere, aplicația nu are de unde ști dacă omul l-a și lipit într-un email,
 verificabilă este coloana `notified_at`, scrisă **după** ce providerul a
 confirmat.
 
+### Emailul intră de oriunde, nu doar de la Microsoft (7 septembrie 2026)
+
+**Propoziția adevărată despre alt cabinet.** Preluarea documentelor din email
+exista de la M10 și funcționa — dar numai prin Microsoft Graph, adică numai
+pentru cabinetele de pe Microsoft 365. În România, cabinetul mic are cutia la
+Gmail, la Yahoo sau la găzduirea unde îi stă și site-ul. Pentru toate acelea,
+„documentele intră singure din email" era o promisiune despre altcineva. Iar
+emailul este drumul dominant: mai mulți clienți trimit facturi pe email decât
+prin toate celelalte drumuri la un loc.
+
+`Administrare → Surse documente` acceptă acum orice cutie IMAP.
+
+**Regulile s-au mutat, nu s-au copiat.** Ce este document și ce este logo de
+semnătură, cum se află clientul din adresa expeditorului, ce se întâmplă cu o
+adresă care aparține la două firme, cum se recunoaște un atașament preluat deja —
+toate stau acum în `app/services/mail_intake.py` și se cheamă din amândouă
+drumurile. Copiate, ar fi început să se despartă la prima corectură: un prag
+schimbat într-un loc, iar aceeași factură ar fi intrat pe un drum și ar fi fost
+respinsă pe celălalt, fără ca cineva să poată spune de ce. Refactorizarea a trecut
+peste cele 43 de teste existente de email și drive, neatinse.
+
+**Parola se testează la salvare, nu se salvează pe încredere.** O parolă greșită
+scrisă tăcut în bază nu se vede nicăieri: documentele pur și simplu nu vin, iar
+cabinetul află peste o săptămână, când caută facturi care nu există. Serverul
+încearcă conectarea **atunci**, cu omul în fața ecranului. Și spune dinainte
+cauza cea mai frecventă: la Gmail și la Microsoft, IMAP nu merge cu parola
+contului, ci cu o **parolă de aplicație**.
+
+**Parola nu se mai întoarce niciodată** — nici întreagă, nici trunchiată, nici ca
+„****" (§73). Nu există „arată parola" și nici „modifică parola": o cutie se
+șterge și se adaugă la loc. Un câmp care ar putea reafișa parola ar însemna că
+baza o păstrează în clar. Fără `DRIVE_TOKEN_KEY`, adăugarea este refuzată din
+capul locului.
+
+**Se citește, nu se scrie.** Dosarul se deschide read-only: mesajele nu se
+marchează citite și nu se mută. Cutia poștală este a cabinetului, iar un program
+care umblă prin ea își pierde dreptul de a mai fi lăsat acolo.
+
+**Două defecte prinse de teste, nu de citit cod:**
+
+- *Reluarea de la capăt.* Prima variantă cerea mereu mesajele de la UID 0.
+  Nimic nu s-ar fi dublat — idempotența pe `Message-ID` ar fi prins tot — dar o
+  cutie cu trei mii de mesaje n-ar fi avansat niciodată: fiecare bătaie ar fi
+  recitit primele cincisprezece și s-ar fi oprit acolo, la nesfârșit. Fără nicio
+  eroare. Prins abia după ce am scris testul care verifică de la ce UID pornește
+  a doua trecere.
+- *`UIDVALIDITY`.* UID-urile sunt unice doar cât timp valoarea aceea nu se
+  schimbă; o restaurare de cutie le reatribuie de la capăt. Continuarea de la
+  ultimul UID ar fi sărit peste tot ce venise între timp — tăcut. Comparația se
+  face acum în stratul de protocol, singurul care află valoarea la timp.
+
+*NEVERIFICAT — NECESITĂ CREDENȚIALE EXTERNE:* nicio cutie adevărată nu a fost
+citită încă. Deciziile sunt acoperite de 16 teste cu un client fals, verificate
+prin mutație; că un server IMAP real răspunde exact așa se vede la prima cutie
+conectată.
+
 ### Surse documente spune tot, nu doar OneDrive (7 septembrie 2026)
 
 **Întrebarea la care nu răspundea nimeni.** Un cabinet care se uită la aplicație

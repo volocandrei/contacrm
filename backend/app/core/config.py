@@ -147,6 +147,14 @@ class Settings(BaseSettings):
     # mesaj cu atasamente costa inca o cerere pentru metadatele lor.
     mail_sync_batch: int = 25
 
+    #: Câte mesaje se citesc dintr-o cutie IMAP într-o bătaie.
+    #:
+    #: Mai mic decât la Graph, deliberat: IMAP livrează mesajul **întreg**, cu
+    #: atașamente cu tot, deci un lot mare ar ține în memorie zeci de megaocteți.
+    #: Ce nu apucă acum se ia la bătaia următoare — UID-ul ține minte unde am
+    #: rămas, deci nimic nu se pierde.
+    imap_sync_batch: int = 15
+
     # ── ANAF SPV / e-Factura (M11) ───────────────────────────────────────────
     # Aplicația înregistrată în portalul OAuth al ANAF. Fără `anaf_client_id`,
     # ecranul spune că integrarea nu este configurată — nu oferă un buton care

@@ -57,7 +57,7 @@ describe("ce nu promite", () => {
     // Un zero ar arăta ca o integrare stricată, nu ca una inexistentă.
     const rows = byCode();
 
-    for (const code of ["EMAIL_IMAP", "WHATSAPP", "GOOGLE_DRIVE"]) {
+    for (const code of ["WHATSAPP", "GOOGLE_DRIVE"]) {
       const row = rows.get(code)!;
       expect(row.state, code).toBe("PLANNED");
       expect(row.documents, code).toBeNull();
@@ -65,6 +65,16 @@ describe("ce nu promite", () => {
       // Fără drum: un buton care duce nicăieri e mai rău decât niciunul.
       expect(row.path, code).toBeNull();
     }
+  });
+
+  it("IMAP cere o cutie, nu cod — de azi există", () => {
+    // Până acum era „nu există încă". Este drumul obișnuit al documentelor la
+    // cabinetul mic din România, unde cutia nu e la Microsoft 365.
+    const row = byCode().get("EMAIL_IMAP")!;
+
+    expect(row.state).toBe("NEEDS_SETUP");
+    expect(row.requirement).toContain("cutie");
+    expect(row.path).toBeTruthy();
   });
 
   it("WhatsApp nu se preface că primește documente", () => {

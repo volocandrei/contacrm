@@ -69,6 +69,9 @@ import type {
   FeeMonth,
   FeeRow,
   FeeTotals,
+  ImapMailbox,
+  ImapMailboxInput,
+  ImapSyncReport,
   ImportOutcome,
   ImportPlan,
   ImportRow,
@@ -3015,6 +3018,104 @@ export function composeDocumentRequest(
   };
 }
 
+/* ─── Cutii poștale IMAP ───────────────────────────────────────────────────── */
+
+/**
+ * Oglinda lui `app/services/imap/`.
+ *
+ * **Ce nu poate simula.** Nu există server IMAP în browser, deci nicio cutie de
+ * aici nu aduce documente. Ce se poate verifica — și ce contează — sunt
+ * deciziile: parola nu iese niciodată înapoi, o cutie adăugată de două ori este
+ * refuzată, iar starea drumului „Email — IMAP" de pe hartă se schimbă odată cu
+ * prima cutie.
+ *
+ * Limita este scrisă aici pentru că este reală: pe demonstrație, butonul de
+ * citire răspunde „zero documente", și nu pentru că ar fi ceva stricat.
+ */
+type StoredMailbox = ImapMailbox & { password: string };
+
+const imapMailboxes: StoredMailbox[] = [];
+let imapCounter = 0;
+
+export function listImapMailboxes(): ImapMailbox[] {
+  requirePermission("admin:settings");
+  // Parola nu iese, nici măcar din obiectul intern (§73).
+  return imapMailboxes.map(({ password: _password, ...rest }) => rest);
+}
+
+export function addImapMailbox(input: ImapMailboxInput): ImapMailbox {
+  requirePermission("admin:settings");
+
+  const username = requiredText(input.username, "username", "Utilizatorul");
+  const host = requiredText(input.host, "host", "Serverul");
+  const password = requiredText(input.password, "password", "Parola");
+  const folder = cleanText(input.folder) ?? "INBOX";
+
+  // Aceeași cutie și același dosar de două ori ar produce două intake-uri
+  // pentru fiecare atașament.
+  if (imapMailboxes.some((row) => row.username === username && row.folder === folder)) {
+    throw new ApiError("VALIDATION_ERROR", "Cutia este deja adăugată.", 422, {
+      username: ["Există deja o cutie cu acest utilizator și dosar."],
+    });
+  }
+
+  imapCounter += 1;
+  const mailbox: StoredMailbox = {
+    id: `imap-${imapCounter}`,
+    host,
+    port: input.port ?? 993,
+    useSsl: input.useSsl ?? true,
+    username,
+    folder,
+    password,
+    lastSyncedAt: null,
+    lastError: null,
+    filesIngested: 0,
+    isActive: true,
+  };
+  imapMailboxes.push(mailbox);
+  // Cutia și dosarul. Niciodată parola, nici trunchiată (§73).
+  recordAudit("IMAP_MAILBOX_ADDED", "ImapMailbox", mailbox.id, `${username} · ${folder}`);
+
+  const { password: _password, ...rest } = mailbox;
+  return rest;
+}
+
+export function removeImapMailbox(id: string): void {
+  requirePermission("admin:settings");
+  const index = imapMailboxes.findIndex((row) => row.id === id);
+  if (index < 0) notFound("ImapMailbox", id);
+  const [removed] = imapMailboxes.splice(index, 1);
+  recordAudit(
+    "IMAP_MAILBOX_REMOVED",
+    "ImapMailbox",
+    id,
+    `${removed!.username} · ${removed!.folder}`,
+  );
+}
+
+export function syncImapMailbox(id: string): ImapSyncReport {
+  requirePermission("admin:settings");
+  const mailbox = imapMailboxes.find((row) => row.id === id);
+  if (!mailbox) notFound("ImapMailbox", id);
+
+  // Nu există server IMAP în browser. Turul reușește și nu aduce nimic — ceea ce
+  // este adevărul, nu o eroare inventată ca să pară că merge ceva.
+  mailbox!.lastSyncedAt = new Date().toISOString();
+  mailbox!.lastError = null;
+  return { ingested: 0, skipped: 0, failed: 0, hasMore: false, error: null };
+}
+
+/** Câte cutii sunt conectate. Harta surselor se uită la ea. */
+export function imapMailboxCount(): number {
+  return imapMailboxes.length;
+}
+
+/** Câte documente au adus cutiile, cu totul. */
+export function imapFilesIngested(): number {
+  return imapMailboxes.reduce((total, row) => total + row.filesIngested, 0);
+}
+
 /* ─── Surse de documente ───────────────────────────────────────────────────── */
 
 /**
@@ -3150,14 +3251,15 @@ export function getDocumentSources(): DocumentSources {
     {
       code: "EMAIL_IMAP",
       title: "Email — orice cutie poștală (IMAP)",
-      summary:
-        "Gmail, Yahoo, cutia de la găzduire. Astăzi merge doar Microsoft 365, iar cabinetele mici rareori sunt acolo.",
-      state: "PLANNED",
+      summary: "Gmail, Yahoo, cutia de la găzduire. Atașamentele intră singure.",
+      state: imapMailboxCount() > 0 ? "LIVE" : "NEEDS_SETUP",
       requirement:
-        "De construit. Nu cere nicio hotărâre de business — doar adresa, parola de aplicație și serverul cutiei.",
-      path: null,
-      documents: null,
-      detail: null,
+        imapMailboxCount() > 0
+          ? null
+          : "Nicio cutie adăugată. Ai nevoie de server, utilizator și parolă.",
+      path: "/administrare/surse",
+      documents: imapFilesIngested(),
+      detail: plural(imapMailboxCount(), "cutie conectată", "cutii conectate"),
     },
     {
       code: "WHATSAPP",

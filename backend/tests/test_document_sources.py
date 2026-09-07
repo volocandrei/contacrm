@@ -121,6 +121,20 @@ class TestItSaysWhatIsMissing:
         assert "MS_CLIENT_ID" not in row["requirement"]
         assert "conectat" in row["requirement"].lower()
 
+    def test_imap_asks_for_a_mailbox_not_for_code(self, admin_api: TestClient) -> None:
+        """IMAP a fost „nu există încă" până azi. Acum cere doar o cutie.
+
+        Este drumul obișnuit al documentelor la cabinetul mic din România: până
+        acum, „documentele intră singure din email" era o propoziție adevărată
+        despre alt cabinet — cel de pe Microsoft 365.
+        """
+        row = sources(admin_api)[SourceCode.EMAIL_IMAP.value]
+
+        assert row["state"] == SourceState.NEEDS_SETUP.value
+        assert "cutie" in row["requirement"]
+        # Și are unde se configureze: un drum fără drum nu se ia.
+        assert row["path"]
+
     def test_efactura_explains_the_thing_nobody_guesses(
         self, admin_api: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -175,7 +189,7 @@ class TestItDoesNotPromise:
         """Un zero ar fi arătat ca o integrare stricată, nu ca una inexistentă."""
         rows = sources(admin_api)
 
-        for code in (SourceCode.EMAIL_IMAP, SourceCode.WHATSAPP, SourceCode.GOOGLE_DRIVE):
+        for code in (SourceCode.WHATSAPP, SourceCode.GOOGLE_DRIVE):
             row = rows[code.value]
             assert row["state"] == SourceState.PLANNED.value, code
             assert row["documents"] is None, code

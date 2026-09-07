@@ -25,20 +25,24 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import BinaryIO
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.crypto import TokenDecryptionError, decrypt
 from app.core.logging import get_logger
-from app.domain.enums import DocumentSource, IntakeStatus
-from app.models.client import Client, Contact
-from app.models.document import DocumentIntake
 from app.models.microsoft import MailFolder, MicrosoftConnection
-from app.services.audit import AuditService
-from app.services.document_upload import DocumentUploadService
-from app.services.files import FileValidationError
+from app.services.mail_intake import (
+    MAX_ERROR,
+    MIN_ATTACHMENT_BYTES,
+    Attachment,
+    IngestKind,
+    MailFetchError,
+    MailIntakeService,
+    is_document,
+)
 from app.services.microsoft.base import (
     DriveAuthError,
     DriveClient,
@@ -46,16 +50,13 @@ from app.services.microsoft.base import (
     MailAttachment,
     MailMessage,
 )
-from app.services.processing_queue import enqueue as enqueue_processing
 from app.services.storage import StorageProvider
 
 logger = get_logger(__name__)
 
-MAX_ERROR = 500
-
-#: Sub atâția octeți, un atașament este aproape sigur un logo de semnătură. Cea
-#: mai mică factură PDF reală trece binișor de pragul ăsta.
-MIN_ATTACHMENT_BYTES = 8 * 1024
+# `MAX_ERROR` și `MIN_ATTACHMENT_BYTES` vin din `mail_intake`: sunt reguli
+# comune tuturor cutiilor poștale, nu ale lui Graph. Reexportate mai jos, ca
+# importurile existente să nu se rupă.
 
 
 @dataclass(slots=True)
@@ -93,8 +94,7 @@ class MailSyncService:
         self.session = session
         self.storage = storage
         self.client = client
-        self.uploads = DocumentUploadService(session, storage)
-        self.audit = AuditService(session)
+        self.intake = MailIntakeService(session, storage)
 
     # ── Turul ───────────────────────────────────────────────────────────────
 
@@ -125,48 +125,13 @@ class MailSyncService:
 
         # Harta expeditor → client se citește **o dată** pe tur, nu per mesaj: un
         # dosar cu o sută de mesaje ar fi însemnat o sută de interogări identice.
-        senders = self._sender_map(organization_id)
+        senders = self.intake.sender_map(organization_id)
 
         for folder in folders:
             result.folders.append(self._sync_folder(connection, folder, refresh_token, senders))
 
         connection.last_sync_at = datetime.now(UTC)
         return result
-
-    def _sender_map(self, organization_id: uuid.UUID) -> dict[str, uuid.UUID]:
-        """Adresele de contact ale clienților, normalizate.
-
-        Aceeași adresă la doi clienți este o ambiguitate reală — un contabil care
-        e contact la două firme, de exemplu. Acolo nu ghicim: adresa se scoate din
-        hartă și mesajul rămâne neatribuit, ca un om să decidă.
-        """
-        rows = self.session.execute(
-            select(func.lower(Contact.email), Contact.client_id)
-            .join(Client, Client.id == Contact.client_id)
-            .where(
-                Client.organization_id == organization_id,
-                Client.deleted_at.is_(None),
-                Contact.email.is_not(None),
-                Contact.is_active.is_(True),
-                # Un contact șters nu mai identifică pe nimeni.
-                Contact.deleted_at.is_(None),
-            )
-        ).all()
-
-        mapping: dict[str, uuid.UUID] = {}
-        ambiguous: set[str] = set()
-        for email, client_id in rows:
-            if email is None:
-                continue
-            existing = mapping.get(email)
-            if existing is not None and existing != client_id:
-                ambiguous.add(email)
-            mapping[email] = client_id
-
-        for email in ambiguous:
-            mapping.pop(email, None)
-            logger.info("mail_sender_ambiguous", sender=email)
-        return mapping
 
     def _sync_folder(
         self,
@@ -223,22 +188,22 @@ class MailSyncService:
         # adresa cu majuscule — sau dacă mâine se schimbă clientul — regula
         # rămâne aceeași. Un client nu are voie să fie singurul loc în care se
         # respectă o regulă de potrivire.
-        client_id = senders.get(message.sender.strip().lower())
+        client_id = self.intake.client_for(senders, message.sender)
 
         for attachment in message.attachments:
-            if not self._is_document(attachment):
+            if not is_document(
+                Attachment(
+                    id=attachment.id,
+                    name=attachment.name,
+                    size=attachment.size,
+                    is_inline=attachment.is_inline,
+                )
+            ):
                 outcome.skipped += 1
                 continue
             self._take_attachment(
                 connection, folder, message, attachment, client_id, refresh_token, outcome
             )
-
-    @staticmethod
-    def _is_document(attachment: MailAttachment) -> bool:
-        """Un logo de semnătură nu este un document contabil."""
-        if attachment.is_inline or not attachment.id:
-            return False
-        return attachment.size >= MIN_ATTACHMENT_BYTES
 
     def _take_attachment(
         self,
@@ -250,87 +215,48 @@ class MailSyncService:
         refresh_token: str,
         outcome: MailFolderResult,
     ) -> None:
-        if self._already_taken(folder.organization_id, message.id, attachment.id):
-            outcome.skipped += 1
-            return
+        """Aduce un atașament. Regulile sunt ale tuturor cutiilor, nu ale lui Graph.
 
-        intake = DocumentIntake(
+        Aici rămâne doar ce ține de Graph: cum se descarcă fișierul și ce se
+        numără pe dosar. Restul — pragul de mărime, cheia de idempotență, ce se
+        întâmplă cu un fișier refuzat — stă în `mail_intake`, ca o cutie IMAP să
+        decidă identic.
+        """
+
+        def open_stream() -> BinaryIO:
+            try:
+                return self.client.download_attachment(
+                    refresh_token, message_id=message.id, attachment_id=attachment.id
+                )
+            except DriveError as exc:
+                raise MailFetchError(str(exc)) from exc
+
+        result = self.intake.ingest(
             organization_id=folder.organization_id,
-            source=DocumentSource.EMAIL,
-            status=IntakeStatus.RECEIVED,
-            # Perechea pe care se sprijină idempotența: mesajul și atașamentul.
-            external_message_id=message.id[:255],
-            external_attachment_id=attachment.id[:255],
-            sender=message.sender[:320],
-            recipient=connection.account_email[:320],
-            subject=message.subject[:512],
-            original_filename=attachment.name[:512],
-            received_at=message.received_at or datetime.now(UTC),
+            message_id=message.id,
+            attachment=Attachment(
+                id=attachment.id,
+                name=attachment.name,
+                size=attachment.size,
+                is_inline=attachment.is_inline,
+            ),
+            sender=message.sender,
+            recipient=connection.account_email,
+            subject=message.subject,
+            received_at=message.received_at,
+            client_id=client_id,
             raw_payload={"folder": folder.display_name, "size": attachment.size},
+            open_stream=open_stream,
+            actor_name="Sistem · Email",
         )
-        self.session.add(intake)
-        self.session.flush()
 
-        try:
-            stream = self.client.download_attachment(
-                refresh_token, message_id=message.id, attachment_id=attachment.id
-            )
-        except DriveError as exc:
-            self._reject(intake, f"Descărcare eșuată: {exc}")
+        if result.kind is IngestKind.FAILED:
             outcome.failed += 1
-            return
-
-        try:
-            upload = self.uploads.upload(
-                organization_id=folder.organization_id,
-                stream=stream,
-                original_filename=attachment.name or "atasament",
-                source=DocumentSource.EMAIL,
-                # Expeditorul dă clientul. Necunoscut înseamnă neatribuit, nu ghicit.
-                client_id=client_id,
-                intake=intake,
-                received_at=message.received_at,
-            )
-        except FileValidationError as exc:
-            # Un `.docx` sau o semnătură scăpată de filtru: nu este un document
-            # contabil, și atât. Nu este o eroare a sistemului.
-            self._reject(intake, exc.message)
+        elif result.kind is IngestKind.SKIPPED:
             outcome.skipped += 1
-            return
-
-        intake.status = IntakeStatus.DUPLICATE if upload.is_duplicate else IntakeStatus.ACCEPTED
-        intake.document_id = upload.document.id
-        folder.files_ingested += 1
-        outcome.ingested += 1
-
-        self.audit.record(
-            organization_id=folder.organization_id,
-            action="DOCUMENT_INGESTED_FROM_EMAIL",
-            entity_type="Document",
-            entity_id=str(upload.document.id),
-            user_id=None,
-            user_name="Sistem · Email",
-            detail=f"{message.sender} · {attachment.name}",
-        )
-
-        if not upload.is_duplicate:
-            enqueue_processing(self.session, upload.document)
-
-    def _already_taken(self, organization_id: uuid.UUID, message_id: str, item_id: str) -> bool:
-        existing = self.session.scalars(
-            select(DocumentIntake.id).where(
-                DocumentIntake.organization_id == organization_id,
-                DocumentIntake.source == DocumentSource.EMAIL,
-                DocumentIntake.external_message_id == message_id[:255],
-                DocumentIntake.external_attachment_id == item_id[:255],
-            )
-        ).first()
-        return existing is not None
-
-    def _reject(self, intake: DocumentIntake, reason: str) -> None:
-        intake.status = IntakeStatus.REJECTED
-        intake.rejection_reason = reason[:255]
-        logger.info("mail_attachment_rejected", filename=intake.original_filename, reason=reason)
+        else:
+            folder.files_ingested += 1
+            outcome.ingested += 1
 
 
 __all__ = ["MIN_ATTACHMENT_BYTES", "MailFolderResult", "MailSyncResult", "MailSyncService"]

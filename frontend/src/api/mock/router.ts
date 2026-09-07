@@ -400,6 +400,22 @@ const routes: Route[] = [
 
   /* Pe unde intra documentele. Starea se calculeaza, ca pe server. */
   { method: "GET", pattern: "/integrations/sources", handler: () => store.getDocumentSources() },
+  { method: "GET", pattern: "/integrations/imap", handler: () => store.listImapMailboxes() },
+  {
+    method: "POST",
+    pattern: "/integrations/imap/:id/sync",
+    handler: ({ params }) => store.syncImapMailbox(params.id!),
+  },
+  {
+    method: "POST",
+    pattern: "/integrations/imap",
+    handler: ({ body }) => store.addImapMailbox(body as never),
+  },
+  {
+    method: "DELETE",
+    pattern: "/integrations/imap/:id",
+    handler: ({ params }) => store.removeImapMailbox(params.id!),
+  },
 
   /* Contabilitate */
   { method: "GET", pattern: "/periods", handler: ({ query }) => store.listPeriods(query) },

@@ -99,6 +99,41 @@ export type DocumentAction = (typeof DOCUMENT_ACTION)[number];
 export const SOURCE_STATE = ["LIVE", "NEEDS_SETUP", "PLANNED"] as const;
 export type SourceState = (typeof SOURCE_STATE)[number];
 
+/** O cutie poștală citită prin IMAP. **Fără parolă**, niciodată (§73). */
+export type ImapMailbox = {
+  id: string;
+  host: string;
+  port: number;
+  useSsl: boolean;
+  username: string;
+  folder: string;
+  lastSyncedAt: string | null;
+  /** Ultima eroare. O parolă schimbată oprește preluarea — trebuie să se vadă. */
+  lastError: string | null;
+  filesIngested: number;
+  isActive: boolean;
+};
+
+/** Ce se cere ca să adaugi o cutie. Parola intră, nu mai iese. */
+export type ImapMailboxInput = {
+  host: string;
+  port?: number;
+  useSsl?: boolean;
+  username: string;
+  password: string;
+  folder?: string;
+};
+
+/** Ce a adus un tur peste o cutie. */
+export type ImapSyncReport = {
+  ingested: number;
+  skipped: number;
+  failed: number;
+  /** Au mai rămas mesaje peste lot. Turul următor le ia. */
+  hasMore: boolean;
+  error: string | null;
+};
+
 /** Un drum pe care pot intra documentele. */
 export type DocumentSourceRow = {
   code: string;

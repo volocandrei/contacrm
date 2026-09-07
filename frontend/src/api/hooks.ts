@@ -21,6 +21,7 @@ import {
   intakes,
   obligations,
   fees,
+  imap,
   periods,
   reminders,
   reports,
@@ -33,6 +34,7 @@ import {
 } from "@/api/endpoints";
 import type {
   DocumentDetail,
+  ImapMailboxInput,
   DocumentFieldName,
   ObligationType,
   RoleCode,
@@ -74,6 +76,7 @@ export const queryKeys = {
   roles: ["roles"] as const,
   settings: ["settings"] as const,
   documentSources: ["integrations", "sources"] as const,
+  imapMailboxes: ["integrations", "imap"] as const,
   driveStatus: ["drive", "status"] as const,
   anafStatus: ["anaf", "status"] as const,
   driveBrowse: (parentId?: string) => ["drive", "browse", parentId ?? null] as const,
@@ -840,6 +843,48 @@ export function useImportClients() {
  */
 export function useDocumentSources() {
   return useQuery({ queryKey: queryKeys.documentSources, queryFn: documentSources.list });
+}
+
+/* ─── Cutii poștale IMAP ───────────────────────────────────────────────────── */
+
+export function useImapMailboxes() {
+  return useQuery({ queryKey: queryKeys.imapMailboxes, queryFn: imap.list });
+}
+
+/**
+ * Adaugă o cutie. Serverul o **testează** înainte să o salveze, deci un refuz
+ * aici înseamnă că parola chiar nu merge — nu că am scris noi ceva greșit.
+ */
+/**
+ * Orice atingere a unei cutii schimbă și harta surselor de pe același ecran:
+ * starea drumului „Email — IMAP" și contorul lui de documente vin de acolo.
+ */
+function useImapMutation<TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.imapMailboxes });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.documentSources });
+    },
+  });
+}
+
+/**
+ * Adaugă o cutie. Serverul o **testează** înainte să o salveze, deci un refuz
+ * aici înseamnă că parola chiar nu merge — nu că am trimis noi ceva greșit.
+ */
+export function useAddImapMailbox() {
+  return useImapMutation((input: ImapMailboxInput) => imap.add(input));
+}
+
+export function useRemoveImapMailbox() {
+  return useImapMutation((id: string) => imap.remove(id));
+}
+
+/** Citește cutia acum, fără să aștepte planificatorul. */
+export function useSyncImapMailbox() {
+  return useImapMutation((id: string) => imap.sync(id));
 }
 
 /* ─── Remindere ──────────────────────────────────────────────────────────── */

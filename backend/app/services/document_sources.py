@@ -30,7 +30,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -39,6 +39,7 @@ from app.core.config import settings
 from app.core.crypto import encryption_available
 from app.domain.enums import DocumentSource, SourceState
 from app.models.anaf import AnafConnection, AnafMandate
+from app.models.imap import ImapMailbox
 from app.models.microsoft import DriveFolder, MailFolder, MicrosoftConnection
 from app.repositories.document import DocumentRepository
 
@@ -158,6 +159,7 @@ class DocumentSourceService:
             self._onedrive(microsoft, counts),
             self._microsoft_mail(microsoft, counts),
             self._efactura(anaf, counts),
+            self._imap(),
             *self._planned(),
         ]
 
@@ -257,7 +259,10 @@ class DocumentSourceService:
             state=state,
             requirement=requirement,
             path="/administrare/surse",
-            documents=counts.get(DocumentSource.EMAIL, 0),
+            # Din contoarele dosarelor, nu din totalul pe sursă: documentele
+            # venite prin IMAP sunt tot `EMAIL`, iar cele două cutii ar fi
+            # raportat amândouă același număr, adică de două ori pe cel greșit.
+            documents=self._sum(MailFolder.files_ingested) if connection else 0,
             detail=self._plural(tracked, "dosar de email urmărit", "dosare de email urmărite"),
         )
 
@@ -296,6 +301,35 @@ class DocumentSourceService:
             detail=self._plural(mandates, "client împuternicit", "clienți împuterniciți"),
         )
 
+    # ── Cutia poștală obișnuită ─────────────────────────────────────────────
+
+    def _imap(self) -> DocumentSourceView:
+        """Gmail, Yahoo, cutia de la găzduire — tot ce nu este Microsoft 365.
+
+        Pentru cabinetul mic din România, ăsta este drumul obișnuit al
+        documentelor. Cât timp mergea doar Graph, „documentele intră singure din
+        email" era o propoziție adevărată despre alt cabinet.
+        """
+        mailboxes = self._count(ImapMailbox)
+        if not encryption_available():
+            state = SourceState.NEEDS_SETUP
+            requirement = "Lipsește DRIVE_TOKEN_KEY: fără ea parola cutiei nu se poate stoca."
+        elif mailboxes == 0:
+            state = SourceState.NEEDS_SETUP
+            requirement = "Nicio cutie adăugată. Ai nevoie de server, utilizator și parolă."
+        else:
+            state, requirement = SourceState.LIVE, None
+        return DocumentSourceView(
+            code=SourceCode.EMAIL_IMAP,
+            title="Email — orice cutie poștală (IMAP)",
+            summary="Gmail, Yahoo, cutia de la găzduire. Atașamentele intră singure.",
+            state=state,
+            requirement=requirement,
+            path="/administrare/surse",
+            documents=self._sum(ImapMailbox.files_ingested),
+            detail=self._plural(mailboxes, "cutie conectată", "cutii conectate"),
+        )
+
     # ── Ce nu există ────────────────────────────────────────────────────────
 
     def _planned(self) -> list[DocumentSourceView]:
@@ -307,21 +341,6 @@ class DocumentSourceService:
         exact ce trebuie hotărât, nu programat.
         """
         return [
-            DocumentSourceView(
-                code=SourceCode.EMAIL_IMAP,
-                title="Email — orice cutie poștală (IMAP)",
-                summary=(
-                    "Gmail, Yahoo, cutia de la găzduire. Astăzi merge doar Microsoft 365, "
-                    "iar cabinetele mici rareori sunt acolo."
-                ),
-                state=SourceState.PLANNED,
-                requirement=(
-                    "De construit. Nu cere nicio hotărâre de business — doar adresa, "
-                    "parola de aplicație și serverul cutiei."
-                ),
-                path=None,
-                documents=None,
-            ),
             DocumentSourceView(
                 code=SourceCode.WHATSAPP,
                 title="WhatsApp",
@@ -350,7 +369,25 @@ class DocumentSourceService:
 
     # ── Ajutoare ────────────────────────────────────────────────────────────
 
-    def _count(self, model: type[DriveFolder] | type[MailFolder] | type[AnafMandate]) -> int:
+    def _sum(self, column: Any) -> int:
+        """Suma unui contor, peste rândurile organizației.
+
+        Contoarele per dosar și per cutie sunt singurul mod de a spune câte
+        documente a adus **fiecare** drum de email: în `documents.source` toate
+        apar la fel, ca `EMAIL`.
+        """
+        return (
+            self.session.scalar(
+                select(func.coalesce(func.sum(column), 0)).where(
+                    column.parent.class_.organization_id == self.organization_id
+                )
+            )
+            or 0
+        )
+
+    def _count(
+        self, model: type[DriveFolder] | type[MailFolder] | type[AnafMandate] | type[ImapMailbox]
+    ) -> int:
         return (
             self.session.scalar(
                 select(func.count())

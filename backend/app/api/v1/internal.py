@@ -42,6 +42,7 @@ from app.models.organization import Organization
 from app.schemas.common import ApiModel
 from app.services.anaf.runner import run_anaf_sync
 from app.services.daily_digest import DailyDigestService
+from app.services.imap.runner import run_imap_sync
 from app.services.mail import build_email_sender
 from app.services.microsoft.runner import run_drive_sync
 from app.services.processing_recovery import recover
@@ -110,9 +111,10 @@ def run_queue(
     # fișier apărut acum ar aștepta degeaba bătaia următoare.
     drive = run_drive_sync(storage, limit=DRIVE_BATCH)
     anaf = run_anaf_sync(storage, limit=DRIVE_BATCH)
+    imap = run_imap_sync(storage, limit=DRIVE_BATCH)
     executed = run_once(storage, limit=CRON_BATCH)
 
-    ingested = drive.ingested + anaf.ingested
+    ingested = drive.ingested + anaf.ingested + imap.ingested
     logger.info(
         "cron_queue_run",
         requeued=report.requeued,
@@ -120,6 +122,7 @@ def run_queue(
         ingested=ingested,
         from_drive=drive.ingested,
         from_anaf=anaf.ingested,
+        from_imap=imap.ingested,
     )
     return QueueRunOut(requeued=report.requeued, executed=executed, ingested=ingested)
 
