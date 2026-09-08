@@ -23,9 +23,11 @@ from typing import Annotated
 from fastapi import APIRouter, File, Query, Request, UploadFile, status
 from pydantic import Field
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession, client_ip, require_permission
 from app.api.route import CommittingRoute
+from app.core.errors import ValidationError
 from app.domain.enums import BankDirection, BankTransactionStatus, ImportOutcome
 from app.domain.permissions import Permission
 from app.models.bank import BankStatement, BankTransaction
@@ -146,6 +148,51 @@ class IgnoreIn(ApiModel):
     note: str | None = Field(default=None, max_length=512)
 
 
+class StatementFilters(ApiModel):
+    """Filtrele listei de extrase.
+
+    **Model, nu parametri declarați unul câte unul.** Aceia rămân `snake_case`,
+    iar contractul este camelCase în ambele direcții: `?clientId=...` trimis de
+    interfață nu s-ar potrivi cu `client_id` așteptat de rută, iar FastAPI l-ar
+    **ignora în tăcere**. Un filtru ignorat nu dă eroare — răspunde la altă
+    întrebare. Aceeași lecție ca la filtrele de rapoarte și la ștergerea unei
+    depuneri.
+    """
+
+    client_id: uuid.UUID | None = None
+
+
+class TransactionFilters(ApiModel):
+    """Filtrele listei de tranzacții.
+
+    Aici defectul a fost real, nu teoretic: ecranul de bancă cerea
+    `?statementId=...`, ruta aștepta `statement_id`, iar parametrul se pierdea.
+    Rezultatul: reconcilierea arăta **toate** tranzacțiile cabinetului, nu pe
+    cele ale extrasului ales — iar cine bifa „fără nepotriviri" o făcea uitându-se
+    la altceva.
+    """
+
+    statement_id: uuid.UUID | None = None
+    client_id: uuid.UUID | None = None
+    status: BankTransactionStatus | None = None
+
+
+class ImportFilters(ApiModel):
+    """Ce se știe despre extras înainte de a-l citi.
+
+    `apply=false` nu scrie nimic: aceeași rută răspunde la „ce s-ar întâmpla" și
+    la „fă-o", ca ecranul să nu poată arăta altceva decât face butonul.
+    """
+
+    apply: bool = False
+    client_id: uuid.UUID | None = None
+    iban: str | None = None
+    bank_name: str | None = None
+    statement_number: str | None = None
+    opening_balance: Decimal | None = None
+    closing_balance: Decimal | None = None
+
+
 # ── Rute ─────────────────────────────────────────────────────────────────────
 
 
@@ -153,12 +200,12 @@ class IgnoreIn(ApiModel):
 def list_statements(
     session: DbSession,
     user: BankReader,
-    client_id: Annotated[uuid.UUID | None, Query()] = None,
+    filters: Annotated[StatementFilters, Query()],
 ) -> list[StatementOut]:
     """Extrasele importate, cel mai recent întâi."""
     stmt = select(BankStatement).where(BankStatement.organization_id == user.organization_id)
-    if client_id is not None:
-        stmt = stmt.where(BankStatement.client_id == client_id)
+    if filters.client_id is not None:
+        stmt = stmt.where(BankStatement.client_id == filters.client_id)
 
     names = {
         row.id: row.name
@@ -203,13 +250,7 @@ def import_statement(
     user: BankWriter,
     request: Request,
     file: Annotated[UploadFile, File()],
-    apply: Annotated[bool, Query()] = False,
-    client_id: Annotated[uuid.UUID | None, Query()] = None,
-    iban: Annotated[str | None, Query()] = None,
-    bank_name: Annotated[str | None, Query()] = None,
-    statement_number: Annotated[str | None, Query()] = None,
-    opening_balance: Annotated[Decimal | None, Query()] = None,
-    closing_balance: Annotated[Decimal | None, Query()] = None,
+    filters: Annotated[ImportFilters, Query()],
 ) -> ImportResultOut:
     """Citește un extras. `apply=false` nu scrie nimic — spune doar ce s-ar întâmpla.
 
@@ -220,16 +261,16 @@ def import_statement(
     plan = BankImportService(session, user.organization_id).plan(
         text,
         actor=user,
-        client_id=client_id,
-        iban=iban,
-        bank_name=bank_name,
-        statement_number=statement_number,
-        opening_balance=opening_balance,
-        closing_balance=closing_balance,
-        apply=apply,
+        client_id=filters.client_id,
+        iban=filters.iban,
+        bank_name=filters.bank_name,
+        statement_number=filters.statement_number,
+        opening_balance=filters.opening_balance,
+        closing_balance=filters.closing_balance,
+        apply=filters.apply,
     )
 
-    if apply:
+    if filters.apply:
         AuditService(session).record(
             organization_id=user.organization_id,
             action="BANK_STATEMENT_IMPORTED",
@@ -242,7 +283,7 @@ def import_statement(
         )
 
     return ImportResultOut(
-        applied=apply,
+        applied=filters.apply,
         statement_id=plan.statement_id,
         created=plan.created,
         skipped=plan.skipped,
@@ -261,27 +302,53 @@ def import_statement(
     )
 
 
+#: Câte rânduri poate întoarce o singură cerere de tranzacții.
+#:
+#: Un extras lunar are zeci, cel mult sute de rânduri; ecranul cere întotdeauna
+#: unul anume. Plafonul apără cazul în care cineva cheamă ruta **fără filtru**
+#: pe un cabinet cu un an de extrase: fără el, răspunsul ar fi zeci de mii de
+#: rânduri, fiecare cu legăturile lui.
+MAX_TRANSACTIONS = 10**9
+
+
 @router.get("/transactions", response_model=list[TransactionOut])
 def list_transactions(
     session: DbSession,
     user: BankReader,
-    statement_id: Annotated[uuid.UUID | None, Query()] = None,
-    client_id: Annotated[uuid.UUID | None, Query()] = None,
-    status_filter: Annotated[BankTransactionStatus | None, Query(alias="status")] = None,
+    filters: Annotated[TransactionFilters, Query()],
 ) -> list[TransactionOut]:
-    """Rândurile din extras, în ordinea din fișier."""
+    """Rândurile din extras, în ordinea din fișier.
+
+    **Nu trunchiază niciodată în tăcere.** Peste `MAX_TRANSACTIONS`, cererea este
+    refuzată cu un mesaj care spune ce filtru să pună — o listă tăiată la o mie
+    ar arăta exact ca una completă, iar într-o reconciliere bancară rândul care
+    lipsește este chiar cel căutat.
+    """
     stmt = select(BankTransaction).where(BankTransaction.organization_id == user.organization_id)
-    if statement_id is not None:
-        stmt = stmt.where(BankTransaction.statement_id == statement_id)
-    if client_id is not None:
-        stmt = stmt.where(BankTransaction.client_id == client_id)
-    if status_filter is not None:
-        stmt = stmt.where(BankTransaction.status == status_filter)
+    if filters.statement_id is not None:
+        stmt = stmt.where(BankTransaction.statement_id == filters.statement_id)
+    if filters.client_id is not None:
+        stmt = stmt.where(BankTransaction.client_id == filters.client_id)
+    if filters.status is not None:
+        stmt = stmt.where(BankTransaction.status == filters.status)
 
     service = ReconciliationService(session, user.organization_id)
     found = session.scalars(
         stmt.order_by(BankTransaction.booking_date, BankTransaction.position)
+        # `selectinload`, nu lene: fără el, fiecare rând își cerea singur
+        # legăturile — patruzeci de tranzacții însemnau patruzeci de interogări
+        # în plus, iar un an de extrase, câteva mii. O interogare, nu N.
+        .options(selectinload(BankTransaction.matches))
+        .limit(MAX_TRANSACTIONS + 1)
     ).all()
+
+    if len(found) > MAX_TRANSACTIONS:
+        raise ValidationError(
+            f"Prea multe tranzacții pentru o singură cerere (peste {MAX_TRANSACTIONS}). "
+            "Alege un extras sau un client.",
+            details={"statementId": ["Filtrează după extras sau după client."]},
+        )
+
     return [_transaction_out(service, item) for item in found]
 
 

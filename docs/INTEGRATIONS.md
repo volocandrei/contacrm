@@ -7,6 +7,12 @@ răspunde celălalt sistem.**
 Regula pe care o respectă tot proiectul: fără credențială, funcția **spune că nu
 este configurată** — nu se oferă și apoi eșuează în mijlocul unei sincronizări.
 
+> **Inventarul complet** — cu adrese, variabile de mediu, conturi necesare,
+> expirări și ce anume se trimite fiecărui serviciu — este în
+> [PRODUCTION_EXTERNAL_SERVICES_INVENTORY.md](PRODUCTION_EXTERNAL_SERVICES_INVENTORY.md).
+> Fișierul de față explică **de ce** fiecare integrare are starea pe care o are;
+> acela le enumeră pe toate, inclusiv pe cele care nu există.
+
 ## Ce înseamnă fiecare stare
 
 | Stare | Înseamnă |
@@ -24,7 +30,7 @@ s-a putut totuși verifica și ce anume rămâne de confirmat la prima rulare re
 
 ## ANAF — SPV, facturi electronice (e-Factura)
 
-**Stare: NOT VERIFIED — EXTERNAL CREDENTIAL REQUIRED.**
+**Stare: `NOT VERIFIED — PROVIDER ACCESS REQUIRED`.**
 
 Preluarea listei de mesaje și descărcarea arhivelor din SPV nu s-au rulat
 niciodată împotriva serverului ANAF: cer un certificat calificat și înregistrarea
@@ -51,7 +57,7 @@ de eroare. Restul lanțului (de la XML în jos) este verificat.
 
 ## Microsoft Graph — OneDrive, SharePoint, email
 
-**Stare: MOCK VERIFIED.**
+**Stare: `NOT VERIFIED — CREDENTIALS REQUIRED`.**
 
 `MS_CLIENT_ID` / `MS_CLIENT_SECRET` / `MS_TENANT_ID` nu au fost obținute, deci
 consimțământul OAuth nu s-a parcurs niciodată cu un cont real.
@@ -67,7 +73,7 @@ delta-tokenului la expirare.
 
 ## IMAP — cutia poștală a cabinetului
 
-**Stare: MOCK VERIFIED.**
+**Stare: `NOT VERIFIED — CREDENTIALS REQUIRED`.**
 
 Nu s-a primit o cutie poștală de test.
 
@@ -81,7 +87,7 @@ particularitățile lui la `FETCH` și la flag-uri).
 
 ## SMTP — trimiterea de solicitări și memento-uri
 
-**Stare: MOCK VERIFIED.**
+**Stare: `NOT VERIFIED — CREDENTIALS REQUIRED`.**
 
 `SMTP_*` nu au fost furnizate. Fără ele, aplicația folosește
 `services/mail/disabled.py`: **spune** că trimiterea nu este configurată, în loc
@@ -96,7 +102,7 @@ DKIM, DMARC. Vezi [DEPLOY.md](DEPLOY.md).
 
 ## Modelul de extragere (AI)
 
-**Stare: MOCK VERIFIED**, și numai pentru o parte a lanțului.
+**Stare: `NOT VERIFIED — CREDENTIALS REQUIRED`**, și numai pentru o parte a lanțului: citirea locală a PDF-urilor merge fără nicio cheie.
 
 `AI_API_KEY` nu a fost furnizată. Fără ea, pornirea se **oprește** dacă
 `OCR_PROVIDER` cere un model — nu pornește cu extragerea tăcut moartă
@@ -125,7 +131,7 @@ măsoară pe documentele cabinetului.
 
 ## SAGA — import / export
 
-**Stare: NEIMPLEMENTAT, DELIBERAT.**
+**Stare: `NOT IMPLEMENTED`, deliberat.**
 
 Nu s-a scris nicio conversie. Motivul este în [SAGA.md](SAGA.md): formatul de
 import al SAGA nu este public, iar un format ghicit ar fi produs fișiere care se
@@ -143,7 +149,7 @@ deschide corect — separator `;`, BOM, CRLF, virgulă zecimală
 
 ## Băncile — extrase de cont
 
-**Stare: VERIFICAT PE FIȘIERE, fără conexiune bancară.**
+**Stare: VERIFICAT PE FIȘIERE**, fără conexiune bancară.
 
 Nu există nicio integrare directă cu vreo bancă și nu s-a promis una. Extrasele
 se **încarcă** ca fișiere. Importul, potrivirea automată și reconcilierea sunt

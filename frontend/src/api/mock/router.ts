@@ -50,7 +50,11 @@ const routes: Route[] = [
   },
   { method: "GET", pattern: "/auth/sessions", handler: () => store.listSessions() },
   { method: "GET", pattern: "/bank/statements", handler: () => bank.listStatements() },
-  { method: "GET", pattern: "/bank/transactions", handler: () => bank.listTransactions() },
+  {
+    method: "GET",
+    pattern: "/bank/transactions",
+    handler: ({ query }) => bank.listTransactions(query),
+  },
   {
     method: "GET",
     pattern: "/bank/transactions/:id/suggestions",

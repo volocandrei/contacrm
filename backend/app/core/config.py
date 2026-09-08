@@ -51,6 +51,19 @@ LOCAL_EXTRACTION_PROVIDERS = frozenset({"mock", "pdf_text", "efactura", "local"}
 #: producție rămâne `local`, care nu trimite nimic nicăieri (R2).
 MODEL_EXTRACTION_PROVIDERS = frozenset({"vision", "hybrid"})
 
+#: Vânzătorii de model din spatele extragerii cu `vision`/`hybrid`.
+#:
+#: **Doar aceștia doi există în cod.** `.env.example` a enumerat multă vreme și
+#: `openai` și `azure_openai`: nu s-a implementat niciodată niciunul, iar câmpul
+#: nu avea validator — deci `AI_PROVIDER=openai` pornea liniștit, apărea pe
+#: ecranul de setări ca provider activ, și nu schimba nimic. Un cabinet ar fi
+#: putut deschide un cont OpenAI pentru o valoare pe care nu o citește nimeni.
+#:
+#: Câmpul nu **alege** providerul — asta face `OCR_PROVIDER`. Spune al cui este
+#: modelul, pentru verificarea de consistență din `assert_production_ready` și
+#: pentru ecranul de setări. Cu atât mai mult trebuie să fie adevărat.
+AI_PROVIDERS = frozenset({"mock", "anthropic"})
+
 #: Mediile ANAF. `test` și `prod` sunt baze separate la ANAF, nu niveluri de log:
 #: o factură din mediul de test nu există în producție și invers.
 ANAF_ENVIRONMENTS = frozenset({"prod", "test"})
@@ -332,6 +345,16 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"ASSISTANT_PROVIDER necunoscut: {value!r}. Valori acceptate: "
                 + ", ".join(sorted(ASSISTANT_PROVIDERS))
+            )
+        return value
+
+    @field_validator("ai_provider")
+    @classmethod
+    def _known_ai_provider(cls, value: str) -> str:
+        if value not in AI_PROVIDERS:
+            raise ValueError(
+                f"AI_PROVIDER necunoscut sau neimplementat: {value!r}. Valori acceptate: "
+                + ", ".join(sorted(AI_PROVIDERS))
             )
         return value
 

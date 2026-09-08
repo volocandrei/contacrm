@@ -187,6 +187,63 @@ cabinetul deodată.
 
 ---
 
+## Lista de bifat, pentru tipărit
+
+Exact serviciile pe care le folosește **această** aplicație — nu o listă generică.
+Ordinea contează: primele patru fac aplicația să funcționeze, restul se adaugă pe
+rând. Detaliile fiecăruia în
+[PRODUCTION_SETUP_ACCOUNTS.md](PRODUCTION_SETUP_ACCOUNTS.md).
+
+```text
+OBLIGATORII
+[ ] Domeniu cumpărat și DNS configurat
+[ ] Certificat TLS activ (fără el, nimeni nu se poate autentifica)
+[ ] Server de producție, cu volum PERSISTENT pentru documente
+[ ] PostgreSQL 17, utilizator dedicat, inaccesibil din internet
+[ ] SECRET_KEY generat pentru această instalare
+[ ] DRIVE_TOKEN_KEY generat, separat de SECRET_KEY
+[ ] CRON_SECRET generat
+[ ] PUBLIC_BASE_URL pus pe adresa reală
+[ ] CORS_ALLOWED_ORIGINS enumerat explicit
+[ ] VITE_API_MODE=http la build-ul frontendului
+[ ] OCR_PROVIDER pus pe local (mock este refuzat în producție)
+[ ] alembic upgrade head rulat înainte de promovare
+[ ] Primul administrator creat, cu parolă aleasă atunci
+[ ] Al doilea administrator creat
+[ ] Copie de siguranță zilnică: bază ÎNTÂI, apoi fișiere
+[ ] Copie RESTAURATĂ o dată, cu check-storage trecut
+[ ] Planificator (cron) configurat pentru rutele interne
+
+RECOMANDATE
+[ ] Monitorizare externă pe /health/ready (aplicația nu are alerte)
+[ ] SMTP configurat, cu SPF + DKIM + DMARC pe domeniu
+[ ] NOTIFICATIONS_ENABLED=true, după un test către cabinet
+[ ] Catalogul de declarații confirmat de un contabil, rând cu rând
+[ ] Declarațiile bifate pentru fiecare client
+
+OPȚIONALE, PE RÂND
+[ ] Microsoft 365: aplicație în Entra ID + data de expirare a secretului notată
+[ ] SAU o cutie IMAP, cu parolă de aplicație
+[ ] ANAF: aplicație OAuth + certificat calificat + împuternicire per client
+[ ] ANAF_ENVIRONMENT=prod (nu test)
+[ ] AI_API_KEY, dacă clienții trimit poze
+[ ] S3, dacă documentele nu stau pe discul serverului
+
+PRIMA ZI
+[ ] Clienții importați; numărul se potrivește cu al cabinetului
+[ ] Un document real urcat, urmărit până la arhivă
+[ ] Un link de trimitere testat de pe telefonul unui client
+[ ] Prima rulare a fiecărei integrări, cu UN SINGUR client, urmărită
+[ ] Datele de expirare trecute în calendar
+    (PRODUCTION_EXPIRY_CHECKLIST.md)
+```
+
+**Nu îți trebuie:** cont Meta/WhatsApp, Twilio, Google Cloud, AWS Textract,
+OpenAI, Redis, serviciu de plăți sau analytics. Niciunul nu este folosit de
+aplicație — verificat prin căutare în tot codul.
+
+---
+
 ## Dacă ceva nu trece
 
 Nu se pornește „și se repară luni". Cele trei porți **STOP** — secretele, primul

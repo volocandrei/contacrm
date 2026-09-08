@@ -179,8 +179,22 @@ export function listStatements(): BankStatement[] {
   ];
 }
 
-export function listTransactions(): BankTransaction[] {
-  return transactions.map((item) => ({ ...item, matches: [...item.matches] }));
+/**
+ * Rândurile din extras, filtrate ca pe server.
+ *
+ * **Filtrele nu se ignoră.** Pe server au fost o vreme declarate `snake_case`
+ * într-un contract camelCase, deci `?statementId=` se pierdea în tăcere și
+ * ecranul de reconciliere arăta toate tranzacțiile cabinetului, nu pe cele ale
+ * extrasului ales. Backendul simulat are un singur extras, deci nu s-ar fi văzut
+ * niciodată aici — cu atât mai mult trebuie să aplice aceleași filtre: el este
+ * contractul (§14).
+ */
+export function listTransactions(query: Record<string, string> = {}): BankTransaction[] {
+  return transactions
+    .filter((item) => !query.statementId || item.statementId === query.statementId)
+    .filter((item) => !query.clientId || item.clientId === query.clientId)
+    .filter((item) => !query.status || item.status === query.status)
+    .map((item) => ({ ...item, matches: [...item.matches] }));
 }
 
 /**

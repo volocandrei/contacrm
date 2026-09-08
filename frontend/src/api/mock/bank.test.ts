@@ -137,3 +137,55 @@ describe("contorul de pe extras", () => {
     expect(bank.listStatements()[0]?.openCount).toBe(4);
   });
 });
+
+/**
+ * Filtrele listei de tranzacții (§14).
+ *
+ * Pe server, `?statementId=` s-a pierdut o vreme în tăcere: ruta declara parametrii
+ * `snake_case` într-un contract camelCase, iar FastAPI ignoră ce nu recunoaște.
+ * Ecranul de reconciliere arăta **toate** tranzacțiile cabinetului, nu pe cele
+ * ale extrasului ales — fără nicio eroare, doar cu alte rânduri.
+ *
+ * Backendul simulat are un singur extras, deci defectul nu s-ar fi văzut
+ * niciodată aici. Cu atât mai mult trebuie să aplice aceleași filtre: el este
+ * contractul pe care se dezvoltă ecranul.
+ */
+describe("filtrele tranzacțiilor", () => {
+  it("un extras care nu există nu întoarce nimic", () => {
+    // Testul care ar fi prins defectul: fără filtru, răspunsul ar fi fost lista
+    // întreagă, iar ecranul ar fi arătat rânduri care nu sunt ale extrasului.
+    expect(bank.listTransactions({ statementId: "extras-inexistent" })).toEqual([]);
+  });
+
+  it("extrasul propriu întoarce rândurile lui", () => {
+    const all = bank.listTransactions();
+
+    const mine = bank.listTransactions({ statementId: all[0].statementId });
+
+    expect(mine).toHaveLength(all.length);
+    expect(new Set(mine.map((row) => row.statementId)).size).toBe(1);
+  });
+
+  it("status alege doar rândurile cu starea cerută", () => {
+    const wanted = bank.listTransactions()[0].status;
+
+    const found = bank.listTransactions({ status: wanted });
+
+    expect(found.length).toBeGreaterThan(0);
+    expect(new Set(found.map((row) => row.status))).toEqual(new Set([wanted]));
+  });
+
+  it("o stare care nu apare nu întoarce tot", () => {
+    expect(bank.listTransactions({ status: "STARE-INEXISTENTA" })).toEqual([]);
+  });
+
+  it("clientId alege doar rândurile clientului", () => {
+    const withClient = bank.listTransactions().find((row) => row.clientId !== null);
+    if (withClient === undefined) throw new Error("setul simulat nu are rânduri cu client");
+
+    const found = bank.listTransactions({ clientId: withClient.clientId ?? "" });
+
+    expect(found.length).toBeGreaterThan(0);
+    expect(new Set(found.map((row) => row.clientId))).toEqual(new Set([withClient.clientId]));
+  });
+});
