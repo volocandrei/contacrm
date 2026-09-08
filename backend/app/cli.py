@@ -32,6 +32,7 @@ from app.core.security import hash_password
 from app.domain.document_types import DEFAULT_DOCUMENT_TYPES
 from app.domain.enums import ClientStatus, TaskPriority, TaskStatus
 from app.domain.obligations import DEFAULT_OBLIGATIONS
+from app.domain.passwords import problems as password_problems
 from app.domain.periods import format_reference_month
 from app.domain.permissions import ROLE_LABEL, ROLE_PERMISSIONS
 from app.domain.permissions import Permission as PermissionCode
@@ -47,9 +48,9 @@ from app.services.obligations import ObligationService
 
 DEV_PASSWORD = "contacrm-dev"
 
-# Lungimea minima ceruta primului administrator. Nu este o politica de parole —
-# doar pragul sub care o instalare noua ar porni deja compromisa.
-MIN_ADMIN_PASSWORD_LENGTH = 12
+# Politica de parole a primului administrator este **aceeasi** cu a aplicatiei:
+# `app/domain/passwords.py`. Aici a stat o vreme doar o verificare de lungime,
+# deci contul cu cele mai multe drepturi trecea prin cel mai slab control.
 
 # Sufixul fara de care `reset-e2e` refuza sa stearga ceva.
 E2E_SUFFIX = "_e2e"
@@ -717,8 +718,17 @@ def create_admin() -> None:
         sys.exit("Numele este obligatoriu.")
 
     password = getpass.getpass("parolă: ")
-    if len(password) < MIN_ADMIN_PASSWORD_LENGTH:
-        sys.exit(f"Parola are minimum {MIN_ADMIN_PASSWORD_LENGTH} caractere.")
+    # **Aceeași politică pe care o aplică aplicația**, nu doar lungimea.
+    #
+    # Comanda verifica până acum numai numărul de caractere, deci contul cu cele
+    # mai multe drepturi din tot sistemul trecea prin cel mai slab control:
+    # `administrator2026` era refuzat la schimbarea parolei din interfață și
+    # acceptat aici. `ensure_strong` cere și caractere distincte, și refuză
+    # parolele care conțin bucăți din email sau din nume — exact tiparul pe care
+    # îl alege cineva grăbit la instalare.
+    problems = password_problems(password, email=email, full_name=full_name)
+    if problems:
+        sys.exit("Parolă prea slabă:\n  - " + "\n  - ".join(problems))
     if password != getpass.getpass("repetă parola: "):
         sys.exit("Parolele nu coincid.")
 

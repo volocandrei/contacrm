@@ -15,8 +15,12 @@ fiecărei integrări, [INTEGRATIONS.md](INTEGRATIONS.md).
 
 **READY WITH WARNINGS.**
 
-> **Actualizat la 8 septembrie 2026**, după poarta finală de Go-Live de la
-> sfârșitul documentului. Aceasta a găsit și reparat șase defecte, dintre care
+> **Actualizat la 8 septembrie 2026.** Documentul are trei straturi, în ordine
+> cronologică: raportul de construcție (aici), **poarta de Go-Live**, și
+> **poarta finală de release** — fiecare cu ce a găsit și ce a reparat. Verdictul
+> curent este cel de la sfârșitul documentului.
+>
+> Poarta de Go-Live. Aceasta a găsit și reparat șase defecte, dintre care
 > unul de corectitudine contabilă (ecranul de reconciliere arăta rândurile
 > altui extras). Verdictul rămâne același, dar acum se sprijină pe o verificare
 > de izolare care acoperă toate cele 64 de rute parametrizate și pe o restaurare
@@ -442,3 +446,287 @@ sau de pornire care să fie deschis.
 
 Nu este `READY FOR PRODUCTION` fără rezerve fiindcă a spune asta despre lanțuri al
 căror capăt nu a fost niciodată atins ar fi o afirmație pe care nu o pot susține.
+
+---
+
+# POARTA FINALĂ DE RELEASE
+
+**8 septembrie 2026**, după poarta de Go-Live. Scopul acestei runde nu a fost un
+audit nou, ci închiderea blocantelor operaționale rămase — și verificarea că ce
+scrie în raportul anterior corespunde cu ce este în cod.
+
+**Ce se păstrează mai jos, neatins:** raportul de construcție și poarta de
+Go-Live, cu cele șase defecte găsite acolo. Ce urmează este runda **următoare**,
+cu constatările ei.
+
+---
+
+## Ce s-a găsit acum
+
+Trei defecte, plus o regresie introdusă și prinsă în timpul lucrului.
+
+### R-01 · P1 · SECURITATE · Contul cel mai puternic, cel mai slab verificat
+
+`create-admin` — comanda care creează **primul administrator al unei instalări
+de producție** — verifica doar **lungimea** parolei, nu politica aplicației.
+
+Deci `administrator2026` era refuzat la schimbarea parolei din interfață și
+**acceptat aici**. Exact în momentul instalării, când cineva grăbit alege ceva
+ușor de ținut minte, contul cu cele mai multe drepturi din tot sistemul trecea
+prin cel mai slab control.
+
+**Reparat:** aceeași `app/domain/passwords.py` ca peste tot — minimum 12
+caractere, cel puțin 5 diferite, și interdicția de a conține fragmente din email
+sau din nume. Șase teste noi; la mutație, două cad.
+
+Restul comenzii era deja corect și a rămas: parola se citește cu `getpass`,
+niciodată dintr-un argument (argumentele ajung în istoricul shell-ului și în
+lista de procese); nu resetează parole, deci nu este o portiță; se oprește dacă
+adresa există deja.
+
+### R-02 · P1 · Un worker mort nu suna pe nimeni
+
+Blocantul **P1-01** din raportul anterior. Ecranul de procesare arăta coada, dar
+nu exista niciun semnal pe care un monitor extern să-l poată urmări: un worker
+mort se descoperea a doua zi, la o sută de documente neprocesate.
+
+**Reparat:** workerul scrie un semn de viață la fiecare tur, într-un rând din
+baza de date; `/health/workers` răspunde **503** când semnul îmbătrânește peste
+`WORKER_HEARTBEAT_TIMEOUT_SECONDS` (90 de secunde, adică trei ture ratate).
+
+Patru alegeri care fac diferența dintre un semnal util și unul decorativ:
+
+- **se bate înaintea muncii, nu după.** Dacă turul se blochează într-un apel de
+  rețea care nu se mai întoarce, ultimul semn rămâne cel de dinainte și
+  îmbătrânește — exact ce trebuie să declanșeze alarma. Un proces blocat este viu
+  pentru sistemul de operare și mort pentru cabinet;
+- **ceasul este al bazei, nu al procesului.** Două mașini cu ceasuri
+  nesincronizate ar fi produs o vechime imposibilă, iar alarma ar fi sunat pentru
+  NTP, nu pentru worker;
+- **un worker care nu a raportat niciodată nu este sănătos.** O instalare în care
+  workerul nu a fost pornit deloc arată exact ce este, din prima zi;
+- **`/health/ready` NU cade odată cu workerul.** Aici am deviat deliberat de la
+  cererea inițială, și merită motivul: `ready` este citit de load balancer. Dacă
+  un worker mort l-ar face să răspundă 503, load balancerul ar scoate din rotație
+  **toate** instanțele de API — o problemă de procesare s-ar transforma într-o
+  cădere totală, exact în clipa în care cabinetul are nevoie să deschidă ecranul
+  cozii ca să înțeleagă ce se întâmplă. Un worker mort trebuie să **sune un om**,
+  nu să oprească aplicația. Starea lui apare și în corpul lui `ready`, fără să-i
+  influențeze codul HTTP.
+
+Funcționează și pentru instalările care rulează workerul din cron.
+
+### R-03 · P2 · Două ADR-uri descriau altceva decât codul
+
+- **ADR-003** se numea „Procesare asincronă cu **Celery + Redis**". Coada este,
+  de la M6, un outbox tranzacțional în PostgreSQL — deliberat, cu motivul scris
+  în `app/worker.py`. Cine citea ADR-ul putea crede că trebuie să instaleze
+  Redis.
+- **ADR-005** enumera ca implementări Tesseract, Google Document AI, AWS Textract
+  și Azure DI. Niciuna nu există în cod; singurul furnizor extern este Anthropic.
+
+**Reparat fără rescrierea istoriei:** fiecare ADR primește un antet cu ce s-a
+implementat de fapt și de ce s-a schimbat decizia; textul original rămâne
+dedesubt, ca înregistrare a ce s-a hotărât atunci.
+
+### R-04 · regresie introdusă și prinsă în aceeași rundă
+
+Prima versiune a rutelor de sănătate primea sesiunea de bază de date prin
+`Depends`. O dependență rulează **înaintea** funcției: cu baza căzută, cererea
+murea acolo și ieșea **500 cu urmă de excepție**, în loc de 503-ul controlat pe
+care îl așteaptă load balancerul.
+
+Ruta de sănătate trebuie să răspundă **mai ales** când ceva este stricat. Sesiunea
+se deschide acum în interiorul funcției, cu tratare de eroare, iar patru teste
+noi verifică exact acest caz — inclusiv că nu iese niciun traceback pe o rută
+publică. La mutație, revenirea la varianta veche cade.
+
+---
+
+## Ce s-a verificat, dincolo de reparații
+
+### Clasa de defect G-01, pe toată aplicația
+
+Defectul din poarta anterioară — un filtru `snake_case` într-un contract
+camelCase, ignorat în tăcere — a fost căutat pe **toți cei 74 de parametri de
+query** ai aplicației. **Zero** rămași.
+
+Un test îl blochează de acum la sursă: citește schema OpenAPI publicată și cade
+dacă vreun parametru iese `snake_case`, oricare ar fi calea aleasă în cod. Plus
+unul care numește explicit filtrele băncii, ca o rescriere care le-ar scăpa cu
+totul să nu treacă tăcut.
+
+### Nicio reușită falsă la stocare
+
+Simulat: disc plin, drept de scriere refuzat, fișier dispărut între rândul din
+bază și stocare.
+
+- încărcarea eșuează **zgomotos**, cu excepție, și nu lasă niciun rând în urmă;
+- arhivarea **nu marchează** documentul ca `ARHIVAT` dacă scrierea copiei a
+  eșuat.
+
+Al doilea este cel care contează: un document `ARHIVAT` fără fișier în arhivă
+arată identic cu unul arhivat corect — apare pe ecran, intră în raport, se numără
+la închiderea lunii. Lipsa se descoperă la un control, luni mai târziu, când nu
+mai există de unde să fie refăcut. Verificat prin mutație: mutând atribuirea
+statusului înaintea copierii, două teste cad.
+
+### N+1 pe ecranele netestate până acum
+
+`test_documents_volume.py` apăra lista de documente. Ecranele adăugate după el nu
+fuseseră niciodată măsurate. Acum sunt: clienți, tranzacții bancare, termene,
+registrul declarațiilor, starea cozii — fiecare cu numărul de interogări care
+**nu crește** cu numărul de rândurilor.
+
+Nu se măsoară secunde: un test cronometrat cade când mașina e ocupată și trece
+când nu e.
+
+### Dependențe
+
+`npm audit` — **0 vulnerabilități**, în runtime și în dev. Backendul rulează pe
+versiuni curente (FastAPI 0.141, SQLAlchemy 2.0.52, cryptography 50.0.1, pyjwt
+2.13, argon2-cffi 25.1). Nimic de actualizat forțat.
+
+### Migrare de la zero
+
+Bază goală → `alembic upgrade head` → **28 de migrări**, 45 de tabele. Migrarea
+nouă creează o tabelă și nu atinge nimic existent, deci rollback-ul aplicației
+este sigur fără `downgrade`.
+
+---
+
+## Documentația operațională, completă
+
+Șapte documente noi, plus corecturile de mai sus. Toate derivate din cod, nu din
+memorie.
+
+| Document | Pentru cine, și la ce răspunde |
+|---|---|
+| [PRODUCTION_MONITORING.md](PRODUCTION_MONITORING.md) | ce trebuie configurat ca o problemă să sune un om; praguri, politica de alertare, ce **nu** este monitorizat |
+| [PRODUCTION_INCIDENT_RUNBOOK.md](PRODUCTION_INCIDENT_RUNBOOK.md) | 14 incidente, fiecare cu semne, primul lucru, diagnostic, reparare, escaladare |
+| [PRODUCTION_RELEASE_GATE.md](PRODUCTION_RELEASE_GATE.md) | ziua deployului, în ordine; rollback pe tipuri de migrare; RPO/RTO ca **ținte**, nu garanții |
+| [RELEASE_MANIFEST.md](RELEASE_MANIFEST.md) | ce anume se lansează: commit, migrare, dependențe, limitări cunoscute |
+| [ACCOUNTING_UAT_CHECKLIST.md](ACCOUNTING_UAT_CHECKLIST.md) | **pentru contabil**: fiecare regulă care cere confirmare umană, cu loc de semnătură |
+| [OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md) | ziua unui operator, în ordinea ecranelor |
+| [ACCOUNTANT_RUNBOOK.md](ACCOUNTANT_RUNBOOK.md) · [ADMIN_RUNBOOK.md](ADMIN_RUNBOOK.md) | ce face aplicația, în termeni de cabinet; ce ține administratorul în funcțiune |
+
+`README.md` spune acum, în tabel, **ce nu face aplicația deliberat** — ca nimeni
+să nu deschidă un cont Meta pentru WhatsApp sau să aștepte un export SAGA.
+
+---
+
+## Matricea finală
+
+| Zonă | Rezultat | Dovada |
+|---|---|---|
+| Backend | **PASS** | 1.999 de teste, `ruff` + `mypy --strict` curate |
+| Frontend | **PASS** | 415 teste, `tsc` + `oxlint` + build curate |
+| Bază de date | **PASS** | 28 de migrări de la zero, 45 de tabele |
+| Securitate | **PASS** | sweep de rute, secrete absente din cod și din istoria git, politica de parole peste tot |
+| Izolare între cabinete | **PASS** | 64/64 rute parametrizate, plus verificarea stării |
+| Documente | **PASS** | încărcare → citire → verificare → arhivă → descărcare, pe fișiere reale |
+| OCR local | **PASS** | PDF cu text și e-Factura, fără rețea |
+| AI (poze) | **NOT VERIFIED** | cere `AI_API_KEY`; limitele și plafonul de tokeni sunt verificate pe dublu |
+| Email (SMTP) | **NOT VERIFIED** | cere credențiale |
+| Microsoft Graph | **NOT VERIFIED** | cere credențiale |
+| IMAP | **NOT VERIFIED** | cere o cutie poștală |
+| ANAF / SPV | **NOT VERIFIED** | cere certificat calificat |
+| Stocare | **PASS** | plus eșecurile: disc plin, fișier lipsă — fără reușite false |
+| Copie de siguranță | **PASS** | executată |
+| Restaurare | **PASS** | executată: 6 secunde, fișiere identice pe octet, aplicația pornită peste ea |
+| Worker | **PASS** | semn de viață, recuperare de joburi, izolare pe organizație |
+| Cron | **PASS** | secret obligatoriu, 404 fără el, serializare per organizație |
+| **Monitorizare** | **PASS (aplicație) / DE CONFIGURAT (extern)** | adresele există și sunt testate; monitorul extern rămâne de pornit |
+| Performanță | **PASS** | fără N+1 pe ecranele măsurate; fără liste nemărginite |
+| Accesibilitate | **PASS** | verificată în browser real |
+| Deployment | **PASS cu fereastră** | 5–15 minute, anunțate; nu se pretinde zero-downtime |
+| Contabilitate | **ACCOUNTANT SIGN-OFF REQUIRED** | mecanismul e verificat; valorile cer un contabil |
+
+---
+
+## Notă
+
+| Zonă | Notă | Justificare |
+|---|---|---|
+| Securitate | **9/10** | argon2id, RBAC, izolare probată pe toate rutele, secrete curate, cookie-uri corecte. Minus un punct: nu a existat un test de penetrare extern |
+| Integritatea datelor | **9/10** | `Decimal` peste tot, fără reușite false la stocare, idempotență, audit. Minus: fără verificare de sumă de control la nivel de fișier în afara `check-storage` |
+| Fiabilitate | **9/10** | coadă durabilă, recuperare după moartea procesului, semn de viață. Minus: fără rulare îndelungată sub sarcină reală |
+| Backend | **9/10** | 1.999 de teste, tipuri stricte, reguli verificate prin mutație |
+| Frontend | **8/10** | 415 teste + 93 în browser real. Minus: mai puțină acoperire pe ecranele rar folosite |
+| Documente | **9/10** | tot lanțul verificat pe fișiere reale, inclusiv desfacerea teancurilor și perechea XML↔PDF |
+| Contabilitate | **7/10** | mecanismul este corect și verificat; **valorile nu sunt confirmate de un contabil** — de aceea nu mai mult |
+| Integrări | **4/10** | codul și tratarea erorilor sunt verificate pe dubluri; **niciun protocol extern nu a fost atins** |
+| Monitorizare | **7/10** | semnalele există și sunt testate; alertarea rămâne complet externă și neconfigurată |
+| Copii / recuperare | **9/10** | executate, nu inspectate. Minus: nu pe infrastructura reală de producție |
+| Deployment | **7/10** | stiva pornește curat de la zero; nu există încă o instalare de producție, și există fereastră de întrerupere |
+| Documentație | **9/10** | derivată din cod, cu vocabular explicit pentru ce nu este verificat |
+| **General** | **8/10** | software-ul este gata; ce lipsește este contactul cu lumea din afară |
+
+---
+
+## Blocante rămase
+
+| Prioritate | Blocant | De ce | Ce trebuie | Cine |
+|---|---|---|---|---|
+| **P0-01** | Copie restaurată pe instalarea reală | O copie nerestaurată nu este o copie | Procedura din RUNBOOK, o dată, pe serverul real | infra |
+| **P0-02** | Secrete generate pentru instalare | Cheia implicită = oricine își semnează un token | `SECRET_KEY`, `DRIVE_TOKEN_KEY`, `CRON_SECRET` | infra |
+| **P0-03** | Primul administrator | Fără el nu se poate intra; cu parolă slabă, nu are rost restul | `create-admin` (acum cu politica completă) | proprietar |
+| **P1-01** | **Monitor extern pornit** | Aplicația expune semnalele, dar **nu sună pe nimeni** | Un serviciu pe `/health/ready` și `/health/workers` | infra |
+| **P1-02** | Semnătura contabilului | Documentația nu are voie să pretindă validare fiscală | [ACCOUNTING_UAT_CHECKLIST.md](ACCOUNTING_UAT_CHECKLIST.md) | cabinet |
+| **P1-03** | Datele de expirare în calendar | `MS_CLIENT_SECRET` este cea mai frecventă cauză de „nu mai vin documentele" | [PRODUCTION_EXPIRY_CHECKLIST.md](PRODUCTION_EXPIRY_CHECKLIST.md) | infra |
+| **P1-04** | Prima rulare a fiecărei integrări | Protocoalele externe nu au fost atinse | Cu **un singur client**, urmărită | proprietar |
+| **P2-01** | SAGA | Formatul nu este public | Un fișier real exportat din SAGA | cabinet |
+| **P2-02** | Retenția | Nu există job; ce se șterge este o decizie a cabinetului | Decizie, apoi implementare | cabinet |
+| **P3-01** | Paginare la tranzacții | Are plafon cu refuz explicit; extrasele reale au sute de rânduri | Doar dacă un cabinet trece de o mie | — |
+| **P3-02** | Zero-downtime | Migrările rulează cu workerul oprit | Migrări compatibile în ambele sensuri, dacă devine necesar | — |
+
+**Niciun P0 sau P1 nu este un defect al codului.** Toate sunt acțiuni de
+instalare sau confirmări umane.
+
+---
+
+## Cele două concluzii
+
+### A. APLICAȚIA
+
+**GATA.** Nu există niciun defect cunoscut de securitate, izolare, integritate a
+datelor, corectitudine contabilă mecanică, copie/restaurare sau pornire.
+
+### B. INTEGRĂRILE
+
+**NEVERIFICATE.** Niciuna nu a fost rulată împotriva serviciului real, fiindcă nu
+există credențiale. Codul, tratarea erorilor și izolarea sunt verificate pe
+dubluri — ceea ce **nu** este același lucru și nu se raportează ca atare.
+
+```text
+PostgreSQL              — VERIFICAT RULÂND
+Stocare (disc)          — VERIFICAT RULÂND
+Stocare (S3)            — MOCK VERIFIED
+Microsoft Graph         — NOT VERIFIED — credențiale
+IMAP                    — NOT VERIFIED — credențiale
+SMTP                    — NOT VERIFIED — credențiale
+ANAF / SPV              — NOT VERIFIED — certificat calificat
+Anthropic (extragere)   — NOT VERIFIED — credențiale
+Anthropic (asistent)    — NOT VERIFIED — credențiale
+WhatsApp                — NEIMPLEMENTAT (deliberat)
+SAGA                    — NEIMPLEMENTAT — lipsește formatul
+Monitorizare externă    — DE CONFIGURAT
+```
+
+---
+
+# DECIZIA DE RELEASE
+
+## RELEASE READY WITH OPERATIONAL WARNINGS
+
+Aplicația poate fi lansată. Avertismentele sunt **operaționale**, nu tehnice:
+trei acțiuni de instalare (P0), un monitor de pornit, o semnătură de contabil, și
+integrări care se vor verifica la prima rulare reală.
+
+Nu este `RELEASE READY` fără rezerve pentru că trei lucruri depind de altcineva
+decât de cod: copia restaurată pe serverul real, monitorul extern pornit, și
+confirmarea contabilului. Fără ele, aplicația funcționează — dar prima problemă
+serioasă s-ar descoperi mai târziu decât trebuie.
+
+Nu este `RELEASE BLOCKED` pentru că nu există niciun defect de securitate, de
+izolare, de corupere a datelor, de arhivă, de recuperare sau de pornire.

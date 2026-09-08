@@ -28,6 +28,7 @@ from app.domain.enums import ClientStatus, DocumentSource, DocumentStatus
 from app.models.client import Client, Contact
 from app.models.document import Document
 from app.models.organization import Organization
+from app.models.user import User
 from app.services.storage import LocalStorageProvider
 from tests.conftest import requires_db
 
@@ -210,3 +211,124 @@ class TestCheckStorage:
         out = capsys.readouterr().out
         assert "LIPSA" in out.replace("Ă", "A").replace("ă", "a")
         assert str(document.id) in out
+
+
+# ── create-admin ─────────────────────────────────────────────────────────────
+
+
+def passwords(monkeypatch: pytest.MonkeyPatch, *values: str) -> None:
+    """Ce se tastează la `getpass`, în ordine.
+
+    `getpass`, nu `input`: parola nu trece niciodată printr-un argument de linie
+    de comandă, fiindcă argumentele ajung în istoricul shell-ului și în lista de
+    procese, unde le vede oricine este pe aceeași mașină.
+    """
+    remaining = iter(values)
+    monkeypatch.setattr("getpass.getpass", lambda _prompt="": next(remaining))
+
+
+@pytest.fixture
+def roles(cli_session: Session) -> None:
+    """Rolurile trebuie să existe: `create-admin` refuză fără ele."""
+    cli.sync_roles()
+    cli_session.flush()
+
+
+@pytest.mark.usefixtures("roles", "organization")
+class TestTheFirstAdministrator:
+    """Contul cu cele mai multe drepturi din tot sistemul.
+
+    **Ce s-a găsit la poarta de release:** comanda verifica doar **lungimea**
+    parolei, nu politica aplicației. Deci `administrator2026` era refuzat la
+    schimbarea parolei din interfață și acceptat aici — cel mai puternic cont
+    trecea prin cel mai slab control, exact în momentul instalării, când cineva
+    grăbit alege ceva ușor de ținut minte.
+    """
+
+    def test_a_password_containing_the_email_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch, cli_session: Session
+    ) -> None:
+        answers(monkeypatch, "admin@cabinet.ro", "Ion Popescu")
+        passwords(monkeypatch, "admin-parola-lunga", "admin-parola-lunga")
+
+        with pytest.raises(SystemExit) as caught:
+            cli.create_admin()
+
+        assert "slabă" in str(caught.value)
+        assert (
+            cli_session.scalars(select(User).where(User.email == "admin@cabinet.ro")).first()
+            is None
+        )
+
+    def test_a_repeated_character_password_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """O parolă lungă nu este automat o parolă bună."""
+        answers(monkeypatch, "sef@cabinet.ro", "Maria Ionescu")
+        passwords(monkeypatch, "aaaaaaaaaaaaaa", "aaaaaaaaaaaaaa")
+
+        with pytest.raises(SystemExit) as caught:
+            cli.create_admin()
+
+        assert "diferite" in str(caught.value)
+
+    def test_a_short_password_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        answers(monkeypatch, "sef@cabinet.ro", "Maria Ionescu")
+        passwords(monkeypatch, "scurta1", "scurta1")
+
+        with pytest.raises(SystemExit):
+            cli.create_admin()
+
+    def test_a_strong_password_creates_the_account(
+        self, monkeypatch: pytest.MonkeyPatch, cli_session: Session
+    ) -> None:
+        """Contra-proba: fără ea, o politică care refuză tot ar trece testele de sus."""
+        answers(monkeypatch, "sef@cabinet.ro", "Maria Ionescu")
+        passwords(monkeypatch, "vulpea-sare-gardul-7", "vulpea-sare-gardul-7")
+
+        cli.create_admin()
+
+        created = cli_session.scalars(select(User).where(User.email == "sef@cabinet.ro")).one()
+        assert created.is_active
+        assert [str(role.code) for role in created.roles] == ["ADMIN"]
+        # Parola nu se păstrează niciodată în clar.
+        assert "vulpea" not in created.password_hash
+
+    def test_the_password_is_never_taken_from_the_command_line(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Argumentele ajung în istoricul shell-ului și în lista de procese.
+
+        Testul o dovedește negativ: dacă cineva ar muta parola pe `input()`,
+        `getpass` nu ar mai fi chemat, iar iteratorul de mai jos ar rămâne
+        neatins.
+        """
+        asked: list[str] = []
+        answers(monkeypatch, "alt@cabinet.ro", "Ana Vasile")
+        monkeypatch.setattr(
+            "getpass.getpass",
+            lambda prompt="": (asked.append(prompt), "vulpea-sare-gardul-7")[1],
+        )
+
+        cli.create_admin()
+
+        assert len(asked) == 2, "parola și confirmarea se cer amândouă prin getpass"
+
+    def test_an_existing_account_is_not_touched(
+        self, monkeypatch: pytest.MonkeyPatch, cli_session: Session
+    ) -> None:
+        """Comanda nu este o portiță de resetare a parolei."""
+        answers(monkeypatch, "unic@cabinet.ro", "Prima Persoana")
+        passwords(monkeypatch, "vulpea-sare-gardul-7", "vulpea-sare-gardul-7")
+        cli.create_admin()
+        before = cli_session.scalars(select(User).where(User.email == "unic@cabinet.ro")).one()
+        original_hash = before.password_hash
+
+        answers(monkeypatch, "unic@cabinet.ro", "Alta Persoana")
+        passwords(monkeypatch, "cu-totul-altceva-9", "cu-totul-altceva-9")
+        with pytest.raises(SystemExit) as caught:
+            cli.create_admin()
+
+        assert "Există deja" in str(caught.value)
+        cli_session.refresh(before)
+        assert before.password_hash == original_hash

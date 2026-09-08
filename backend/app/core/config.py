@@ -247,6 +247,15 @@ class Settings(BaseSettings):
     auto_approve_enabled: bool = False
     # Cate reprocesari automate incearca workerul inainte sa lase documentul in ERROR.
     max_processing_attempts: int = 3
+    #: De cate secunde poate lipsi semnul de viata al workerului inainte ca
+    #: `/health/workers` sa raspunda 503.
+    #:
+    #: Workerul bate la fiecare tur, iar un tur gol dureaza `IDLE_SLEEP_SECONDS`.
+    #: Pragul trebuie sa fie de cateva ori mai mare decat somnul, altfel alarma
+    #: suna pentru un worker care doarme, nu pentru unul mort. Nouazeci de
+    #: secunde inseamna: trei turi goale ratate la rand.
+    worker_heartbeat_timeout_seconds: int = 90
+
     # Dupa cat timp un job ramas `RUNNING` se considera abandonat de un proces mort.
     # Peste acest prag, o cerere noua de reprocesare — sau `app.cli recover-processing` —
     # il readuce in coada. Sub el, presupunem ca cineva chiar lucreaza la el.

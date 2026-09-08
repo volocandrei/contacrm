@@ -46,6 +46,10 @@ PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/health/info"),
         ("GET", "/health/live"),
         ("GET", "/health/ready"),
+        # Starea workerului: o citeste monitorizarea externa, care nu are cont.
+        # Nu spune nimic despre date — doar daca mai proceseaza cineva.
+        ("GET", "/health/workers"),
+        ("GET", "/api/v1/health/workers"),
         ("GET", "/api/v1/health/info"),
         ("GET", "/api/v1/health/live"),
         ("GET", "/api/v1/health/ready"),

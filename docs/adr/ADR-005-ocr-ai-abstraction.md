@@ -1,6 +1,29 @@
 # ADR-005 — Abstracție OCR/AI + prompturi versionate
 
-**Status:** Accepted · **Date:** 2026-08-27
+**Status:** Accepted · **Date:** 2026-08-27 · **Revizuit:** 2026-09-08
+
+> ## Ce există în cod astăzi
+>
+> Abstracția a rămas exact cum s-a decis. **Lista de implementări din decizia
+> inițială era o listă de candidați, nu de furnizori scriși.** Ce există:
+>
+> | Provider | Ce face | Trimite ceva în afară? |
+> |---|---|---|
+> | `mock` | date sintetice, pentru demonstrație | nu — și pornirea în producție îl **refuză** |
+> | `pdf_text` | citește stratul de text al PDF-ului | **nu** |
+> | `efactura` | citește XML-ul UBL 2.1 al facturii electronice | **nu** |
+> | `local` | alege între cele două de mai sus, după conținut | **nu** |
+> | `vision` | trimite documentul unui model | **da** |
+> | `hybrid` | local întâi, model doar unde nu e nimic de citit | doar poze și scanuri |
+>
+> **Tesseract, Google Document AI, AWS Textract și Azure DI nu au fost
+> implementate** și nu sunt planificate. Singurul furnizor extern din cod este
+> Anthropic. Un nume neimplementat în `OCR_PROVIDER` **oprește pornirea**, nu
+> eșuează abia la primul document.
+>
+> Recomandarea pentru producție rămâne `local`: nu trimite nimic nicăieri.
+>
+> *Textul original se păstrează mai jos.*
 
 ## Context
 Nu știm încă providerul final; documentele sunt confidențiale (GDPR, §35).

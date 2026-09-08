@@ -37,6 +37,7 @@ from app.models.reminder import ClientReminder
 from app.models.task import Task
 from app.models.upload_link import ClientUploadLink
 from app.models.user import Permission, RefreshToken, Role, User, role_permissions, user_roles
+from app.models.worker import DEFAULT_WORKER, WorkerHeartbeat
 
 ALL_MODELS = (
     Organization,
@@ -83,6 +84,7 @@ ALL_MODELS = (
 
 __all__ = [
     "ALL_MODELS",
+    "DEFAULT_WORKER",
     "AccountingPeriod",
     "AliasKind",
     "AnafConnection",
@@ -125,6 +127,7 @@ __all__ = [
     "Task",
     "TransactionMatch",
     "User",
+    "WorkerHeartbeat",
     "client_tags",
     "role_permissions",
     "user_roles",

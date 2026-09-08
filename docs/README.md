@@ -17,6 +17,13 @@ răspunde la întrebarea ta.
    valoare.**
 5. **[PRODUCTION_EXPIRY_CHECKLIST.md](PRODUCTION_EXPIRY_CHECKLIST.md)** — ce
    expiră și când. Completează-l și pune-l în calendar.
+6. **[PRODUCTION_MONITORING.md](PRODUCTION_MONITORING.md)** — ce trebuie să
+   urmărească un serviciu extern ca o problemă să sune un om. **Aplicația nu
+   alertează singură.**
+7. **[PRODUCTION_RELEASE_GATE.md](PRODUCTION_RELEASE_GATE.md)** — ce se face în
+   ziua deployului, în ordine, plus rollback.
+8. **[RELEASE_MANIFEST.md](RELEASE_MANIFEST.md)** — ce anume se lansează: commit,
+   migrare, dependențe, limitări cunoscute.
 
 ## „Ce servicii externe folosește, de fapt?"
 
@@ -45,12 +52,29 @@ răspunde la întrebarea ta.
 
 ## „Ceva nu merge" / „ce fac când…"
 
+- **[PRODUCTION_INCIDENT_RUNBOOK.md](PRODUCTION_INCIDENT_RUNBOOK.md)** — 14
+  incidente, fiecare cu semne, primul lucru de făcut, diagnostic, reparare și
+  când escaladezi. **Începe de aici când ceva s-a stricat.**
 - **[RUNBOOK.md](RUNBOOK.md)** — copii de siguranță, restaurare, și situațiile
-  concrete: a venit un client nou, nu mai vin facturile, un document a rămas în
-  eroare, cineva nu se poate autentifica.
+  de zi cu zi: a venit un client nou, nu mai vin facturile, un document a rămas
+  în eroare, cineva nu se poate autentifica.
+
+## „Cum se lucrează cu ea?"
+
+Trei ghiduri, pentru trei oameni diferiți:
+
+- **[OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md)** — ziua unui operator: ce ecran,
+  în ce ordine, și ce înseamnă fiecare.
+- **[ACCOUNTANT_RUNBOOK.md](ACCOUNTANT_RUNBOOK.md)** — ce face aplicația, în
+  termeni de cabinet. Fără cod.
+- **[ADMIN_RUNBOOK.md](ADMIN_RUNBOOK.md)** — utilizatori, integrări, copii,
+  monitorizare, actualizări.
 
 ## „Cum funcționează partea de contabilitate?"
 
+- **[ACCOUNTING_UAT_CHECKLIST.md](ACCOUNTING_UAT_CHECKLIST.md)** — **ce trebuie
+  confirmat de un contabil autorizat**, cu loc de semnătură. Cât timp nu este
+  semnat, nicio documentație nu are voie să pretindă validare fiscală.
 - **[DECLARATIONS.md](DECLARATIONS.md)** — catalogul de declarații, ce este
   certitudine și ce rămâne de confirmat de un contabil, și obligațiile fără
   calendar.

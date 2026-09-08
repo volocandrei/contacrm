@@ -1,11 +1,16 @@
 # ContaCRM
 
-CRM + ERP de document management pentru firme de contabilitate.
-Clienți → Email/WhatsApp → intake → identificare client → OCR/AI → validare →
-review uman → standardizare → arhivare → dashboard/audit.
+CRM + management de documente pentru cabinete de contabilitate.
 
-> **Pornești pe o mașină nouă sau vrei starea completă a proiectului?**
-> [`docs/STATUS.md`](docs/STATUS.md) — ce e construit, ce urmează, cum pornești de la zero.
+Documentele clienților ajung din mai multe locuri — încărcate de operator,
+trimise de client printr-un link, luate de pe email sau din OneDrive, descărcate
+din SPV-ul ANAF — și trec toate prin același drum: identificarea clientului,
+citirea datelor, verificarea de către un om, arhivarea. Plus ce ține de asta:
+termenele de depunere, extrasele bancare, rapoartele și jurnalul de audit.
+
+> **Pornești pe o mașină nouă?** [`docs/STATUS.md`](docs/STATUS.md)
+> **Pui aplicația în producție?** [`docs/README.md`](docs/README.md) — indexul
+> documentației, cu ce fișier răspunde la ce întrebare.
 
 ## Stare curentă
 
@@ -93,6 +98,58 @@ cd backend  && uv run pytest && uv run ruff check . && uv run mypy app
 | `/comunicare/mesaje`, `/sabloane`, `/remindere` | Comunicare |
 | `/rapoarte` | Agregări peste documente |
 | `/administrare/utilizatori`, `/roluri`, `/setari`, `/audit` | Administrare |
+
+## Pentru producție
+
+Aplicația este pregătită să ruleze pe date reale ale unui cabinet. Documentația
+operațională, în ordinea în care se citește:
+
+| Întrebare | Fișier |
+|---|---|
+| Ce conturi îmi trebuie? | [`docs/PRODUCTION_SETUP_ACCOUNTS.md`](docs/PRODUCTION_SETUP_ACCOUNTS.md) |
+| Ce trebuie să fie adevărat înainte de primul client? | [`docs/PRODUCTION_LAUNCH_CHECKLIST.md`](docs/PRODUCTION_LAUNCH_CHECKLIST.md) |
+| Ce fac în ziua deployului? | [`docs/PRODUCTION_RELEASE_GATE.md`](docs/PRODUCTION_RELEASE_GATE.md) |
+| Ce servicii externe folosește, exact? | [`docs/PRODUCTION_EXTERNAL_SERVICES_INVENTORY.md`](docs/PRODUCTION_EXTERNAL_SERVICES_INVENTORY.md) |
+| Ce monitorizare trebuie configurată? | [`docs/PRODUCTION_MONITORING.md`](docs/PRODUCTION_MONITORING.md) |
+| Ceva s-a stricat. Ce fac? | [`docs/PRODUCTION_INCIDENT_RUNBOOK.md`](docs/PRODUCTION_INCIDENT_RUNBOOK.md) |
+| Este gata de lansare? | [`docs/FINAL_PRODUCTION_BUILD.md`](docs/FINAL_PRODUCTION_BUILD.md) |
+
+Indexul complet: [`docs/README.md`](docs/README.md).
+
+## Integrări
+
+Fiecare este opțională: fără ea, ecranul ei **spune că nu este configurată** — nu
+se oferă și apoi eșuează. Aplicația este utilă și fără niciuna.
+
+| Integrare | Ce face | Stare de verificare |
+|---|---|---|
+| PostgreSQL 17 | baza de date | verificat rulând |
+| Stocare pe disc / S3 | fișierele documentelor | disc verificat rulând; S3 pe dublu |
+| Microsoft Graph | OneDrive/SharePoint **și** email, un singur consimțământ | `NOT VERIFIED — CREDENTIALS REQUIRED` |
+| IMAP | cutie poștală obișnuită, alternativă la Graph | `NOT VERIFIED — CREDENTIALS REQUIRED` |
+| SMTP | solicitări și memento-uri către clienți | `NOT VERIFIED — CREDENTIALS REQUIRED` |
+| ANAF / SPV | **descărcarea** facturilor electronice | `NOT VERIFIED — PROVIDER ACCESS REQUIRED` |
+| Anthropic | citirea pozelor și scanurilor (PDF-urile cu text se citesc local) | `NOT VERIFIED — CREDENTIALS REQUIRED` |
+
+„Verificat rulând" înseamnă rulat împotriva lucrului real. Restul au cod și teste
+pe un dublu scris după documentație — ceea ce **nu** este același lucru. Detalii:
+[`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
+
+## Ce NU face, deliberat
+
+Ca să nu deschizi conturi degeaba și să nu aștepți funcții care nu vin:
+
+| | De ce |
+|---|---|
+| **Nu depune** declarații la ANAF | descarcă facturi din SPV; nu trimite nimic |
+| **Nu calculează** TVA, totaluri, sume | le **citește** de pe document; un total pus de sistem ar arăta identic cu unul citit |
+| **Nu are API de WhatsApp** | butonul deschide `wa.me` pe telefon; preluarea automată ar cere cont WhatsApp Business și număr aprobat de Meta |
+| **Nu exportă în SAGA** | formatul de import nu este public; unul ghicit ar pune cifre greșite în contabilitate |
+| **Nu se leagă** la bănci | extrasele se încarcă din fișier (CSV din internet banking) |
+| **Nu șterge** nimic automat | nicio retenție automată; ce se păstrează și cât este decizia cabinetului |
+| **Nu aprobă** documente singură | nici peste pragul de încredere |
+| **Nu trimite** alerte singură | expune `/health/ready` și `/health/workers`; monitorul este extern |
+| **Nu folosește** Redis, Sentry, analytics, plăți, OpenAI, Twilio, AWS Textract | verificat prin căutare în tot codul |
 
 ## Structură
 

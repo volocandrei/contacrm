@@ -43,6 +43,7 @@ from app.core.db import session_scope
 from app.core.logging import configure_logging, get_logger
 from app.models.document import Document, DocumentProcessingJob
 from app.services import processing_queue as queue
+from app.services import worker_health
 from app.services.anaf.runner import run_anaf_sync
 from app.services.microsoft.runner import run_drive_sync
 from app.services.processing_runner import run_processing
@@ -173,6 +174,13 @@ def run_forever(storage: StorageProvider, stopper: Stopper) -> None:
     last_sync = float("-inf")
 
     while not stopper.requested:
+        # Semnul de viață, **înaintea** muncii: dacă turul de mai jos se blochează
+        # într-un apel de rețea care nu se mai întoarce, ultimul bătut rămâne cel
+        # de acum și îmbătrânește — exact ce trebuie să declanșeze alarma. Bătut
+        # după muncă, un worker blocat n-ar mai fi raportat niciodată... dar nici
+        # nu s-ar fi văzut că a apucat să înceapă.
+        _beat()
+
         if time.monotonic() - last_sync >= SYNC_EVERY_SECONDS:
             last_sync = time.monotonic()
             sync_sources(storage)
@@ -188,6 +196,22 @@ def run_forever(storage: StorageProvider, stopper: Stopper) -> None:
         if done == 0:
             _sleep_interruptibly(IDLE_SLEEP_SECONDS, stopper)
     logger.info("worker_stopped")
+
+
+def _beat() -> None:
+    """Spune că workerul trăiește, într-o tranzacție proprie.
+
+    **Un eșec aici nu are voie să oprească workerul.** Bătutul este un semnal
+    despre muncă, nu munca însăși: dacă baza clipește o secundă, workerul trebuie
+    să continue, iar vechimea semnalului va spune singură ce s-a întâmplat. Un
+    `raise` de aici ar fi transformat o problemă de monitorizare într-una de
+    procesare — adică exact invers decât trebuie.
+    """
+    try:
+        with session_scope() as session:
+            worker_health.beat(session)
+    except Exception:
+        logger.exception("worker_heartbeat_failed")
 
 
 def _sleep_interruptibly(seconds: float, stopper: Stopper) -> None:
@@ -236,6 +260,11 @@ def main(argv: list[str] | None = None) -> None:
         recover_stale(storage)
 
     if args.once:
+        # Bate și aici. Un cabinet care rulează workerul din cron, nu ca proces
+        # continuu, are exact același drept la alarmă: dacă turul din cron nu mai
+        # pornește, semnalul îmbătrânește și `/health/workers` o spune. Fără
+        # asta, instalările pe cron ar fi arătat permanent „worker mort".
+        _beat()
         # Aceeași ordine ca în buclă: întâi aducem ce e nou, apoi procesăm coada —
         # altfel un fișier apărut acum ar aștepta rularea următoare.
         ingested = sync_sources(storage)
