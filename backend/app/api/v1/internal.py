@@ -41,6 +41,7 @@ from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
 from app.models.organization import Organization
 from app.schemas.common import ApiModel
+from app.services import worker_health
 from app.services.anaf.runner import run_anaf_sync
 from app.services.daily_digest import DailyDigestService
 from app.services.imap.runner import run_imap_sync
@@ -75,6 +76,21 @@ class QueueRunOut(ApiModel):
     ingested: int
 
 
+def _beat() -> None:
+    """Scrie semnul de viață al workerului, într-o tranzacție proprie.
+
+    **Un eșec aici nu are voie să oprească turul.** Bătutul este un semnal despre
+    muncă, nu munca însăși: dacă baza clipește o clipă, turul trebuie să continue,
+    iar vechimea semnalului va spune singură ce s-a întâmplat. Aceeași regulă ca
+    în `app/worker.py`.
+    """
+    try:
+        with session_scope() as session:
+            worker_health.beat(session)
+    except Exception:
+        logger.exception("cron_heartbeat_failed")
+
+
 def _authorized(authorization: str | None) -> bool:
     if not settings.cron_secret:
         return False
@@ -102,6 +118,14 @@ def run_queue(
         # din afară nu află care dintre ele s-a întâmplat.
         logger.warning("cron_unauthorized")
         raise AppError(ErrorCode.NOT_FOUND, "Resursa nu există.")
+
+    # Semnul de viață, înaintea muncii. **Pe o platformă fără proces continuu —
+    # Vercel, de exemplu — ruta asta *este* workerul.** Fără bătaia de aici,
+    # `/health/workers` ar fi raportat la nesfârșit „nu a raportat niciodată",
+    # monitorul ar fi sunat la fiecare verificare, iar după a treia zi nimeni
+    # nu s-ar mai fi uitat la el — adică exact alarma de care avem nevoie ar fi
+    # fost cea ignorată.
+    _beat()
 
     report = recover(
         storage,

@@ -257,3 +257,53 @@ class TestWhenTheDatabaseIsDown:
     def test_liveness_still_answers(self, database_down: TestClient) -> None:
         """Procesul trăiește; orchestratorul nu trebuie să-l repornească degeaba."""
         assert database_down.get("/api/v1/health/live").status_code == 200
+
+
+class TestTheCronRoute:
+    """Pe o platformă fără proces continuu, ruta de cron **este** workerul.
+
+    **De ce contează.** Pe Vercel nu poate trăi un proces între cereri: coada se
+    execută prin `GET /internal/run-queue`, chemat de planificator. Dacă ruta
+    aceea nu ar scrie semnul de viață, `/health/workers` ar fi raportat la
+    nesfârșit „nu a raportat niciodată" — monitorul ar fi sunat la fiecare
+    verificare, iar după a treia zi nimeni nu s-ar mai fi uitat la el.
+
+    O alarmă care sună mereu este o alarmă oprită.
+    """
+
+    @pytest.fixture
+    def as_cron(self, api: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+        from app.api.v1 import internal as internal_routes
+
+        @contextmanager
+        def scope() -> Iterator[Session]:
+            yield db
+            db.flush()
+
+        monkeypatch.setattr(internal_routes, "session_scope", scope)
+        monkeypatch.setattr(internal_routes.settings, "cron_secret", "secret-de-test")
+        return api
+
+    def test_a_cron_run_writes_the_heartbeat(self, as_cron: TestClient, db: Session) -> None:
+        assert worker_health.status(db).beat_at is None
+
+        answer = as_cron.get(
+            "/api/v1/internal/run-queue",
+            headers={"Authorization": "Bearer secret-de-test"},
+        )
+
+        assert answer.status_code == 200, answer.text
+        assert worker_health.status(db).is_fresh
+
+    def test_an_unauthorised_call_does_not_write_one(
+        self, as_cron: TestClient, db: Session
+    ) -> None:
+        """Contra-proba, și o regulă de securitate în același timp.
+
+        Cine nu are secretul nu are voie nici să atingă baza — nici măcar ca să
+        scrie un semn de viață. Altfel oricine ar fi putut ține alarma tăcută.
+        """
+        answer = as_cron.get("/api/v1/internal/run-queue")
+
+        assert answer.status_code == 404
+        assert worker_health.status(db).beat_at is None

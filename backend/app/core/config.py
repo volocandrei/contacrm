@@ -7,6 +7,7 @@ primește una, ca aplicația să refuze pornirea în loc să meargă greșit con
 
 from __future__ import annotations
 
+import os
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -75,6 +76,14 @@ MIN_SECRET_KEY_LENGTH = 32
 
 #: Ziua maximă acceptată ca termen. Peste 28, ziua nu există în februarie.
 MAX_DEADLINE_DAY = 28
+
+
+#: Variabilele prin care o platformă serverless se anunță singură.
+#:
+#: `VERCEL` este pusă de Vercel la fiecare build și la fiecare invocare a unei
+#: funcții. Nu se citește ca să schimbăm comportamentul aplicației — se citește
+#: **o singură dată**, ca să refuzăm o configurare care ar pierde documente.
+EPHEMERAL_FILESYSTEM_MARKERS = ("VERCEL", "AWS_LAMBDA_FUNCTION_NAME")
 
 
 class Environment(StrEnum):
@@ -438,6 +447,45 @@ class Settings(BaseSettings):
         """Schema API nu se publică în producție."""
         return not self.is_production
 
+    @property
+    def runs_on_ephemeral_filesystem(self) -> bool:
+        """Rulăm pe o platformă unde discul dispare între cereri?
+
+        Pe Vercel, fiecare invocare primește un filesystem propriu, aruncat la
+        final. Un fișier scris acolo nu mai există la cererea următoare.
+        """
+        return any(os.environ.get(marker) for marker in EPHEMERAL_FILESYSTEM_MARKERS)
+
+    def assert_storage_is_persistent(self) -> None:
+        """Documentele nu au voie să ajungă pe un disc care dispare.
+
+        **De ce se verifică separat de `assert_production_ready`.** Aceea rulează
+        doar cu `ENVIRONMENT=production`. Un deploy pe Vercel lăsat pe
+        `development` ar fi sărit peste toate verificările — iar discul este
+        efemer indiferent cum numim mediul.
+
+        **De ce oprește pornirea, în loc să avertizeze.** Scrierea ar reuși:
+        `LocalStorageProvider` scrie în `/tmp`, întoarce o cheie, iar documentul
+        primește rând în baza de date. Abia la următoarea invocare fișierul nu
+        mai există — iar atunci există deja un rând care spune că există. Un
+        registru care trimite către fișiere inexistente se descoperă la un
+        control, nu la scriere.
+
+        Nu se aplică pe un server obișnuit: acolo `local` cu volum persistent
+        este o configurare corectă și rămâne implicitul.
+        """
+        if not self.runs_on_ephemeral_filesystem:
+            return
+        if self.storage_provider != "local":
+            return
+        raise RuntimeError(
+            "STORAGE_PROVIDER=local pe o platformă cu filesystem efemer "
+            "(Vercel/Lambda): documentele contabile ar fi scrise pe un disc care "
+            "dispare între cereri, iar baza ar rămâne cu rânduri care trimit "
+            "către fișiere inexistente. Pune STORAGE_PROVIDER=s3 și "
+            "S3_BUCKET/S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY."
+        )
+
     def assert_production_ready(self) -> None:
         """Verificări care trebuie să oprească pornirea, nu să producă un avertisment."""
         problems: list[str] = []
@@ -495,6 +543,9 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
+    # Întâi stocarea: se verifică **oricare ar fi mediul**, fiindcă un disc
+    # efemer pierde documente și pe `development`, și pe `production`.
+    settings.assert_storage_is_persistent()
     if settings.is_production:
         settings.assert_production_ready()
     return settings

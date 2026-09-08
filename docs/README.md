@@ -12,6 +12,11 @@ răspunde la întrebarea ta.
    trebuie să fie adevărat înainte de primul client, cu trei porți **STOP** și o
    listă de bifat pentru tipărit.
 3. **[DEPLOY.md](DEPLOY.md)** — cum se pune efectiv în funcțiune, pas cu pas.
+   Pentru Vercel: **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)** — arhitectura
+   cu două servicii, ce trebuie procurat, cron, worker, rollback, și capcanele
+   specifice platformei (filesystem efemer, build în modul demonstrație).
+   Starea pregătirii: **[VERCEL_DEPLOYMENT_REPORT.md](VERCEL_DEPLOYMENT_REPORT.md)**
+   și **[VERCEL_RELEASE_MANIFEST.md](VERCEL_RELEASE_MANIFEST.md)**.
 4. **[PRODUCTION_ENVIRONMENT_VARIABLES.md](PRODUCTION_ENVIRONMENT_VARIABLES.md)** —
    toate variabilele, cu rol, implicit și care sunt secrete. **Doar nume, nicio
    valoare.**
