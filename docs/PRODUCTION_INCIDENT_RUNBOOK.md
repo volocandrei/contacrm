@@ -62,7 +62,8 @@ configurare.
 **Primul lucru:**
 
 ```bash
-psql "$DATABASE_URL" -c "select 1"
+# `psql` nu intelege `postgresql+psycopg://`; scoate dialectul intai.
+psql "${DATABASE_URL/+psycopg/}" -c "select 1"
 ```
 
 **Diagnostic:** serverul de bază oprit; parola schimbată; disc plin pe serverul

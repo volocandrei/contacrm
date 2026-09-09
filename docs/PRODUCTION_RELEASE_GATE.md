@@ -55,7 +55,9 @@ Ordinea contează. Pașii 1 și 3 nu se sar niciodată.
 
 ```text
 1.  [ ] COPIE DE SIGURANTA, inainte de orice
-        pg_dump --format=custom --no-owner "$DATABASE_URL" > pre-deploy-$(date +%F-%H%M).dump
+        PGURL="${DATABASE_URL/+psycopg/}"   # uneltele PostgreSQL nu inteleg dialectul
+        psql "$PGURL" -Atc "select current_database()"   # cu ce baza vorbesti
+        pg_dump --format=custom --no-owner "$PGURL" > pre-deploy-$(date +%F-%H%M).dump
         cp -a "$STORAGE_PATH" /backup/storage-pre-deploy-$(date +%F-%H%M)
         # Baza INTAI, fisierele dupa. Motivul, in RUNBOOK.md.
 

@@ -179,6 +179,38 @@ sau o parolă pe multe conturi.
 > întrebau mereu aceeași memorie. Testul nou pornește două — ca două instanțe de
 > API — și abia atunci se vede.
 
+### V-08 · P0 · Comanda de copiere de siguranță nu rula — și putea copia altă bază
+
+Găsit executând procedura, nu citind-o. `docs/RUNBOOK.md` scria:
+
+```bash
+pg_dump --format=custom --no-owner "$DATABASE_URL" > contacrm-$(date +%F).dump
+```
+
+`DATABASE_URL` este scrisă în dialect SQLAlchemy — `postgresql+psycopg://…` — iar
+`pg_dump` **nu recunoaște schema aceea ca URI**. Nu se plânge de ea: o tratează ca
+nume de bază de date și se conectează cu setările implicite, adică în altă parte,
+ca alt utilizator.
+
+Ce urmează depinde de noroc, și ambele capete sunt proaste:
+
+- cu parolă cerută → `password authentication failed for user <utilizatorul de
+  sistem>`, un mesaj care te trimite să cauți o problemă de parolă acolo unde este
+  o problemă de adresă — exact în minutul în care ai nevoie de o copie;
+- cu `trust` sau un `.pgpass` potrivit → **comanda reușește și copiază altă bază**,
+  iar fișierul are dimensiune, dată și un nume liniștitor.
+
+O copie care nu conține nimic se descoperă la restaurare. Nu există moment mai
+prost, și este chiar prioritatea întâi din enunț: **siguranța datelor**.
+
+**Reparat** în cele trei locuri unde apărea (runbook-ul de copiere și restaurare,
+poarta de release, runbook-ul de incident): dialectul se scoate o dată,
+`PGURL="${DATABASE_URL/+psycopg/}"`, iar procedura începe cu întrebarea *cu ce
+bază vorbesc de fapt* — `psql "$PGURL" -Atc "select current_database()"`.
+
+Regula este acum un test: `tests/test_runbook_commands.py` citește documentația și
+refuză orice unealtă PostgreSQL care primește `$DATABASE_URL` direct.
+
 ### Ce NU s-a schimbat, deliberat
 
 - **arhitectura** — nimic rescris, nimic înlocuit;
@@ -214,12 +246,12 @@ utilizator ──▶ Vercel ──┬── /api/*  → FastAPI  ──▶ Postg
 
 | Suită | Rezultat |
 |---|---|
-| Backend | **2.028 passed**, 1 sărit · `ruff` + `ruff format --check` + `mypy --strict` (180 module) curate |
+| Backend | **2.032 passed**, 1 sărit · `ruff` + `ruff format --check` + `mypy --strict` (180 module) curate |
 | Frontend | **419 passed** · `oxlint` + `tsc` curate · build cu `VITE_API_MODE=http` curat |
 | End-to-end, browser real | **93 passed** |
 
 Diferența față de baseline-ul din enunț (1.972, la `a61e9e5`) este explicată în
-[VERCEL_RELEASE_MANIFEST.md](VERCEL_RELEASE_MANIFEST.md): **+57 de teste backend
+[VERCEL_RELEASE_MANIFEST.md](VERCEL_RELEASE_MANIFEST.md): **+61 de teste backend
 adăugate, niciunul șters sau slăbit.**
 
 Testul sărit nu este o slăbire și nu este nou: este cazul parametrizat pentru o
@@ -235,6 +267,10 @@ Lanțul a fost verificat pe o **instalare locală complet nouă**: bază goală 
 de migrări → 46 de tabele → `create-admin` → autentificare → al doilea utilizator
 → client → document urcat → descărcat octet cu octet → audit → delogare. **11
 din 11.** Plus copie, distrugere, restaurare: 6 secunde, amprentă identică.
+
+Proba a fost **reluată pe schema de acum** — `pg_dump` custom, bază nouă,
+`pg_restore`: 46 de tabele, aceleași numărători de rânduri pe fiecare, inclusiv
+rândul din tabela adăugată în această rundă. Reluarea a scos la iveală V-08.
 
 ## 10–12. Bază de date, stocare, autentificare
 

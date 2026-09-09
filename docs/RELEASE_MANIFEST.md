@@ -35,7 +35,7 @@ Se completează la fiecare release.
 
 | | Rezultat |
 |---|---|
-| Teste backend | **2.028 passed**, 1 sărit |
+| Teste backend | **2.032 passed**, 1 sărit |
 | Teste frontend | **419 passed** |
 | Teste end-to-end (browser real, backend real) | **93 passed** |
 | `ruff check` + `ruff format --check` | curat |
@@ -43,7 +43,7 @@ Se completează la fiecare release.
 | `tsc --noEmit`, `oxlint`, `npm run build` | curat |
 | `npm audit` (runtime și dev) | **0 vulnerabilități** |
 | Migrări de la zero, pe bază goală | 29, până la `c4e9b21a7f38` |
-| Copie + restaurare, executate | **da** — 6 secunde, fișiere identice pe octet |
+| Copie + restaurare, executate | **da** — 6 secunde, fișiere identice pe octet. Reluată pe schema curentă: 46 de tabele, amprentă identică pe rânduri |
 | Izolare între cabinete | 64/64 rute parametrizate |
 
 ---

@@ -94,7 +94,7 @@ ASSISTANT_API_KEY  ASSISTANT_PROVIDER
 
 | Suită | Rezultat |
 |---|---|
-| Backend (`pytest`) | **2.028 passed**, 1 sărit |
+| Backend (`pytest`) | **2.032 passed**, 1 sărit |
 | `ruff check` + `ruff format --check` | curat |
 | `mypy --strict` (180 module) | curat |
 | Frontend (`vitest`) | **419 passed** |
@@ -110,7 +110,8 @@ la `a61e9e5`. Între timp s-au adăugat teste, niciunul șters sau slăbit:
 | Poarta de release (`db42b0e`) | +27 | heartbeat worker, politica parolei primului admin, contract de query params, eșecuri de stocare, volum pe liste |
 | Pregătirea Vercel | +8 | garda de filesystem efemer (6), bătaia din ruta de cron (2) |
 | Ritmul platformei | +11 backend, +4 frontend | pragul alarmei pe cron (5), contractul rute↔cron (6), banda de demonstrație (4) |
-| Contorul împărțit (aici) | +11 backend | limita încercărilor, văzută de toate instanțele |
+| Contorul împărțit | +11 backend | limita încercărilor, văzută de toate instanțele |
+| Procedura executată (aici) | +4 backend | comanda de copiere de siguranță, verificată pe documentație |
 
 ## Teste de fum
 

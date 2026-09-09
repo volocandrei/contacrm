@@ -64,9 +64,34 @@ cunoaște: sunt inofensive.
 Ordinea inversă produce exact problema pe care nu o vrei: o bază care cunoaște
 documente ale căror fișiere lipsesc din copie.
 
+> **`DATABASE_URL` nu se dă direct uneltelor PostgreSQL.** Aplicația o scrie în
+> dialect SQLAlchemy — `postgresql+psycopg://…` — iar `pg_dump`, `pg_restore` și
+> `psql` **nu recunosc schema aceea ca URI**. Nu se plâng de ea: o tratează ca
+> nume de bază de date și se conectează cu setările implicite. În cel mai bun caz
+> primești „password authentication failed for user <utilizatorul tău de sistem>",
+> un mesaj care te trimite să cauți o problemă de parolă acolo unde este o
+> problemă de adresă. În cel mai rău caz — autentificare `trust`, `.pgpass`, un
+> utilizator de sistem care nimerește — **comanda reușește și copiază altă bază**,
+> iar fișierul rezultat arată perfect.
+>
+> Scoate dialectul o singură dată, la început:
+>
+> ```bash
+> PGURL="${DATABASE_URL/+psycopg/}"
+> ```
+>
+> Restul procedurii folosește `$PGURL`. Comanda pe care merită să o rulezi
+> înainte de orice copie, ca să vezi cu ce bază vorbești de fapt:
+>
+> ```bash
+> psql "$PGURL" -Atc "select current_database(), current_user"
+> ```
+
 ```bash
+PGURL="${DATABASE_URL/+psycopg/}"
+
 # 1. baza de date
-pg_dump --format=custom --no-owner "$DATABASE_URL" > contacrm-$(date +%F).dump
+pg_dump --format=custom --no-owner "$PGURL" > contacrm-$(date +%F).dump
 
 # 2. stocarea, după ce dump-ul s-a terminat
 rsync -a --delete /var/lib/contacrm/storage/ /backup/storage-$(date +%F)/
@@ -86,7 +111,7 @@ rezonabil. Copia trebuie să stea pe alt sistem decât cel care rulează aplica�
 ## Restaurare
 
 ```bash
-# 1. baza
+# 1. baza — `$PGURL`, nu `$DATABASE_URL`; vezi avertismentul de la copiere
 createdb contacrm_restaurat
 pg_restore --no-owner --dbname=contacrm_restaurat contacrm-2026-09-03.dump
 
