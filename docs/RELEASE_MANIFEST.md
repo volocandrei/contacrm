@@ -10,7 +10,7 @@ Se completează la fiecare release.
 | | |
 |---|---|
 | **Data** | 8 septembrie 2026 |
-| **Commit** | `________` *(se completează la tag)* |
+| **Commit** | `0502b67` |
 | **Migrare de bază de date** | `c4e9b21a7f38` — *Contorul incercarilor, vazut de toate instantele* |
 | **Migrări în total, de la zero** | 28 |
 | **Backend** | Python 3.13, FastAPI 0.141, SQLAlchemy 2.0.52 |
