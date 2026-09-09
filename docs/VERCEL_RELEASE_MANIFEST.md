@@ -14,8 +14,8 @@ Ce s-a pregătit, ce s-a verificat, ce lipsește. Se completează la deploy-ul r
 |---|---|
 | **Commit pregătit** | `________` *(HEAD la momentul deploy-ului)* |
 | **Commit de referință al auditului** | `a61e9e5` |
-| **Migrare de bază de date** | `a1c8f30d5e72` |
-| **Migrări de la zero** | 28 |
+| **Migrare de bază de date** | `c4e9b21a7f38` |
+| **Migrări de la zero** | 29 |
 | **Proiect Vercel** | `________` *(neconfigurat)* |
 | **URL de producție** | `________` *(fără domeniu)* |
 | **URL de preview** | `________` |
@@ -88,15 +88,15 @@ ASSISTANT_API_KEY  ASSISTANT_PROVIDER
 | Mecanism | `alembic upgrade head`, rulat manual către baza externă |
 | `create_all()` ca migrare | **nu se folosește nicăieri** — verificat prin căutare |
 | Aplicate pe baza de producție | **nu** — nu există bază |
-| Verificate pe bază goală | **da** — 28 de migrări, 45 de tabele |
+| Verificate pe bază goală | **da** — 29 de migrări, 46 de tabele |
 
 ## Teste rulate
 
 | Suită | Rezultat |
 |---|---|
-| Backend (`pytest`) | **2.017 passed**, 1 sărit |
+| Backend (`pytest`) | **2.028 passed**, 1 sărit |
 | `ruff check` + `ruff format --check` | curat |
-| `mypy --strict` (178 module) | curat |
+| `mypy --strict` (180 module) | curat |
 | Frontend (`vitest`) | **419 passed** |
 | `oxlint` + `tsc --noEmit` | curat |
 | `npm run build` cu `VITE_API_MODE=http` | curat |
@@ -109,7 +109,8 @@ la `a61e9e5`. Între timp s-au adăugat teste, niciunul șters sau slăbit:
 |---|---|---|
 | Poarta de release (`db42b0e`) | +27 | heartbeat worker, politica parolei primului admin, contract de query params, eșecuri de stocare, volum pe liste |
 | Pregătirea Vercel | +8 | garda de filesystem efemer (6), bătaia din ruta de cron (2) |
-| Ritmul platformei (aici) | +11 backend, +4 frontend | pragul alarmei pe cron (5), contractul rute↔cron (6), banda de demonstrație (4) |
+| Ritmul platformei | +11 backend, +4 frontend | pragul alarmei pe cron (5), contractul rute↔cron (6), banda de demonstrație (4) |
+| Contorul împărțit (aici) | +11 backend | limita încercărilor, văzută de toate instanțele |
 
 ## Teste de fum
 

@@ -10,8 +10,8 @@ Se completează la fiecare release.
 | | |
 |---|---|
 | **Data** | 8 septembrie 2026 |
-| **Commit** | `db42b0e` |
-| **Migrare de bază de date** | `a1c8f30d5e72` — *Semnul ca workerul este viu* |
+| **Commit** | `________` *(se completează la tag)* |
+| **Migrare de bază de date** | `c4e9b21a7f38` — *Contorul incercarilor, vazut de toate instantele* |
 | **Migrări în total, de la zero** | 28 |
 | **Backend** | Python 3.13, FastAPI 0.141, SQLAlchemy 2.0.52 |
 | **Frontend** | React 19, Vite 8, TypeScript 6 |
@@ -35,14 +35,14 @@ Se completează la fiecare release.
 
 | | Rezultat |
 |---|---|
-| Teste backend | **1.999 passed** |
-| Teste frontend | **415 passed** |
+| Teste backend | **2.028 passed**, 1 sărit |
+| Teste frontend | **419 passed** |
 | Teste end-to-end (browser real, backend real) | **93 passed** |
 | `ruff check` + `ruff format --check` | curat |
-| `mypy --strict` (178 module) | curat |
+| `mypy --strict` (180 module) | curat |
 | `tsc --noEmit`, `oxlint`, `npm run build` | curat |
 | `npm audit` (runtime și dev) | **0 vulnerabilități** |
-| Migrări de la zero, pe bază goală | 28, până la `a1c8f30d5e72` |
+| Migrări de la zero, pe bază goală | 29, până la `c4e9b21a7f38` |
 | Copie + restaurare, executate | **da** — 6 secunde, fișiere identice pe octet |
 | Izolare între cabinete | 64/64 rute parametrizate |
 
@@ -172,7 +172,7 @@ Lista completă, de bifat: [PRODUCTION_RELEASE_GATE.md](PRODUCTION_RELEASE_GATE.
 Procedura: secțiunea ROLLBACK din
 [PRODUCTION_RELEASE_GATE.md](PRODUCTION_RELEASE_GATE.md).
 
-**Migrarea acestui release (`a1c8f30d5e72`) creează o tabelă nouă și nu atinge
+**Migrarea acestui release (`c4e9b21a7f38`) creează o tabelă nouă și nu atinge
 nimic existent.** Rollback-ul aplicației este sigur fără `downgrade`: versiunea
 veche pur și simplu ignoră tabela. Nu se pierd date.
 

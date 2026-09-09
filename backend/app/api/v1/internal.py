@@ -48,6 +48,7 @@ from app.services.imap.runner import run_imap_sync
 from app.services.mail import build_email_sender
 from app.services.microsoft.runner import run_drive_sync
 from app.services.processing_recovery import recover
+from app.services.rate_limit import forget_old
 from app.services.reminders import run_reminders
 from app.worker import run_once
 
@@ -74,6 +75,22 @@ class QueueRunOut(ApiModel):
     #: Documente aduse din surse externe — OneDrive, email, e-Factura — în
     #: bătaia asta. Un singur număr: planificatorul citește o linie, nu un raport.
     ingested: int
+
+
+def _forget_old_rate_limit_windows() -> None:
+    """Curățenie în contorul de încercări, în tranzacție proprie.
+
+    Rândurile sunt mici, dar fără ștergere ar fi unul per adresă care a greșit
+    vreodată o parolă, la nesfârșit. Ca și bătutul: un eșec aici nu are voie să
+    oprească turul.
+    """
+    try:
+        with session_scope() as session:
+            forgotten = forget_old(session)
+        if forgotten:
+            logger.info("rate_limit_windows_forgotten", count=forgotten)
+    except Exception:
+        logger.exception("rate_limit_cleanup_failed")
 
 
 def _beat() -> None:
@@ -126,6 +143,7 @@ def run_queue(
     # nu s-ar mai fi uitat la el — adică exact alarma de care avem nevoie ar fi
     # fost cea ignorată.
     _beat()
+    _forget_old_rate_limit_windows()
 
     report = recover(
         storage,

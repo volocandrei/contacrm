@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import settings
 from app.core.migrations import run_migrations
 from app.main import create_app
+from app.services import rate_limit as shared_rate_limit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -127,14 +129,29 @@ def db_engine() -> Iterator[sa.Engine]:
 
 
 @pytest.fixture
-def db(db_engine: sa.Engine) -> Iterator[Session]:
+def db(db_engine: sa.Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
     """O sesiune per test, într-o tranzacție care se dă înapoi la final.
 
     Testele nu se pot influența între ele prin date rămase în urmă.
+
+    **Contorul de încercări intră tot aici.** `SharedWindowLimiter` deschide o
+    tranzacție proprie — în producție trebuie să o facă, altfel un eșec de
+    autentificare s-ar da înapoi odată cu cererea care l-a produs. Legat de
+    sesiunea testului, contorul se golește singur la finalul fiecărui test, ca
+    orice alt rând. Înainte exista o fixtură care golea contoarele din proces;
+    nu mai are ce goli, iar o ștergere de pe altă conexiune s-ar fi lovit de
+    rândurile neconfirmate ale testului.
     """
     connection = db_engine.connect()
     transaction = connection.begin()
     session = sessionmaker(bind=connection, expire_on_commit=False)()
+
+    @contextmanager
+    def scope() -> Iterator[Session]:
+        yield session
+        session.flush()
+
+    monkeypatch.setattr(shared_rate_limit, "session_scope", scope)
     try:
         yield session
     finally:
@@ -145,28 +162,6 @@ def db(db_engine: sa.Engine) -> Iterator[Session]:
         if transaction.is_active:
             transaction.rollback()
         connection.close()
-
-
-@pytest.fixture(autouse=True)
-def _fresh_limiters() -> Iterator[None]:
-    """Contoarele sunt stare globala de proces.
-
-    Fara golire, testele care se autentifica de mai multe ori s-ar bloca unele
-    pe altele: `TestClient` are o singura adresa, deci toate testele suitei
-    impart aceeasi cheie. Acelasi lucru la asistent, unde cheia este utilizatorul
-    si toate testele folosesc acelasi cont. Limitarea in sine este verificata
-    explicit, in `test_rate_limit.py`, `test_auth_api.py` si
-    `test_assistant_api.py`.
-    """
-    from app.api.v1.assistant import _limiter as assistant_limiter
-    from app.api.v1.auth import LOGIN_LIMITERS
-
-    counters = [*LOGIN_LIMITERS.values(), assistant_limiter]
-    for limiter in counters:
-        limiter.reset()
-    yield
-    for limiter in counters:
-        limiter.reset()
 
 
 @pytest.fixture

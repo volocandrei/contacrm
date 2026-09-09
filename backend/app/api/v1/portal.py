@@ -40,13 +40,13 @@ from app.api.route import CommittingRoute
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode, NotFoundError
 from app.core.logging import get_logger
-from app.core.rate_limit import FixedWindowLimiter
 from app.domain.enums import DocumentSource
 from app.schemas.common import ApiModel
 from app.services.audit import AuditService
 from app.services.document_upload import DocumentUploadService
 from app.services.files import FileValidationError
 from app.services.processing_queue import enqueue as enqueue_processing
+from app.services.rate_limit import SharedWindowLimiter
 from app.services.upload_links import LinkTarget, UploadLinkService
 
 logger = get_logger(__name__)
@@ -58,7 +58,7 @@ router = APIRouter(route_class=CommittingRoute, prefix="/portal", tags=["portal"
 #: atunci ar fi cel mai prost moment posibil.
 UPLOADS_PER_MINUTE = 60
 
-_limiter = FixedWindowLimiter(limit=UPLOADS_PER_MINUTE)
+_limiter = SharedWindowLimiter(scope="portal-upload", limit=UPLOADS_PER_MINUTE)
 
 
 class PortalInfoOut(ApiModel):

@@ -33,6 +33,7 @@ from app.models.period import (
     ExpectationTemplateItem,
     ExpectationTemplateObligation,
 )
+from app.models.rate_limit import RateLimitWindow
 from app.models.reminder import ClientReminder
 from app.models.task import Task
 from app.models.upload_link import ClientUploadLink
@@ -121,6 +122,7 @@ __all__ = [
     "ObligationType",
     "Organization",
     "Permission",
+    "RateLimitWindow",
     "RefreshToken",
     "Role",
     "Tag",

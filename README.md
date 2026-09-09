@@ -179,7 +179,7 @@ CONTACRM/
 │   ├── ULTIMATE_APPLICATION_FUNCTIONAL_AUDIT.md
 │   ├── CREDENTIALE.md      # ce credențiale se adună și de la cine
 │   ├── SAGA.md
-│   └── adr/                # ADR-001 … ADR-009
+│   └── adr/                # ADR-001 … ADR-010
 ├── docker-compose.yml      # postgres (+ migrate, backend, worker pe profilul `api`)
 ├── .env.example            # toate variabilele de configurare (fără valori reale)
 └── .claude/launch.json

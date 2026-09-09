@@ -131,6 +131,54 @@ fiecare ecran, inclusiv pe cel de intrare — acolo unde „orice parolă merge"
 cel mai mult. Nu refuză să pornească: o demonstrație este o folosință legitimă.
 Refuză doar să tacă.
 
+### V-07 · P1 · Limita încercărilor de parolă slăbea exact când era nevoie de ea
+
+Contorul de încercări eșuate stătea în memoria procesului de API. Pe un server cu
+un container asta funcționează, iar `app/core/rate_limit.py` spunea deschis unde
+nu: „pe o platformă care pornește un proces per cerere nu limitează nimic".
+
+Platforma de deploy este exact aceea. Și este mai rău decât „nu limitează":
+serverless-ul **pornește instanțe noi când crește traficul** — adică fix ce
+produce cineva care încearcă parole una după alta. Cu cât se apăsa mai tare, cu
+atât contorul se împărțea în mai multe bucăți. Protecția slăbea singură, în
+clipa în care conta.
+
+Ceea ce ne întoarce la propoziția din care s-a născut modulul acela: *o variabilă
+care promite o protecție inexistentă este mai rea decât absența ei.* Un contor per
+proces, pe o platformă fără procese stabile, promite la fel de mult.
+
+**Reparat:** contorul stă într-un rând de bază de date, împărțit de toate
+instanțele. **Fără Redis** — nu este nevoie: fereastra este de un minut, cheile
+sunt puține, iar scrierea se face **numai la eșec**, deci o autentificare
+reușită nu atinge tabelul. Aceleași două operații ca înainte (`blocked` înainte
+de încercare, `record` numai după un eșec), aceleași praguri, aceleași chei.
+
+Trei alegeri care contează:
+
+- **Tranzacție proprie.** Refuzul se ridică drept eroare de aplicație, iar
+  `CommittingRoute` nu confirmă tranzacția când ruta ridică ceva. Un eșec numărat
+  în sesiunea cererii s-ar fi șters odată cu ea — adică exact încercările de
+  ținut minte ar fi dispărut.
+- **Lasă să treacă dacă baza nu răspunde.** Un refuz acolo ar transforma o
+  clipire a bazei într-o pană de autentificare pentru tot cabinetul; pasul
+  următor are oricum nevoie de bază și va eșua cu eroarea potrivită.
+- **Curățenie la fiecare tur de worker.** Altfel tabelul ar fi crescut cu un rând
+  per adresă care a greșit vreodată o parolă.
+
+Aceeași schimbare acoperă asistentul — unde contorul este singurul plafon de
+cheltuială către un API plătit, iar înmulțirea lui cu numărul de instanțe l-ar fi
+desființat tocmai când se cheltuiește mai mult — și portalul clientului.
+
+**Ce nu înlocuiește:** limitarea de la marginea rețelei. Un atac distribuit, cu o
+adresă nouă la fiecare încercare, trece pe lângă orice contor per cheie; acela se
+oprește la firewall. Ce apără aici este cazul obișnuit: multe parole pe un cont,
+sau o parolă pe multe conturi.
+
+> Detaliul care spune de ce nu se vedea: cu contorul per instanță, **toate**
+> testele existente treceau. Testele folosesc un singur obiect limitator, deci
+> întrebau mereu aceeași memorie. Testul nou pornește două — ca două instanțe de
+> API — și abia atunci se vede.
+
 ### Ce NU s-a schimbat, deliberat
 
 - **arhitectura** — nimic rescris, nimic înlocuit;
@@ -166,12 +214,12 @@ utilizator ──▶ Vercel ──┬── /api/*  → FastAPI  ──▶ Postg
 
 | Suită | Rezultat |
 |---|---|
-| Backend | **2.017 passed**, 1 sărit · `ruff` + `ruff format --check` + `mypy --strict` (178 module) curate |
+| Backend | **2.028 passed**, 1 sărit · `ruff` + `ruff format --check` + `mypy --strict` (180 module) curate |
 | Frontend | **419 passed** · `oxlint` + `tsc` curate · build cu `VITE_API_MODE=http` curat |
 | End-to-end, browser real | **93 passed** |
 
 Diferența față de baseline-ul din enunț (1.972, la `a61e9e5`) este explicată în
-[VERCEL_RELEASE_MANIFEST.md](VERCEL_RELEASE_MANIFEST.md): **+46 de teste backend
+[VERCEL_RELEASE_MANIFEST.md](VERCEL_RELEASE_MANIFEST.md): **+57 de teste backend
 adăugate, niciunul șters sau slăbit.**
 
 Testul sărit nu este o slăbire și nu este nou: este cazul parametrizat pentru o
@@ -183,8 +231,8 @@ verifică în două teste dedicate, imediat sub el.
 
 **Neexecutate pe Vercel** — nu există deployment.
 
-Lanțul a fost verificat pe o **instalare locală complet nouă**: bază goală → 28
-de migrări → 45 de tabele → `create-admin` → autentificare → al doilea utilizator
+Lanțul a fost verificat pe o **instalare locală complet nouă**: bază goală → 29
+de migrări → 46 de tabele → `create-admin` → autentificare → al doilea utilizator
 → client → document urcat → descărcat octet cu octet → audit → delogare. **11
 din 11.** Plus copie, distrugere, restaurare: 6 secunde, amprentă identică.
 
@@ -194,11 +242,12 @@ din 11.** Plus copie, distrugere, restaurare: 6 secunde, amprentă identică.
 |---|---|
 | Bază de date | PostgreSQL extern, **neprovizionat**. `create_all()` nu se folosește nicăieri |
 | Stocare | S3 obligatoriu pe Vercel, **neprovizionat**. Garda V-01 oprește pornirea cu `local` |
-| Autentificare | neatinsă: argon2id, cookie `HttpOnly`/`Secure`/`SameSite=Lax`, politica de parole aplicată inclusiv primului administrator |
+| Autentificare | argon2id, cookie `HttpOnly`/`Secure`/`SameSite=Lax`, politica de parole aplicată inclusiv primului administrator. Limita încercărilor este acum împărțită de toate instanțele (V-07) |
 
 ## 13. Securitate
 
-Neatinsă de această rundă. Ce rămâne valabil din auditul anterior: izolare pe
+O singură schimbare: **V-07**, limita încercărilor de parolă, care pe o
+platformă serverless nu limita nimic. Ce rămâne valabil din auditul anterior: izolare pe
 64/64 rute parametrizate, `CORS_ALLOWED_ORIGINS` refuză `*` prin validator,
 antete de securitate din aplicație, zero secrete în cod și în istoria git.
 
@@ -273,7 +322,7 @@ Toate: `NOT LIVE VERIFIED`. Lista completă în
 Production**. Instant, fără build.
 
 **Baza de date — separat, niciodată automat.** Migrarea curentă
-(`a1c8f30d5e72`) adaugă o tabelă și nu atinge nimic existent, deci rollback-ul
+(`c4e9b21a7f38`) adaugă o tabelă și nu atinge nimic existent, deci rollback-ul
 aplicației este sigur fără `downgrade`. Regula pe tipuri de migrare:
 [PRODUCTION_RELEASE_GATE.md](PRODUCTION_RELEASE_GATE.md).
 

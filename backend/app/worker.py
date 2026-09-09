@@ -47,6 +47,7 @@ from app.services import worker_health
 from app.services.anaf.runner import run_anaf_sync
 from app.services.microsoft.runner import run_drive_sync
 from app.services.processing_runner import run_processing
+from app.services.rate_limit import forget_old
 from app.services.storage import StorageProvider
 from app.services.storage.factory import build_storage_provider
 
@@ -184,6 +185,7 @@ def run_forever(storage: StorageProvider, stopper: Stopper) -> None:
         if time.monotonic() - last_sync >= SYNC_EVERY_SECONDS:
             last_sync = time.monotonic()
             sync_sources(storage)
+            _forget_old_rate_limit_windows()
 
         try:
             done = run_once(storage)
@@ -196,6 +198,22 @@ def run_forever(storage: StorageProvider, stopper: Stopper) -> None:
         if done == 0:
             _sleep_interruptibly(IDLE_SLEEP_SECONDS, stopper)
     logger.info("worker_stopped")
+
+
+def _forget_old_rate_limit_windows() -> None:
+    """Curățenie în contorul de încercări, în tranzacție proprie.
+
+    Rândurile sunt mici, dar fără ștergere ar fi unul per adresă care a greșit
+    vreodată o parolă, la nesfârșit. Ca și bătutul: un eșec aici nu are voie să
+    oprească turul.
+    """
+    try:
+        with session_scope() as session:
+            forgotten = forget_old(session)
+        if forgotten:
+            logger.info("rate_limit_windows_forgotten", count=forgotten)
+    except Exception:
+        logger.exception("rate_limit_cleanup_failed")
 
 
 def _beat() -> None:

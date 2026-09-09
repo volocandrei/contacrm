@@ -26,29 +26,33 @@ from app.api.route import CommittingRoute
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode, ValidationError
 from app.core.logging import get_logger
-from app.core.rate_limit import FixedWindowLimiter
 from app.domain.passwords import MIN_LENGTH, PasswordTooWeakError
 from app.schemas.auth import CurrentUserOut, LoginRequest, LogoutResponse
 from app.schemas.common import ApiModel
 from app.services.auth import ActiveSession, AuthService, IssuedTokens
+from app.services.rate_limit import SharedWindowLimiter
 
 logger = get_logger(__name__)
 
 router = APIRouter(route_class=CommittingRoute, tags=["auth"])
 
-#: Contoare per proces. Vezi `app/core/rate_limit.py` pentru ce acoperă (o
-#: instalare cu un proces de API) și ce nu (mai multe procese, sau o platformă
-#: care pornește un proces per cerere).
+#: Contoare **împărțite de toate instanțele**, printr-un rând în baza de date.
+#: Stăteau în memoria procesului, ceea ce pe un server cu un container merge —
+#: dar pe platforma de deploy fiecare cerere poate nimeri altă instanță, iar
+#: platforma pornește instanțe noi exact când crește traficul: adică fix ce face
+#: un atac prin încercarea parolelor. Vezi `app/services/rate_limit.py`.
 #:
 #: Două, nu unul, pentru că sunt două atacuri diferite: multe parole pe un cont,
 #: și o parolă pe multe conturi.
 LOGIN_LIMITERS: Final = {
-    "cont": FixedWindowLimiter(limit=settings.login_attempts_per_minute),
-    "adresa": FixedWindowLimiter(limit=settings.login_attempts_per_address_per_minute),
+    "cont": SharedWindowLimiter(scope="login-cont", limit=settings.login_attempts_per_minute),
+    "adresa": SharedWindowLimiter(
+        scope="login-adresa", limit=settings.login_attempts_per_address_per_minute
+    ),
 }
 
 
-def _login_keys(request: Request, email: str) -> list[tuple[FixedWindowLimiter, str]]:
+def _login_keys(request: Request, email: str) -> list[tuple[SharedWindowLimiter, str]]:
     """Cele două chei sub care se numără eșecurile unei încercări.
 
     Adresa vine prin aceeași regulă ca în jurnalul de audit, deci un antet
@@ -66,7 +70,7 @@ def _login_keys(request: Request, email: str) -> list[tuple[FixedWindowLimiter, 
     ]
 
 
-def _refuse_if_blocked(keys: list[tuple[FixedWindowLimiter, str]], *, address: str) -> None:
+def _refuse_if_blocked(keys: list[tuple[SharedWindowLimiter, str]], *, address: str) -> None:
     """Prea multe eșecuri, prea repede. Se verifică **înainte** de a atinge parola."""
     refused = [decision for limiter, key in keys if not (decision := limiter.blocked(key)).allowed]
     if not refused:

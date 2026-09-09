@@ -22,7 +22,6 @@ from app.api.deps import CurrentUser, DbSession
 from app.api.route import CommittingRoute
 from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
-from app.core.rate_limit import FixedWindowLimiter
 from app.domain.permissions import permissions_for
 from app.models.user import User
 from app.schemas.common import ApiModel
@@ -30,6 +29,7 @@ from app.services.assistant.base import AssistantContext, AssistantError, Assist
 from app.services.assistant.factory import build_assistant
 from app.services.assistant.rules import RuleAssistant
 from app.services.audit import AuditService
+from app.services.rate_limit import SharedWindowLimiter
 
 logger = get_logger(__name__)
 
@@ -50,11 +50,12 @@ MAX_MESSAGE = 1000
 #: reali, tăcut, până la sfârșitul lunii.
 #:
 #: Contorul stă pe utilizator, nu pe adresă: un cabinet întreg în spatele
-#: aceluiași IP nu trebuie să se blocheze reciproc. Ca și la autentificare, stă în
-#: proces — vezi `app/core/rate_limit.py` pentru ce acoperă și ce nu.
+#: aceluiași IP nu trebuie să se blocheze reciproc. Ca și la autentificare, este
+#: **împărțit de toate instanțele** — altfel plafonul de cheltuială s-ar înmulți
+#: cu numărul de instanțe, adică ar dispărea tocmai când se cheltuiește mai mult.
 QUESTIONS_PER_MINUTE = 20
 
-_limiter = FixedWindowLimiter(limit=QUESTIONS_PER_MINUTE)
+_limiter = SharedWindowLimiter(scope="assistant", limit=QUESTIONS_PER_MINUTE)
 
 
 class ChatIn(ApiModel):
