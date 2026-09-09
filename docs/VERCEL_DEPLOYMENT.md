@@ -125,7 +125,6 @@ CRON_SECRET                 # gol = rutele interne refuza orice
 DEFAULT_TIMEZONE=Europe/Bucharest
 TRUSTED_PROXY_COUNT=1       # Vercel este proxy-ul din fata
 DB_EXTERNAL_POOLER=true     # daca DATABASE_URL arata catre un pooler
-WORKER_HEARTBEAT_TIMEOUT_SECONDS=90
 ```
 
 **Frontend, la build:**
@@ -235,10 +234,19 @@ Aplicația poate rula workerul în două feluri:
 ții un proces viu într-o funcție: nu supraviețuiește răspunsului.
 
 Consecință de operare: **semnul de viață al workerului bate la fiecare tur de
-cron**, deci `/health/workers` rămâne un semnal valid și pe Vercel. Cu cron la 5
-minute, pune `WORKER_HEARTBEAT_TIMEOUT_SECONDS` peste intervalul cronului —
-`400` (≈ 6–7 minute) este o valoare potrivită; implicitul de 90 de secunde este
-pentru un worker continuu și ar da alarme false.
+cron**, deci `/health/workers` rămâne un semnal valid și pe Vercel.
+
+**Nu trebuie să reglezi nimic.** Pragul de la care workerul este declarat mort
+se ridică singur pe o platformă serverless: trei ture de cron ratate, adică un
+sfert de oră. Implicitul de 90 de secunde este pentru workerul continuu și
+acolo rămâne.
+
+> Aici era o instrucțiune care spunea să pui `WORKER_HEARTBEAT_TIMEOUT_SECONDS`
+> pe `400`, cu mâna. Blocul de variabile de mai sus spunea `90`, iar cine copia
+> blocul — adică toată lumea — obținea o alarmă care sună la fiecare
+> verificare. O alarmă care sună mereu este o alarmă oprită. Dacă totuși pui
+> variabila, valoarea ta câștigă: reglajul rămâne posibil, doar că nu mai este
+> obligatoriu.
 
 > Încărcarea unui document programează procesarea și printr-un `BackgroundTask`.
 > Pe Vercel acela **poate să nu ruleze** — funcția e înghețată după răspuns. Nu

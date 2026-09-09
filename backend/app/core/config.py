@@ -85,6 +85,14 @@ MAX_DEADLINE_DAY = 28
 #: **o singură dată**, ca să refuzăm o configurare care ar pierde documente.
 EPHEMERAL_FILESYSTEM_MARKERS = ("VERCEL", "AWS_LAMBDA_FUNCTION_NAME")
 
+#: Cât de des bate workerul pe o platformă serverless, în secunde.
+#:
+#: Acolo nu există proces continuu: coada se execută prin ruta de cron, iar
+#: intervalul este declarat în `vercel.json` (`*/5 * * * *`). Numărul de aici
+#: și cronul de acolo trebuie să spună același lucru — `tests/test_cron_contract.py`
+#: le compară, ca să nu poată pleca unul fără celălalt.
+CRON_TICK_SECONDS = 300
+
 
 class Environment(StrEnum):
     DEVELOPMENT = "development"
@@ -259,10 +267,14 @@ class Settings(BaseSettings):
     #: De cate secunde poate lipsi semnul de viata al workerului inainte ca
     #: `/health/workers` sa raspunda 503.
     #:
-    #: Workerul bate la fiecare tur, iar un tur gol dureaza `IDLE_SLEEP_SECONDS`.
-    #: Pragul trebuie sa fie de cateva ori mai mare decat somnul, altfel alarma
-    #: suna pentru un worker care doarme, nu pentru unul mort. Nouazeci de
-    #: secunde inseamna: trei turi goale ratate la rand.
+    #: **Implicitul este pentru workerul continuu**, care bate la fiecare tur, iar
+    #: un tur gol dureaza `IDLE_SLEEP_SECONDS` (doua secunde). Nouazeci de secunde
+    #: inseamna zeci de turi ratate la rand: destul cat un worker viu, dar ocupat,
+    #: sa nu fie confundat cu unul mort.
+    #:
+    #: Pe o platforma serverless bataia vine din cron, la `CRON_TICK_SECONDS`, iar
+    #: pragul asta ar fi mereu depasit. Nu se citeste direct: vezi
+    #: `heartbeat_timeout_seconds`.
     worker_heartbeat_timeout_seconds: int = 90
 
     # Dupa cat timp un job ramas `RUNNING` se considera abandonat de un proces mort.
@@ -455,6 +467,34 @@ class Settings(BaseSettings):
         final. Un fișier scris acolo nu mai există la cererea următoare.
         """
         return any(os.environ.get(marker) for marker in EPHEMERAL_FILESYSTEM_MARKERS)
+
+    @property
+    def heartbeat_timeout_seconds(self) -> int:
+        """Pragul de vechime chiar folosit de `/health/workers`.
+
+        **De ce nu este pur si simplu campul.** Pe Vercel nu exista worker
+        continuu: coada se executa prin cron, la `CRON_TICK_SECONDS` (cinci
+        minute). Cu implicitul de nouazeci de secunde, semnul de viata ar fi
+        **mereu** prea vechi — `/health/workers` ar raspunde 503 la fiecare
+        verificare, pe o instalare perfect sanatoasa.
+
+        Iar o alarma care suna mereu este o alarma oprita: dupa a treia zi nimeni
+        nu se mai uita la ea, si exact semnalul construit ca sa prinda un worker
+        mort ar fi primul ignorat. Documentatia spunea operatorului sa ridice
+        variabila cu mana; asta este acelasi fel de reparatie ca un bilet lipit
+        pe monitor.
+
+        Trei ture de cron ratate, ca sa fie aceeasi regula ca la workerul
+        continuu: un tur intarziat nu suna, trei la rand suna.
+
+        **O valoare pusa explicit castiga oricum** — cine stie ce face nu este
+        contrazis de un implicit.
+        """
+        if "worker_heartbeat_timeout_seconds" in self.model_fields_set:
+            return self.worker_heartbeat_timeout_seconds
+        if self.runs_on_ephemeral_filesystem:
+            return 3 * CRON_TICK_SECONDS
+        return self.worker_heartbeat_timeout_seconds
 
     def assert_storage_is_persistent(self) -> None:
         """Documentele nu au voie să ajungă pe un disc care dispare.

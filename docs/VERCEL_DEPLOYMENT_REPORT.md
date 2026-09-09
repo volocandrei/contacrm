@@ -72,6 +72,65 @@ implicitul platformei.
 tur se întrerupe, jobul rămâne `PENDING` și se reia — coada este un outbox
 tranzacțional, nu memorie.
 
+### V-04 · P1 · Pragul alarmei era construit pentru alt ritm
+
+Continuarea directă a lui V-02. Semnul de viață se scria acum și din cron — dar
+pragul de la care workerul este declarat mort rămăsese **90 de secunde**, adică
+implicitul pentru workerul continuu, care bate la fiecare tur de două secunde.
+
+Pe Vercel bătaia vine la cinci minute. Nouăzeci de secunde ar fi fost depășite
+**între oricare două bătăi**: `/health/workers` ar fi răspuns 503 la fiecare
+verificare, pe o instalare perfect sănătoasă. Exact eroarea pe care V-02 o
+repara, mutată cu un pas mai încolo.
+
+Reparația de până acum era o propoziție în documentație — „ridică variabila cu
+mâna, la 400". Iar documentul se contrazicea singur: blocul de variabile de
+copiat, cu douăzeci de rânduri mai sus, scria `WORKER_HEARTBEAT_TIMEOUT_SECONDS=90`.
+Cine copia blocul — adică toată lumea — obținea alarma falsă.
+
+**Reparat:** pragul se derivă din platformă. Pe un filesystem efemer, trei ture
+de cron (`3 × CRON_TICK_SECONDS`); pe un server, cele 90 de secunde rămân. **O
+valoare pusă explicit câștigă în continuare** — cine știe ce face nu este
+contrazis de un implicit. Variabila a fost scoasă din blocurile de copiat pentru
+Vercel și păstrată, cu explicație, pentru instalarea pe server.
+
+### V-05 · P1 · Reamintirile către clienți nu ar fi plecat niciodată
+
+`/internal/reminders` și `/internal/daily-digest` existau, erau testate și nu
+aveau cron. Pe un server le cheamă planificatorul sistemului; pe Vercel nu există
+niciun proces care să pornească singur. O rută internă fără cron **nu dă eroare,
+nu apare în loguri și nu lipsește din interfață** — pur și simplu nu se execută.
+
+Pentru un cabinet, asta înseamnă că reamintirile de termen nu ajung la clienți.
+Adică fix lucrul pentru care se cumpără aplicația, tăcut, la nesfârșit.
+
+**Reparat:** ambele au cron (06:00 și 06:30 UTC — 08:00/09:00 ora României, după
+sezon). Rămân **oprite din configurare** până când cabinetul le pornește; un cron
+care cheamă o funcție oprită costă o milisecundă.
+
+Iar regula a fost scrisă ca test, nu ca notă: `tests/test_cron_contract.py`
+citește rutele din aplicația construită și cronurile din `vercel.json`, și cere
+ca fiecare să aibă corespondent în cealaltă listă. O rută internă adăugată mâine
+intră singură în verificare. Același test leagă intervalul cronului de
+`CRON_TICK_SECONDS` — cele două stau în fișiere diferite și nu au voie să plece
+unul fără celălalt.
+
+### V-06 · P2 · O demonstrație arăta exact ca aplicația adevărată
+
+Cel mai periculos scenariu documentat până acum se apăra printr-o propoziție:
+„intră cu o parolă greșită; trebuie să fii refuzat". Dacă proiectul se importă cu
+Root Directory = `frontend/`, se folosește `frontend/vercel.json`, care fixează
+`VITE_API_MODE=mock`: aplicația pornește normal, arată identic, și acceptă
+**orice parolă**, pentru că autentificarea simulată nu se uită la ea.
+
+Verificarea aceea cere ca cineva să și-o amintească. Un cabinet care își vede
+numele pe ecran nu o să și-o amintească.
+
+**Reparat:** un build de producție pe date simulate poartă o bandă permanentă, pe
+fiecare ecran, inclusiv pe cel de intrare — acolo unde „orice parolă merge" costă
+cel mai mult. Nu refuză să pornească: o demonstrație este o folosință legitimă.
+Refuză doar să tacă.
+
 ### Ce NU s-a schimbat, deliberat
 
 - **arhitectura** — nimic rescris, nimic înlocuit;
@@ -107,13 +166,18 @@ utilizator ──▶ Vercel ──┬── /api/*  → FastAPI  ──▶ Postg
 
 | Suită | Rezultat |
 |---|---|
-| Backend | **2.007 passed** · `ruff` + `ruff format --check` + `mypy --strict` curate |
-| Frontend | **415 passed** · `oxlint` + `tsc` curate · build cu `VITE_API_MODE=http` curat |
+| Backend | **2.017 passed**, 1 sărit · `ruff` + `ruff format --check` + `mypy --strict` (178 module) curate |
+| Frontend | **419 passed** · `oxlint` + `tsc` curate · build cu `VITE_API_MODE=http` curat |
 | End-to-end, browser real | **93 passed** |
 
 Diferența față de baseline-ul din enunț (1.972, la `a61e9e5`) este explicată în
-[VERCEL_RELEASE_MANIFEST.md](VERCEL_RELEASE_MANIFEST.md): **+35 de teste
+[VERCEL_RELEASE_MANIFEST.md](VERCEL_RELEASE_MANIFEST.md): **+46 de teste backend
 adăugate, niciunul șters sau slăbit.**
+
+Testul sărit nu este o slăbire și nu este nou: este cazul parametrizat pentru o
+obligație **fără calendar**, care nu are termen de calculat. Ce trebuie să fie
+adevărat despre ea — că nu produce nicio perioadă și că refuzul spune de ce — se
+verifică în două teste dedicate, imediat sub el.
 
 ## 9. Teste de fum
 
@@ -147,8 +211,12 @@ Declarat în `vercel.json`, la 5 minute, către `/api/v1/internal/run-queue`.
 Vercel trimite `Authorization: Bearer <CRON_SECRET>` — exact ce așteaptă ruta.
 **Netestat pe platformă.**
 
-Rezumatul zilnic și memento-urile au nevoie de câte un cron în plus, dacă se
-folosesc.
+Rezumatul zilnic (`/internal/daily-digest`, 06:30 UTC) și memento-urile
+(`/internal/reminders`, 06:00 UTC) au și ele cron — vezi V-05. Trei cronuri în
+total; cadența de cinci minute cere un plan care o permite.
+
+Corespondența dintre rute și cronuri este ținută de un test, nu de memorie:
+`tests/test_cron_contract.py`.
 
 ## 15. Worker
 
@@ -159,7 +227,7 @@ Clasificare, cum s-a cerut:
 | coada de procesare | **Vercel Cron** |
 | sincronizarea surselor externe | **Vercel Cron**, în același tur |
 | recuperarea joburilor abandonate | **Vercel Cron**, în același tur |
-| rezumat zilnic, memento-uri | **Vercel Cron**, de adăugat |
+| rezumat zilnic, memento-uri | **Vercel Cron**, declarat (06:00 / 06:30 UTC) |
 | worker ca proces continuu | **imposibil pe Vercel** — și nu se pretinde altfel |
 
 Nu s-a simulat niciun worker persistent într-o cerere.
@@ -173,8 +241,8 @@ externă. Ce trebuie pus, cu valori:
 Blocantul `P1-01` **nu este închis**: rămâne deschis până când un serviciu extern
 interoghează efectiv `/health/ready` și `/health/workers`.
 
-Pe Vercel, `WORKER_HEARTBEAT_TIMEOUT_SECONDS` trebuie ridicat peste intervalul
-cronului (≈400s), altfel alarma sună între ture.
+Pragul workerului **nu mai trebuie reglat cu mâna** pe Vercel: se derivă din
+intervalul cronului (V-04). O valoare pusă explicit câștigă oricum.
 
 ## 17. Copii de siguranță
 
@@ -190,12 +258,14 @@ Toate: `NOT LIVE VERIFIED`. Lista completă în
 ## 19. Avertismente cunoscute
 
 1. Riscul de build în modul demonstrație, dacă Root Directory este `frontend/`.
-   **Verificarea care îl prinde: intră cu o parolă greșită — trebuie să fii
-   refuzat.**
+   **Acum se anunță singur** printr-o bandă permanentă (V-06), dar verificarea
+   rămâne valabilă: intră cu o parolă greșită — trebuie să fii refuzat.
 2. Latență de până la 5 minute la procesare (interval de cron).
 3. Migrările nu rulează automat.
 4. Deploy cu întrerupere la release cu migrări.
-5. `WORKER_HEARTBEAT_TIMEOUT_SECONDS` trebuie ajustat pentru cron.
+5. Cele trei cronuri cer un plan Vercel care permite cadența de cinci minute.
+6. Reamintirile și rezumatul zilnic au cron, dar rămân **oprite din
+   configurare** până când cabinetul le pornește și există SMTP.
 
 ## 20. Rollback
 

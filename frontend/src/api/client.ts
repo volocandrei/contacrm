@@ -65,6 +65,38 @@ export const API_MODE_PROBLEM = apiModeProblem(
   import.meta.env.PROD,
 );
 
+/**
+ * **O demonstrație nu are voie să arate ca aplicația adevărată.**
+ *
+ * `apiModeProblem` prinde varianta în care variabila lipsește. Nu o prinde pe
+ * cea mai periculoasă: `VITE_API_MODE=mock` pus **explicit** într-un build de
+ * producție. Atunci totul pornește normal, arată identic, și acceptă orice
+ * parolă la intrare — pentru că autentificarea simulată nu se uită la ea.
+ *
+ * Drumurile către greșeala asta sunt mai multe și niciunul nu dă eroare:
+ * proiectul importat cu Root Directory = `frontend/`, care folosește
+ * `frontend/vercel.json`, unde modul este fixat pe `mock`; o variabilă copiată
+ * dintr-un mediu în altul; un deploy de demonstrație promovat din greșeală.
+ *
+ * Verificarea scrisă în documentație — „intră cu o parolă greșită, trebuie să
+ * fii refuzat" — cere ca cineva să și-o amintească. Un cabinet care își vede
+ * numele pe ecran nu o să și-o amintească.
+ *
+ * De aceea aplicația o spune singură, pe fiecare ecran, inclusiv pe cel de
+ * intrare. Nu refuză să pornească: o demonstrație este o folosință legitimă.
+ * Refuză doar să tacă.
+ */
+export function demoWarning(declared: string | undefined, isProduction: boolean): string | null {
+  if (!isProduction) return null;
+  if (declared !== "mock") return null;
+  return (
+    "DEMONSTRAȚIE — datele sunt inventate, nu se salvează nimic, " +
+    "iar autentificarea acceptă orice parolă. Nu folosi pentru lucru real."
+  );
+}
+
+export const DEMO_WARNING = demoWarning(import.meta.env.VITE_API_MODE, import.meta.env.PROD);
+
 const MODE: Mode = import.meta.env.VITE_API_MODE === "http" ? "http" : "mock";
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
 

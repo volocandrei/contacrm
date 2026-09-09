@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
-import { API_MODE_PROBLEM } from "@/api/client";
+import { API_MODE_PROBLEM, DEMO_WARNING } from "@/api/client";
 import { createQueryClient } from "@/api/query-client";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import "./index.css";
@@ -41,6 +41,17 @@ if (API_MODE_PROBLEM) {
           </AuthProvider>
         </BrowserRouter>
       </QueryClientProvider>
+      {/* Banda stă în afara routerului, deci și peste ecranul de intrare — acolo
+          unde „orice parolă merge" costă cel mai mult. Fixată jos: nu mișcă
+          nimic din pagină, dar nu poate fi derulată în afara vederii. */}
+      {DEMO_WARNING ? (
+        <div
+          role="status"
+          className="fixed inset-x-0 bottom-0 z-50 bg-amber-500 px-4 py-2 text-center text-sm font-semibold text-amber-950 shadow-lg"
+        >
+          {DEMO_WARNING}
+        </div>
+      ) : null}
     </StrictMode>,
   );
 }

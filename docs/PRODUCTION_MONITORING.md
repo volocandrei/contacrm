@@ -89,8 +89,12 @@ serviciul permite, adaugă și SMS pentru primul monitor.
 
 Workerul scrie un **semn de viață** la fiecare tur, într-un rând din baza de
 date (`worker_heartbeats`). `/health/workers` compară vechimea lui cu
-`WORKER_HEARTBEAT_TIMEOUT_SECONDS` (implicit **90 de secunde**, adică trei ture
-goale ratate la rând).
+`WORKER_HEARTBEAT_TIMEOUT_SECONDS` (implicit **90 de secunde** pentru workerul
+continuu, care bate la fiecare tur).
+
+Pe o platformă serverless nu există worker continuu: coada se execută prin cron,
+la cinci minute, iar pragul s-ar depăși **între oricare două bătăi**. Acolo se
+ridică singur, la trei ture de cron. O valoare pusă explicit câștigă oricum.
 
 Trei alegeri care contează:
 

@@ -492,7 +492,10 @@ mort se descoperea a doua zi, la o sută de documente neprocesate.
 
 **Reparat:** workerul scrie un semn de viață la fiecare tur, într-un rând din
 baza de date; `/health/workers` răspunde **503** când semnul îmbătrânește peste
-`WORKER_HEARTBEAT_TIMEOUT_SECONDS` (90 de secunde, adică trei ture ratate).
+`WORKER_HEARTBEAT_TIMEOUT_SECONDS` — 90 de secunde pentru workerul continuu,
+care bate la fiecare tur. Pe o platformă serverless, unde bătaia vine din cron,
+pragul se ridică singur la trei ture de cron; altfel alarma ar suna între
+oricare două bătăi. Vezi `docs/VERCEL_DEPLOYMENT_REPORT.md`, V-04.
 
 Patru alegeri care fac diferența dintre un semnal util și unul decorativ:
 

@@ -60,8 +60,10 @@ CRON_SECRET
 DEFAULT_TIMEZONE
 TRUSTED_PROXY_COUNT
 DB_EXTERNAL_POOLER
-WORKER_HEARTBEAT_TIMEOUT_SECONDS
 ```
+
+> `WORKER_HEARTBEAT_TIMEOUT_SECONDS` **nu** se pune pe Vercel: pragul se
+> derivă din intervalul cronului. Pusă cu mâna, valoarea ta câștigă.
 
 **Frontend, la build:**
 
@@ -92,10 +94,10 @@ ASSISTANT_API_KEY  ASSISTANT_PROVIDER
 
 | Suită | Rezultat |
 |---|---|
-| Backend (`pytest`) | **2.007 passed** |
+| Backend (`pytest`) | **2.017 passed**, 1 sărit |
 | `ruff check` + `ruff format --check` | curat |
 | `mypy --strict` (178 module) | curat |
-| Frontend (`vitest`) | **415 passed** |
+| Frontend (`vitest`) | **419 passed** |
 | `oxlint` + `tsc --noEmit` | curat |
 | `npm run build` cu `VITE_API_MODE=http` | curat |
 | End-to-end, browser real | **93 passed** |
@@ -106,7 +108,8 @@ la `a61e9e5`. Între timp s-au adăugat teste, niciunul șters sau slăbit:
 | Rundă | Δ | Ce s-a adăugat |
 |---|---|---|
 | Poarta de release (`db42b0e`) | +27 | heartbeat worker, politica parolei primului admin, contract de query params, eșecuri de stocare, volum pe liste |
-| Pregătirea Vercel (aici) | +8 | garda de filesystem efemer (6), bătaia din ruta de cron (2) |
+| Pregătirea Vercel | +8 | garda de filesystem efemer (6), bătaia din ruta de cron (2) |
+| Ritmul platformei (aici) | +11 backend, +4 frontend | pragul alarmei pe cron (5), contractul rute↔cron (6), banda de demonstrație (4) |
 
 ## Teste de fum
 
@@ -143,15 +146,19 @@ Vocabular fără ambiguitate, cum s-a cerut.
 1. **Workerul rulează doar prin cron** pe Vercel — nu există proces continuu.
    Latență de până la 5 minute la procesare. Coada este durabilă, deci nimic nu
    se pierde.
-2. **`WORKER_HEARTBEAT_TIMEOUT_SECONDS` trebuie ridicat** peste intervalul
-   cronului (≈400s pentru cron la 5 minute). Implicitul de 90s este pentru un
-   worker continuu și ar produce alarme false.
+2. ~~`WORKER_HEARTBEAT_TIMEOUT_SECONDS` trebuie ridicat~~ — **rezolvat.** Pragul
+   se ridică singur pe o platformă serverless (trei ture de cron). O valoare
+   pusă explicit câștigă în continuare.
 3. **Migrările nu rulează automat** — pas manual înainte de fiecare promovare.
 4. **Deploy cu întrerupere** la release cu migrări: 5–15 minute.
-5. **Rezumatul zilnic și memento-urile** au nevoie de câte un cron în plus, dacă
-   se folosesc.
+5. ~~Rezumatul zilnic și memento-urile au nevoie de câte un cron în plus~~ —
+   **rezolvat.** Sunt declarate în `vercel.json` (06:00 și 06:30 UTC, adică
+   08:00/09:00 ora României). Rămân oprite din configurare până când cabinetul
+   le pornește; un cron care cheamă o funcție oprită costă o milisecundă.
 6. **Riscul de build în modul demonstrație:** dacă proiectul se importă cu Root
    Directory = `frontend/`, se folosește `frontend/vercel.json`, care fixează
    `VITE_API_MODE=mock` — aplicația ar arăta identic, pe date inventate, cu o
-   autentificare care acceptă orice parolă. Verificarea care o prinde: **intră cu
-   o parolă greșită; trebuie să fii refuzat.**
+   autentificare care acceptă orice parolă. **Acum se anunță singură:** un build
+   de producție pe date simulate poartă o bandă permanentă pe fiecare ecran,
+   inclusiv pe cel de intrare. Verificarea rămâne valabilă: **intră cu o parolă
+   greșită; trebuie să fii refuzat.**

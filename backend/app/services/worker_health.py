@@ -101,7 +101,7 @@ def beat(session: Session, name: str = DEFAULT_WORKER) -> None:
 
 def status(session: Session, name: str = DEFAULT_WORKER) -> WorkerStatus:
     """Vechimea ultimului bătut, măsurată de bază."""
-    timeout = settings.worker_heartbeat_timeout_seconds
+    timeout = settings.heartbeat_timeout_seconds
     row = session.execute(
         select(
             WorkerHeartbeat.beat_at,

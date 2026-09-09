@@ -40,6 +40,14 @@
     {
       "path": "/api/v1/internal/run-queue",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/internal/reminders",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/v1/internal/daily-digest",
+      "schedule": "30 6 * * *"
     }
   ],
   "headers": [
